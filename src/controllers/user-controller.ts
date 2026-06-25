@@ -5,13 +5,20 @@ import type { Schema } from "@/models/schemas/index";
 class UserController implements IBaseController<Schema.User> {
   private db: Model<Schema.User> = db.users;
 
+  // O SELECT * traz a coluna password_hash em runtime (mesmo o tipo sendo
+  // Schema.User). Removemos antes de devolver qualquer usuário ao cliente.
+  private sanitize(user: Schema.User): Schema.User {
+    const { password_hash, ...safe } = user as Schema.User & { password_hash?: unknown };
+    return safe as Schema.User;
+  }
+
   async all(lookup?: LookupsConfig<Schema.User>) {
     try {
       const users = await this.db.findAll(lookup);
 
       if (!users) throw new Error("No users found");
 
-      return users;
+      return users.map((user) => this.sanitize(user));
     } catch (error) {
       if (error instanceof Error) {
         console.error(`[${error.cause}] ${error.message}`);
@@ -26,7 +33,7 @@ class UserController implements IBaseController<Schema.User> {
 
       if (!user) throw new Error("User not found");
 
-      return user;
+      return this.sanitize(user);
     } catch (error) {
       if (error instanceof Error) {
         console.error(`[${error.cause}] ${error.message}`);
@@ -41,7 +48,7 @@ class UserController implements IBaseController<Schema.User> {
 
       if (!createdUser) throw new Error("Failed to create user");
 
-      return createdUser;
+      return this.sanitize(createdUser);
     } catch (error) {
       if (error instanceof Error) {
         console.error(`[${error.cause}] ${error.message}`);
@@ -57,7 +64,9 @@ class UserController implements IBaseController<Schema.User> {
       if (!updated) throw new Error("Failed to update user");
 
       // db.update only returns a boolean, so we re-fetch to hand back the fresh entity
-      return await this.db.find(lookup);
+      const user = await this.db.find(lookup);
+
+      return user ? this.sanitize(user) : null;
     } catch (error) {
       if (error instanceof Error) {
         console.error(`[${error.cause}] ${error.message}`);

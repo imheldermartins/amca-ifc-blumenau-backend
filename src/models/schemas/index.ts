@@ -7,6 +7,14 @@ export namespace Schema {
   }
   export interface Users extends User {}
 
+  /**
+   * Uso INTERNO (auth). Inclui o hash da senha que vive na coluna users.password_hash.
+   * NUNCA serializar em respostas HTTP -- use o tipo `User` público para isso.
+   */
+  export interface UserCredentials extends User {
+    password_hash: string | null;
+  }
+
   // --- 2. WORKSPACES ---
   export interface Workspace extends EntityBase {
     name: string | null;
