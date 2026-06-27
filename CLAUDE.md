@@ -51,7 +51,7 @@ HTTP request
   → rqlite() / sql() (src/core/db/shared.ts)  — POSTs to rqlite HTTP API
 ```
 
-**Hard rule**: SQL must never be written outside `src/core/db/`. Services and models use the abstractions provided there.
+**Hard rule**: SQL must never be written outside `src/core/db/`. Services and models use the abstractions provided there. The **one sanctioned exception** is `Model.sqlRaw(query, endpoint?)` — a static method in `core/db/model.ts` (re-exported as `db.sqlRaw`) for caller-authored raw SQL/joins the `Model`/relations layer doesn't cover; the executor itself stays in `core/db`.
 
 ### Key abstractions
 
