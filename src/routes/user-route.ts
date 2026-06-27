@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import userController from "@/controllers/user-controller";
 import type { Schema } from "@/models/schemas/index";
+import type { Input } from "@/models/schemas/inputs";
 import { BaseRouter, type RouteOperation } from "@routes/base-router";
 import middleware from "@/core/auth/middleware";
 import ownership from "@/core/auth/ownership";
@@ -15,6 +16,7 @@ import { StatusCode } from "@core/http/status-code";
  *       properties:
  *         id:
  *           type: string
+ *           readOnly: true
  *         name:
  *           type: string
  *           nullable: true
@@ -145,6 +147,28 @@ class UserRouter extends BaseRouter<Schema.User> {
     const user = await this.controller.get({ id: req.userId } as unknown as LookupValues<Schema.User>);
 
     return res.status(StatusCode.OK).json(user ? [user] : []);
+  }
+
+  // Whitelist do update: só name/email entram pelo body. Bloqueia injeção de
+  // campos sensíveis (ex.: password_hash) ou auto-gerenciados via PUT.
+  protected override async update(req: Request, res: Response): Promise<Response> {
+    const { name, email } = (req.body ?? {}) as Input.UpdateUser;
+
+    const payload = {
+      ...(name !== undefined && { name }),
+      ...(email !== undefined && { email }),
+    } as UpdateValues<Schema.User>;
+
+    const item = await this.controller.update(
+      { id: req.params.id } as unknown as LookupValues<Schema.User>,
+      payload,
+    );
+
+    if (!item) {
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado ou falha ao atualizar` });
+    }
+
+    return res.status(StatusCode.OK).json(item);
   }
 }
 
