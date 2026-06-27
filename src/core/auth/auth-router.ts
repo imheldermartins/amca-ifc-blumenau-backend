@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import authController from "@/controllers/auth-controller";
+import { StatusCode } from "@core/http/status-code";
 
 const router = Router();
 
@@ -51,22 +52,22 @@ router.post("/register", async (req: Request, res: Response) => {
   const { name, email, password } = req.body ?? {};
 
   if (!email || !password) {
-    return res.status(400).json({ message: "email and password are required" });
+    return res.status(StatusCode.BAD_REQUEST).json({ message: "email e senha são obrigatórios" });
   }
   if (typeof password !== "string" || password.length < 6) {
-    return res.status(400).json({ message: "password must be at least 6 characters" });
+    return res.status(StatusCode.BAD_REQUEST).json({ message: "a senha deve ter no mínimo 6 caracteres" });
   }
 
   const result = await authController.register({ name, email, password });
 
   if (!result.ok) {
     if (result.reason === "email_taken") {
-      return res.status(409).json({ message: "email already registered" });
+      return res.status(StatusCode.CONFLICT).json({ message: "email já cadastrado" });
     }
-    return res.status(500).json({ message: "Failed to register user" });
+    return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
   }
 
-  return res.status(201).json({ user: result.user, tokens: result.tokens });
+  return res.status(StatusCode.CREATED).json({ user: result.user, tokens: result.tokens });
 });
 
 /**
@@ -108,16 +109,16 @@ router.post("/login", async (req: Request, res: Response) => {
   const { email, password } = req.body ?? {};
 
   if (!email || !password) {
-    return res.status(400).json({ message: "email and password are required" });
+    return res.status(StatusCode.BAD_REQUEST).json({ message: "email e senha são obrigatórios" });
   }
 
   const tokens = await authController.login({ email, password });
 
   if (!tokens) {
-    return res.status(401).json({ message: "Invalid credentials" });
+    return res.status(StatusCode.UNAUTHORIZED).json({ message: "Credenciais inválidas" });
   }
 
-  return res.status(200).json(tokens);
+  return res.status(StatusCode.OK).json(tokens);
 });
 
 /**
@@ -157,16 +158,16 @@ router.post("/refresh", (req: Request, res: Response) => {
   const { refreshToken } = req.body ?? {};
 
   if (!refreshToken) {
-    return res.status(400).json({ message: "refreshToken is required" });
+    return res.status(StatusCode.BAD_REQUEST).json({ message: "refreshToken é obrigatório" });
   }
 
   const tokens = authController.refresh(refreshToken);
 
   if (!tokens) {
-    return res.status(401).json({ message: "Invalid or expired refresh token" });
+    return res.status(StatusCode.UNAUTHORIZED).json({ message: "Refresh token inválido ou expirado" });
   }
 
-  return res.status(200).json(tokens);
+  return res.status(StatusCode.OK).json(tokens);
 });
 
 export default router;
