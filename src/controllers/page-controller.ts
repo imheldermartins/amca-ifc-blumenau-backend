@@ -127,7 +127,6 @@ class PageController implements IBaseController<Schema.Page> {
    */
   async getDataset(rootId: string) {
     try {
-      // rootId == id da workspace/page_root: valida formato ULID antes de interpolar.
       if (!/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(rootId)) throw new Error("Invalid page root id");
 
       const query =

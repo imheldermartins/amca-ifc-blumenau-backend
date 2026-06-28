@@ -40,10 +40,29 @@ export namespace Schema {
   // --- 5. PAGE COLUMNS (Configurações de Colunas) ---
   export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox';
 
+  // Cores aceitas para as opções de uma coluna `select`.
+  export type ColorOptions = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'grey';
+
+  // Uma opção de coluna `select`, persistida em page_columns.data.options.
+  export interface SelectOption {
+    id: NonEmptyString;    // ULID (gerado no backend)
+    value: string;
+    color?: ColorOptions;  // opcional: option pode não ter cor (sem default)
+  }
+
+  // Formato de exibição de uma coluna `numeric` (só armazenado; parse é posterior).
+  export type NumberFormat = 'percentage' | 'currency';
+
+  // Config da coluna (page_columns.data): `options` (select) / `format` (numeric).
+  export interface PageColumnData {
+    options?: SelectOption[];
+    format?: NumberFormat;
+  }
+
   export interface PageColumn extends EntityBase {
     name: string | null;
     type: ColumnType;
-    data: Record<string, unknown>;
+    data: PageColumnData;
     page_root_id: NonEmptyString | null;
   }
   export interface PageColumns extends PageColumn {}
@@ -55,4 +74,26 @@ export namespace Schema {
     page_id: NonEmptyString | null;
   }
   export interface PageColumnsValues extends PageColumnValue {}
+
+  // Envelope persistido em page_columns_values.data: SEMPRE { value: <T> }.
+  export interface ColumnValueEnvelope<T = unknown> {
+    value: T;
+  }
+
+  // Valor entregue ao cliente HTTP: sem envelope, sem string JSON crua.
+  export interface DecodedColumnValue<T = unknown> {
+    id: NonEmptyString;
+    page_id: NonEmptyString | null;
+    page_column_id: NonEmptyString | null;
+    type: ColumnType;
+    value: T;
+  }
+
+  // Contrato do codec: ponte entre o valor "nu" do cliente <-> envelope gravado.
+  // `validate` LANÇA em entrada inválida (ver VALUE_CODECS em services/value-codec).
+  export interface ColumnValueCodec<T = unknown> {
+    validate(rawValue: unknown, column: PageColumn): T;
+    encode(value: T): string;
+    decode(data: string): T;
+  }
 }

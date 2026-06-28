@@ -1,10 +1,30 @@
 import type { Request, Response } from "express";
 import pageController from "@/controllers/page-controller";
+import pageColumnController from "@/controllers/page-column-controller";
+import pageColumnValueController from "@/controllers/page-column-value-controller";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { BaseRouter } from "@routes/base-router";
 import middleware from "@/core/auth/middleware";
 import { StatusCode } from "@core/http/status-code";
+
+const reasonToStatus = (reason: ServiceFailureReason): StatusCode => {
+  switch (reason) {
+    case "not_found":
+      return StatusCode.NOT_FOUND;
+    case "validation":
+      return StatusCode.BAD_REQUEST;
+    default:
+      return StatusCode.INTERNAL_SERVER_ERROR;
+  }
+};
+
+// `?type` das rotas de coluna: nome canônico do schema, aceitando o apelido "number".
+const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
+  const raw = req.query.type;
+  const value = typeof raw === "string" ? raw : undefined;
+  return value === "number" ? "numeric" : (value as Schema.ColumnType | undefined);
+};
 
 /**
  * @openapi
@@ -156,6 +176,407 @@ import { StatusCode } from "@core/http/status-code";
  */
 
 /**
+ * @openapi
+ * components:
+ *   schemas:
+ *     SelectOption:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           readOnly: true
+ *           description: ULID gerado no backend
+ *         value:
+ *           type: string
+ *         color:
+ *           type: string
+ *           enum: [red, orange, yellow, green, blue, grey]
+ *       required: [value]
+ *     PageColumn:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           readOnly: true
+ *         name:
+ *           type: string
+ *           nullable: true
+ *         type:
+ *           type: string
+ *           enum: [text, numeric, select, date, checkbox]
+ *           readOnly: true
+ *           description: Definido pela query ?type na criação
+ *         data:
+ *           type: object
+ *           description: Config por tipo (options no select, format no numeric)
+ *           properties:
+ *             options:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/SelectOption'
+ *             format:
+ *               type: string
+ *               enum: [percentage, currency]
+ *         page_root_id:
+ *           type: string
+ *           readOnly: true
+ *     PageColumnValue:
+ *       type: object
+ *       description: Resposta decodificada (sem envelope); no banco `data` guarda `{"value":<T>}`.
+ *       properties:
+ *         id:
+ *           type: string
+ *           readOnly: true
+ *         page_id:
+ *           type: string
+ *         page_column_id:
+ *           type: string
+ *         type:
+ *           type: string
+ *           enum: [text, numeric, select, date, checkbox]
+ *           readOnly: true
+ *         value:
+ *           description: Valor "nu" cujo tipo depende do type da coluna
+ *
+ * /pages/root/{id}/columns:
+ *   get:
+ *     summary: Lista as colunas da page_root
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: id da page_root
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lista de colunas
+ *       401:
+ *         description: Token de acesso ausente ou inválido
+ *   post:
+ *     summary: Cria uma coluna na page_root (type vem da query; page_root_id da URL)
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: type
+ *         required: true
+ *         description: Tipo da coluna ("number" é aceito como apelido de numeric)
+ *         schema:
+ *           type: string
+ *           enum: [text, numeric, select, date, checkbox]
+ *     requestBody:
+ *       description: Body dinâmico por tipo (select -> options; numeric -> format)
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 nullable: true
+ *               options:
+ *                 type: array
+ *                 description: Apenas type=select; id de cada option é gerado no backend
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     value:
+ *                       type: string
+ *                     color:
+ *                       type: string
+ *                       enum: [red, orange, yellow, green, blue, grey]
+ *                   required: [value]
+ *               format:
+ *                 type: string
+ *                 description: Apenas type=numeric
+ *                 enum: [percentage, currency]
+ *     responses:
+ *       201:
+ *         description: Coluna criada
+ *       400:
+ *         description: Tipo de coluna não suportado ou options/format inválidos
+ *       401:
+ *         description: Token de acesso ausente ou inválido
+ *
+ * /pages/root/{id}/columns/{column_id}:
+ *   get:
+ *     summary: Busca uma coluna da page_root
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: column_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Coluna encontrada
+ *       404:
+ *         description: Coluna não encontrada
+ *   put:
+ *     summary: Atualiza uma coluna da page_root (type opcional via query)
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: column_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: type
+ *         required: false
+ *         description: Troca o tipo da coluna ("number" = numeric)
+ *         schema:
+ *           type: string
+ *           enum: [text, numeric, select, date, checkbox]
+ *     requestBody:
+ *       description: Body dinâmico por tipo (select -> options; numeric -> format)
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 nullable: true
+ *               options:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     value:
+ *                       type: string
+ *                     color:
+ *                       type: string
+ *                       enum: [red, orange, yellow, green, blue, grey]
+ *                   required: [value]
+ *               format:
+ *                 type: string
+ *                 enum: [percentage, currency]
+ *     responses:
+ *       200:
+ *         description: Coluna atualizada
+ *       400:
+ *         description: Tipo de coluna não suportado ou options/format inválidos
+ *       404:
+ *         description: Coluna não encontrada
+ *   delete:
+ *     summary: Remove uma coluna da page_root
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: column_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       204:
+ *         description: Coluna removida
+ *       404:
+ *         description: Coluna não encontrada
+ *
+ * /pages/{id}/column/{column_id}/values:
+ *   get:
+ *     summary: Lista os valores de uma coluna nesta página (decodificados)
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: page_id da linha
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: column_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lista de valores decodificados
+ *       401:
+ *         description: Token de acesso ausente ou inválido
+ *   post:
+ *     summary: Cria um valor de célula (payload dinâmico; page_id/coluna da URL)
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: column_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       description: "date aceita { startDate, endDate } (vira start@end); demais usam value"
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               value:
+ *                 description: Valor "nu"; validado conforme o type da coluna
+ *               startDate:
+ *                 type: string
+ *                 description: Apenas type=date (ISO)
+ *               endDate:
+ *                 type: string
+ *                 description: Apenas type=date (ISO); com startDate forma o range
+ *     responses:
+ *       201:
+ *         description: Valor criado (decodificado)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PageColumnValue'
+ *       400:
+ *         description: Valor inválido para o tipo da coluna
+ *       404:
+ *         description: Coluna (column_id) não encontrada
+ *
+ * /pages/{id}/column/{column_id}/values/{value_id}:
+ *   get:
+ *     summary: Busca um valor de célula (decodificado)
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: column_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: value_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Valor encontrado (decodificado)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PageColumnValue'
+ *       404:
+ *         description: Valor não encontrado
+ *   put:
+ *     summary: Atualiza um valor de célula
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: column_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: value_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       description: "date aceita { startDate, endDate }; demais usam value"
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               value:
+ *                 description: Novo valor "nu"
+ *               startDate:
+ *                 type: string
+ *                 description: Apenas type=date (ISO)
+ *               endDate:
+ *                 type: string
+ *                 description: Apenas type=date (ISO)
+ *     responses:
+ *       200:
+ *         description: Valor atualizado (decodificado)
+ *       400:
+ *         description: Valor inválido para o tipo da coluna
+ *       404:
+ *         description: Valor (ou coluna) não encontrado
+ *   delete:
+ *     summary: Remove um valor de célula
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: column_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: value_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       204:
+ *         description: Valor removido
+ *       404:
+ *         description: Valor não encontrado
+ */
+
+/**
  * Pages: CRUD completo protegido por JWT. O `owner_id` SEMPRE vem do token
  * (req.userId), nunca do payload, e as leituras/escritas são escopadas ao dono.
  * As rotas adicionais (motor de páginas) são registradas ao lado do CRUD base,
@@ -176,9 +597,21 @@ class PageRouter extends BaseRouter<Schema.Page> {
     // Rotas adicionais (registradas após o CRUD base do super()):
     this.router.post("/:id/page", middleware.handle, this.createChild.bind(this));
     this.router.get("/:id/page", middleware.handle, this.getDataset.bind(this));
-  }
 
-  // --- CRUD base escopado ao dono (owner_id = token) ---
+    // Colunas da page_root (:id = id da page_root). page_columns não tem rota própria.
+    this.router.post("/root/:id/columns", middleware.handle, this.createColumn.bind(this));
+    this.router.get("/root/:id/columns", middleware.handle, this.listColumns.bind(this));
+    this.router.get("/root/:id/columns/:column_id", middleware.handle, this.getColumn.bind(this));
+    this.router.put("/root/:id/columns/:column_id", middleware.handle, this.updateColumn.bind(this));
+    this.router.delete("/root/:id/columns/:column_id", middleware.handle, this.deleteColumn.bind(this));
+
+    // Valores de uma coluna numa página (:id = page_id da linha, :column_id = coluna).
+    this.router.post("/:id/column/:column_id/values", middleware.handle, this.createValue.bind(this));
+    this.router.get("/:id/column/:column_id/values", middleware.handle, this.listValues.bind(this));
+    this.router.get("/:id/column/:column_id/values/:value_id", middleware.handle, this.getValue.bind(this));
+    this.router.put("/:id/column/:column_id/values/:value_id", middleware.handle, this.updateValue.bind(this));
+    this.router.delete("/:id/column/:column_id/values/:value_id", middleware.handle, this.deleteValue.bind(this));
+  }
 
   protected override async all(req: Request, res: Response): Promise<Response> {
     const items = await this.controller.all({ owner_id: req.userId } as LookupsConfig<Schema.Page>);
@@ -198,7 +631,6 @@ class PageRouter extends BaseRouter<Schema.Page> {
   }
 
   protected override async create(req: Request, res: Response): Promise<Response> {
-    // Whitelist: só title/data vêm do cliente; owner_id sai do token.
     const { title, data } = (req.body ?? {}) as Input.CreatePage;
 
     const payload = {
@@ -217,7 +649,6 @@ class PageRouter extends BaseRouter<Schema.Page> {
   }
 
   protected override async update(req: Request, res: Response): Promise<Response> {
-    // Whitelist: só title/data são editáveis; owner_id/id ficam fora do body.
     const { title, data } = (req.body ?? {}) as Input.UpdatePage;
 
     const payload = {
@@ -248,10 +679,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
     return res.status(StatusCode.NO_CONTENT).send();
   }
-
-  // --- Rotas adicionais ---
-
-  // POST /pages/:id/page -- adiciona uma página-filha à page_root :id (page + page_hub).
+  
   private async createChild(req: Request, res: Response): Promise<Response> {
     const body = (req.body ?? {}) as Input.CreateChildPage;
     const child = await pageController.createChild(req.params.id as string, req.userId!, body);
@@ -263,7 +691,6 @@ class PageRouter extends BaseRouter<Schema.Page> {
     return res.status(StatusCode.CREATED).json(child);
   }
 
-  // GET /pages/:id/page -- lê o dataset da page_root :id (linhas + colunas + valores) via sqlRaw.
   private async getDataset(req: Request, res: Response): Promise<Response> {
     const dataset = await pageController.getDataset(req.params.id as string);
 
@@ -272,6 +699,163 @@ class PageRouter extends BaseRouter<Schema.Page> {
     }
 
     return res.status(StatusCode.OK).json(dataset);
+  }
+
+  // --- Colunas da page_root (page_columns; :id = id da page_root) ---
+
+  // POST /pages/root/:id/columns?type=<type> -- type vem da query; page_root_id da URL.
+  private async createColumn(req: Request, res: Response): Promise<Response> {
+    const body = (req.body ?? {}) as Input.CreatePageColumn;
+    const type = resolveTypeQuery(req) ?? body.type;
+
+    const result = await pageColumnController.createColumn({
+      ...(body.name !== undefined && { name: body.name }),
+      ...(body.options !== undefined && { options: body.options }),
+      ...(body.format !== undefined && { format: body.format }),
+      ...(type !== undefined && { type }),
+      page_root_id: req.params.id as Schema.PageColumn["page_root_id"],
+    });
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.CREATED).json(result.data);
+  }
+
+  // GET /pages/root/:id/columns
+  private async listColumns(req: Request, res: Response): Promise<Response> {
+    const columns = await pageColumnController.all(
+      { page_root_id: req.params.id } as LookupsConfig<Schema.PageColumn>,
+    );
+
+    return res.status(StatusCode.OK).json(columns ?? []);
+  }
+
+  // GET /pages/root/:id/columns/:column_id
+  private async getColumn(req: Request, res: Response): Promise<Response> {
+    const column = await pageColumnController.get(
+      { id: req.params.column_id, page_root_id: req.params.id } as LookupValues<Schema.PageColumn>,
+    );
+
+    if (!column) {
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"Page_column" não encontrado` });
+    }
+
+    return res.status(StatusCode.OK).json(column);
+  }
+
+  // PUT /pages/root/:id/columns/:column_id?type=<type> -- page_root_id imutável.
+  private async updateColumn(req: Request, res: Response): Promise<Response> {
+    const body = (req.body ?? {}) as Input.UpdatePageColumn;
+    const type = resolveTypeQuery(req) ?? body.type;
+
+    const input: Input.UpdatePageColumn = {
+      ...(body.name !== undefined && { name: body.name }),
+      ...(body.options !== undefined && { options: body.options }),
+      ...(body.format !== undefined && { format: body.format }),
+      ...(type !== undefined && { type }),
+    };
+
+    const result = await pageColumnController.updateColumn(
+      { id: req.params.column_id, page_root_id: req.params.id } as LookupValues<Schema.PageColumn>,
+      input,
+    );
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.OK).json(result.data);
+  }
+
+  // DELETE /pages/root/:id/columns/:column_id
+  private async deleteColumn(req: Request, res: Response): Promise<Response> {
+    const deleted = await pageColumnController.delete(
+      { id: req.params.column_id, page_root_id: req.params.id } as LookupValues<Schema.PageColumn>,
+    );
+
+    if (!deleted) {
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"Page_column" não encontrado` });
+    }
+
+    return res.status(StatusCode.NO_CONTENT).send();
+  }
+
+  // --- Valores (page_columns_values; :id = page_id da linha, :column_id = coluna) ---
+
+  // POST /pages/:id/column/:column_id/values -- payload dinâmico; page_id/coluna da URL.
+  private async createValue(req: Request, res: Response): Promise<Response> {
+    const body = (req.body ?? {}) as Input.CreatePageColumnValue;
+
+    const result = await pageColumnValueController.createValue({
+      page_id: req.params.id,
+      page_column_id: req.params.column_id,
+      ...(body.value !== undefined && { value: body.value }),
+      ...(body.startDate !== undefined && { startDate: body.startDate }),
+      ...(body.endDate !== undefined && { endDate: body.endDate }),
+    } as Input.CreatePageColumnValue);
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.CREATED).json(result.data);
+  }
+
+  // GET /pages/:id/column/:column_id/values
+  private async listValues(req: Request, res: Response): Promise<Response> {
+    const result = await pageColumnValueController.listValues(
+      { page_id: req.params.id, page_column_id: req.params.column_id } as LookupsConfig<Schema.PageColumnValue>,
+    );
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.OK).json(result.data);
+  }
+
+  // GET /pages/:id/column/:column_id/values/:value_id
+  private async getValue(req: Request, res: Response): Promise<Response> {
+    const result = await pageColumnValueController.getValue(req.params.value_id as string);
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.OK).json(result.data);
+  }
+
+  // PUT /pages/:id/column/:column_id/values/:value_id -- payload dinâmico; revalida pelo type.
+  private async updateValue(req: Request, res: Response): Promise<Response> {
+    const body = (req.body ?? {}) as Input.UpdatePageColumnValue;
+
+    const result = await pageColumnValueController.updateValue(req.params.value_id as string, {
+      page_column_id: req.params.column_id as Schema.PageColumnValue["page_column_id"],
+      ...(body.value !== undefined && { value: body.value }),
+      ...(body.startDate !== undefined && { startDate: body.startDate }),
+      ...(body.endDate !== undefined && { endDate: body.endDate }),
+    });
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.OK).json(result.data);
+  }
+
+  // DELETE /pages/:id/column/:column_id/values/:value_id
+  private async deleteValue(req: Request, res: Response): Promise<Response> {
+    const deleted = await pageColumnValueController.delete(
+      { id: req.params.value_id } as LookupValues<Schema.PageColumnValue>,
+    );
+
+    if (!deleted) {
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"Page_column_value" não encontrado` });
+    }
+
+    return res.status(StatusCode.NO_CONTENT).send();
   }
 }
 

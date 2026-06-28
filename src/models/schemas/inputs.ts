@@ -22,4 +22,30 @@ export namespace Input {
 
   // --- Users (criação é só via /auth/register; aqui é o update administrativo) ---
   export type UpdateUser = Partial<Pick<Schema.User, "name" | "email">>;
+
+  // --- Page Columns (payload dinâmico por tipo; `type` normalmente vem da ?type) ---
+  // select  -> { options: [{ value, color? }] }  (id gerado no backend)
+  // numeric -> { format? }                        ('percentage' | 'currency')
+  // text/date/checkbox -> sem config
+  export type CreatePageColumn = {
+    name?: string | null;
+    type?: Schema.ColumnType;
+    options?: { value: string; color?: Schema.ColorOptions }[];
+    format?: Schema.NumberFormat;
+    page_root_id?: Schema.PageColumn["page_root_id"];
+  };
+  export type UpdatePageColumn = Omit<CreatePageColumn, "page_root_id">;
+
+  // --- Page Columns Values (valor "nu", dinâmico por tipo; sem ?type) ---
+  // date  -> { startDate, endDate } vira "start@end" (ou só value); demais -> { value }
+  export type CreatePageColumnValue = Pick<Schema.PageColumnValue, "page_id" | "page_column_id"> & {
+    value?: unknown;
+    startDate?: string;
+    endDate?: string;
+  };
+  export type UpdatePageColumnValue = Partial<Pick<Schema.PageColumnValue, "page_column_id">> & {
+    value?: unknown;
+    startDate?: string;
+    endDate?: string;
+  };
 }
