@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwtService from "@/core/auth/jwt-service";
+import { StatusCode } from "@core/http/status-code";
 
 class Middleware {
   constructor(private readonly jwt: typeof jwtService) {}
@@ -10,7 +11,7 @@ class Middleware {
     const header = req.headers.authorization;
 
     if (!header?.startsWith("Bearer ")) {
-      res.status(401).json({ message: "Missing access token" });
+      res.status(StatusCode.UNAUTHORIZED).json({ message: "Não autorizado" });
       return;
     }
 
@@ -21,7 +22,7 @@ class Middleware {
       req.userId = sub;
       next();
     } catch {
-      res.status(401).json({ message: "Invalid or expired access token" });
+      res.status(StatusCode.UNAUTHORIZED).json({ message: "Não autorizado" });
     }
   };
 }

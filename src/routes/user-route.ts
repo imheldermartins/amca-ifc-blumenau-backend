@@ -1,8 +1,11 @@
 import type { Request, Response } from "express";
 import userController from "@/controllers/user-controller";
 import type { Schema } from "@/models/schemas/index";
-import { BaseRouter } from "@routes/base-router";
+import type { Input } from "@/models/schemas/inputs";
+import { BaseRouter, type RouteOperation } from "@routes/base-router";
 import middleware from "@/core/auth/middleware";
+import ownership from "@/core/auth/ownership";
+import { StatusCode } from "@core/http/status-code";
 
 /**
  * @openapi
@@ -13,6 +16,7 @@ import middleware from "@/core/auth/middleware";
  *       properties:
  *         id:
  *           type: string
+ *           readOnly: true
  *         name:
  *           type: string
  *           nullable: true
@@ -21,53 +25,35 @@ import middleware from "@/core/auth/middleware";
  *       required:
  *         - email
  */
- 
+
 /**
  * @openapi
  * /users:
  *   get:
- *     summary: Lista usuários
+ *     summary: Retorna o usuário autenticado (escopo do token)
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Lista de usuários
+ *         description: Lista contendo apenas o próprio usuário
  *         content:
  *           application/json:
  *             schema:
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/User'
- *       404:
- *         description: Nenhum usuário encontrado
- *   post:
- *     summary: Cria um usuário
- *     tags: [Users]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [email]
- *             properties:
- *               name:
- *                 type: string
- *               email:
- *                 type: string
- *     responses:
- *       201:
- *         description: Usuário criado
- *       400:
- *         description: email é obrigatório
  *       401:
  *         description: Token de acesso ausente ou inválido
  *
+ * # POST /users desabilitado: usuários entram pelo fluxo de POST /auth/register.
+ *
  * /users/{id}:
  *   get:
- *     summary: Busca um usuário por id
+ *     summary: Busca o próprio usuário por id
  *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -77,10 +63,14 @@ import middleware from "@/core/auth/middleware";
  *     responses:
  *       200:
  *         description: Usuário encontrado
+ *       401:
+ *         description: Token de acesso ausente ou inválido
+ *       403:
+ *         description: Você só pode acessar seus próprios recursos
  *       404:
  *         description: Usuário não encontrado
  *   put:
- *     summary: Atualiza um usuário
+ *     summary: Atualiza o próprio usuário
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -106,10 +96,12 @@ import middleware from "@/core/auth/middleware";
  *         description: Usuário atualizado
  *       401:
  *         description: Token de acesso ausente ou inválido
+ *       403:
+ *         description: Você só pode alterar seus próprios recursos
  *       404:
  *         description: Usuário não encontrado ou falha ao atualizar
  *   delete:
- *     summary: Remove um usuário
+ *     summary: Remove o próprio usuário
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -124,6 +116,8 @@ import middleware from "@/core/auth/middleware";
  *         description: Usuário removido
  *       401:
  *         description: Token de acesso ausente ou inválido
+ *       403:
+ *         description: Você só pode remover seus próprios recursos
  *       404:
  *         description: Usuário não encontrado
  */
@@ -131,23 +125,50 @@ class UserRouter extends BaseRouter<Schema.User> {
   protected readonly resourceName = "User";
 
   constructor() {
+    // Todas as operações exigem autenticação; as que operam sobre um /:id
+    // exigem também que o recurso seja do próprio usuário (ownership.self).
     super(userController, {
-      create: [middleware.handle],
-      update: [middleware.handle],
-      delete: [middleware.handle],
+      all: [middleware.handle],
+      get: [middleware.handle, ownership.self],
+      update: [middleware.handle, ownership.self],
+      delete: [middleware.handle, ownership.self],
     });
   }
 
-  // Único ponto que difere do CRUD genérico: valida "email" antes de
-  // delegar pro create() do BaseRouter.
-  protected async create(req: Request, res: Response): Promise<Response> {
-    const { email } = req.body ?? {};
+  // Users é collection de referência para as demais: a criação fica desabilitada
+  // aqui -- usuários entram exclusivamente pelo fluxo de POST /auth/register.
+  protected override enabledOperations(): Set<RouteOperation> {
+    return new Set<RouteOperation>(["all", "get", "update", "delete"]);
+  }
 
-    if (!email) {
-      return res.status(400).json({ message: "email is required" });
+  // "all" é escopado ao token: retorna apenas o próprio usuário autenticado,
+  // nunca a lista completa de usuários.
+  protected override async all(req: Request, res: Response): Promise<Response> {
+    const user = await this.controller.get({ id: req.userId } as unknown as LookupValues<Schema.User>);
+
+    return res.status(StatusCode.OK).json(user ? [user] : []);
+  }
+
+  // Whitelist do update: só name/email entram pelo body. Bloqueia injeção de
+  // campos sensíveis (ex.: password_hash) ou auto-gerenciados via PUT.
+  protected override async update(req: Request, res: Response): Promise<Response> {
+    const { name, email } = (req.body ?? {}) as Input.UpdateUser;
+
+    const payload = {
+      ...(name !== undefined && { name }),
+      ...(email !== undefined && { email }),
+    } as UpdateValues<Schema.User>;
+
+    const item = await this.controller.update(
+      { id: req.params.id } as unknown as LookupValues<Schema.User>,
+      payload,
+    );
+
+    if (!item) {
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado ou falha ao atualizar` });
     }
 
-    return super.create(req, res);
+    return res.status(StatusCode.OK).json(item);
   }
 }
 

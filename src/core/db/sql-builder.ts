@@ -8,8 +8,33 @@ export class SQLBuilder<T> {
     this.tableName = tableName;
   }
 
-  private sqlError(message: string) {
+  private sqlError(message: string): never {
     throw new Error(message, { cause: 'SQLERROR-MALFORMED' });
+  }
+
+  /**
+   * Valor pronto para `squel.set()`. Objetos/arrays viram JSON string -- as
+   * colunas JSON do SQLite/rqlite armazenam TEXTO, e o squel só aceita
+   * string/number/boolean/null. (`typeof null === 'object'`, por isso o guarda
+   * explícito de null.)
+   */
+  private toSetValue(value: unknown): string | number | boolean | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "object") return JSON.stringify(value);
+    return value as string | number | boolean;
+  }
+
+  /**
+   * Literal SQL para cláusulas WHERE montadas à mão (read/update/delete).
+   * Objetos viram JSON string entre aspas; strings ganham aspas; o resto entra
+   * cru. Mantém a mesma serialização do `toSetValue`, então um lookup por uma
+   * coluna JSON casa com o valor gravado.
+   */
+  private toWhereLiteral(value: unknown): string | number | boolean | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "object") return `'${JSON.stringify(value)}'`;
+    if (typeof value === "string") return `'${value}'`;
+    return value as number | boolean;
   }
 
   private prepareLookupEntries(conditionals: LookupWhere<T>) {
@@ -19,7 +44,7 @@ export class SQLBuilder<T> {
         const lookupSearch =
           lookupIsString && value.includes("%") ? "LIKE" : "=";
 
-        return `${key} ${lookupSearch} ${lookupIsString ? `'${value}'` : value}`;
+        return `${key} ${lookupSearch} ${this.toWhereLiteral(value)}`;
       });
 
       this.sql?.where(`${filters.join(` ${cKey} `)}`);
@@ -37,11 +62,14 @@ export class SQLBuilder<T> {
     const entries = Object.entries(data);
     if (entries.length === 0) this.sqlError("Entries is empty. There is no values to create.");
 
-    entries.forEach(([key, value]) => {
-      this.sql?.set(key, value);
-    });
-
-    return String(this.sql?.toString());
+    try {
+      entries.forEach(([key, value]) => {
+        this.sql?.set(key, this.toSetValue(value));
+      });
+      return String(this.sql?.toString());
+    } catch (err) {
+      this.sqlError(`Falha ao montar INSERT em "${this.tableName}": ${(err as Error).message}`);
+    }
   }
 
   public read(lookup?: LookupsConfig<T>): string {
@@ -54,8 +82,7 @@ export class SQLBuilder<T> {
       if ('limit' in tempLookup) delete tempLookup.limit;
 
       Object.entries(tempLookup).forEach(([key, value]) => {
-        const formattedValue = typeof value === 'string' ? `'${value}'` : value;
-        this.sql.where(`${key} = ${formattedValue}`);
+        this.sql.where(`${key} = ${this.toWhereLiteral(value)}`);
       });
     }
 
@@ -72,19 +99,22 @@ export class SQLBuilder<T> {
     const valueEntries = Object.entries(values ?? {});
     if (valueEntries.length === 0) this.sqlError("Entries is empty. There is no values to update.");
 
-    valueEntries.forEach(([key, value]) => {
-      this.sql?.set(key, value);
-    });
-
     const lookupEntries = Object.entries(lookup ?? {});
     if (lookupEntries.length === 0) this.sqlError("Missing lookup. Update requires at least one criterion.");
 
-    lookupEntries.forEach(([key, value]) => {
-      const formattedValue = typeof value === 'string' ? `'${value}'` : value;
-      this.sql?.where(`${key} = ${formattedValue}`);
-    });
+    try {
+      valueEntries.forEach(([key, value]) => {
+        this.sql?.set(key, this.toSetValue(value));
+      });
 
-    return String(this.sql?.toString());
+      lookupEntries.forEach(([key, value]) => {
+        this.sql?.where(`${key} = ${this.toWhereLiteral(value)}`);
+      });
+
+      return String(this.sql?.toString());
+    } catch (err) {
+      this.sqlError(`Falha ao montar UPDATE em "${this.tableName}": ${(err as Error).message}`);
+    }
   }
 
   public delete(lookup: LookupValues<T>): string {
@@ -94,8 +124,7 @@ export class SQLBuilder<T> {
     if (entries.length === 0) this.sqlError('Missing Parameters');
 
     entries.forEach(([key, value]) => {
-      const formattedValue = typeof value === "string" ? `'${value}'` : value;
-      this.sql.where(`${key} = ${formattedValue}`);
+      this.sql.where(`${key} = ${this.toWhereLiteral(value)}`);
     });
 
     return String(this.sql?.toString());

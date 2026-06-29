@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type RequestHandler } from "express";
+import { StatusCode } from "@core/http/status-code";
 
 export type RouteOperation = "all" | "get" | "create" | "update" | "delete";
 export type RouteMiddlewares = Partial<Record<RouteOperation, RequestHandler[]>>;
@@ -32,11 +33,23 @@ export abstract class BaseRouter<T> {
   }
 
   protected registerRoutes(): void {
-    this.router.get("/", ...this.middlewaresFor("all"), this.all.bind(this));
-    this.router.get("/:id", ...this.middlewaresFor("get"), this.get.bind(this));
-    this.router.post("/", ...this.middlewaresFor("create"), this.create.bind(this));
-    this.router.put("/:id", ...this.middlewaresFor("update"), this.update.bind(this));
-    this.router.delete("/:id", ...this.middlewaresFor("delete"), this.delete.bind(this));
+    const ops = this.enabledOperations();
+
+    if (ops.has("all")) this.router.get("/", ...this.middlewaresFor("all"), this.all.bind(this));
+    if (ops.has("get")) this.router.get("/:id", ...this.middlewaresFor("get"), this.get.bind(this));
+    if (ops.has("create")) this.router.post("/", ...this.middlewaresFor("create"), this.create.bind(this));
+    if (ops.has("update")) this.router.put("/:id", ...this.middlewaresFor("update"), this.update.bind(this));
+    if (ops.has("delete")) this.router.delete("/:id", ...this.middlewaresFor("delete"), this.delete.bind(this));
+  }
+
+  /**
+   * Operações HTTP que serão registradas -- por padrão, o CRUD completo.
+   * Subclasses sobrescrevem para desabilitar operações (ex: omitir "create").
+   * IMPORTANTE: sobrescreva como MÉTODO, não como arrow field -- registerRoutes()
+   * roda dentro do super(), e só métodos (no prototype) já existem nesse momento.
+   */
+  protected enabledOperations(): Set<RouteOperation> {
+    return new Set<RouteOperation>(["all", "get", "create", "update", "delete"]);
   }
 
   private middlewaresFor(operation: RouteOperation): RequestHandler[] {
@@ -47,10 +60,10 @@ export abstract class BaseRouter<T> {
     const items = await this.controller.all();
 
     if (!items) {
-      return res.status(404).json({ message: `No ${this.resourceName} records found` });
+      return res.status(StatusCode.NOT_FOUND).json({ message: `Nenhum registro de "${this.resourceName}" encontrado` });
     }
 
-    return res.status(200).json(items);
+    return res.status(StatusCode.OK).json(items);
   }
 
   protected async get(req: Request, res: Response): Promise<Response> {
@@ -59,10 +72,10 @@ export abstract class BaseRouter<T> {
     const item = await this.controller.get({ id } as unknown as LookupValues<T>);
 
     if (!item) {
-      return res.status(404).json({ message: `${this.resourceName} not found` });
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado` });
     }
 
-    return res.status(200).json(item);
+    return res.status(StatusCode.OK).json(item);
   }
 
   protected async create(req: Request, res: Response): Promise<Response> {
@@ -71,10 +84,10 @@ export abstract class BaseRouter<T> {
     const item = await this.controller.create(data);
 
     if (!item) {
-      return res.status(500).json({ message: `Failed to create ${this.resourceName}` });
+      return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
     }
 
-    return res.status(201).json(item);
+    return res.status(StatusCode.CREATED).json(item);
   }
 
   protected async update(req: Request, res: Response): Promise<Response> {
@@ -84,10 +97,10 @@ export abstract class BaseRouter<T> {
     const item = await this.controller.update({ id } as unknown as LookupValues<T>, data);
 
     if (!item) {
-      return res.status(404).json({ message: `${this.resourceName} not found or update failed` });
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado ou falha ao atualizar` });
     }
 
-    return res.status(200).json(item);
+    return res.status(StatusCode.OK).json(item);
   }
 
   protected async delete(req: Request, res: Response): Promise<Response> {
@@ -96,9 +109,9 @@ export abstract class BaseRouter<T> {
     const deleted = await this.controller.delete({ id } as unknown as LookupValues<T>);
 
     if (!deleted) {
-      return res.status(404).json({ message: `${this.resourceName} not found` });
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado` });
     }
 
-    return res.status(204).send();
+    return res.status(StatusCode.NO_CONTENT).send();
   }
 }
