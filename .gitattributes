@@ -1,0 +1,10 @@
+# Normaliza fins de linha por padrão (evita CRLF vazando para dentro de containers Linux).
+* text=auto
+
+# Scripts e arquivos consumidos por imagens Linux DEVEM ficar em LF,
+# senão o shebang vira "#!/bin/sh\r" e o container falha com
+# "exec /entrypoint.sh: no such file or directory".
+*.sh            text eol=lf
+entrypoint.sh   text eol=lf
+Dockerfile      text eol=lf
+*.dockerfile    text eol=lf

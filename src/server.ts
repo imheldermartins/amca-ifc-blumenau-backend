@@ -11,7 +11,4 @@ const server = new HttpServer([
   { path: "/auth", router: authRouter },
 ]);
 
-// Ponto de extensão pra middleware global (logging, etc.) -- chame antes de start():
-// server.use(someMiddleware);
-
 server.start();

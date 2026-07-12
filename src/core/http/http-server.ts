@@ -3,6 +3,7 @@ import { corsConfig } from "@core/http/cors.config";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "@core/http/swagger.config";
+import socketServer from "@core/socket/socket-server";
 
 export interface ServerRoute {
   path: string;
@@ -22,7 +23,7 @@ export default class HttpServer {
   private readonly port: number;
   private readonly routes: ServerRoute[];
 
-  public constructor(routes: ServerRoute[], port: number = Number(process.env.PORT) || 3000) {
+  public constructor(routes: ServerRoute[], port: number = Number(process.env.PORT) || 5000) {
     this.app = express();
     this.port = port;
     this.routes = routes;
@@ -50,8 +51,11 @@ export default class HttpServer {
   public start(): void {
     this.mountRoutes();
 
-    this.app.listen(this.port, () => {
+    const server = this.app.listen(this.port, () => {
       console.log(`Server running on http://localhost:${this.port}`);
     });
+
+    // Socket.io pega carona no mesmo http.Server/porta do express.
+    socketServer.attach(server);
   }
 }
