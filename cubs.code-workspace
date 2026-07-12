@@ -6,5 +6,12 @@
 		{
 			"path": "../cubs-frontend"
 		}
-	]
+	],
+	"settings": {
+		"i18n-ally.localesPaths": [
+			"../../../Projects/cubs-frontend/src/locales"
+		],
+		"i18n-ally.sourceLanguage": "pt-br",
+		"i18n-ally.keystyle": "nested"
+	}
 }
