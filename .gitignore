@@ -3,6 +3,11 @@ dist/
 
 .env
 .env.*
+!.env.example
+!.env.*.example
+
+# Envs reais de produção dos containers (os .example ficam no git)
+docker/*.prod.env
 
 .claude
 CLAUDE.md

@@ -1,8 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import authController from "@/controllers/auth-controller";
 import { StatusCode } from "@core/http/status-code";
+import { authRateLimit } from "@core/http/rate-limit.config";
 
 const router = Router();
+
+// Limite agressivo por IP em TODO o /auth (login/register/refresh) — freia
+// brute-force de senha. O limite global (http-server.ts) continua valendo.
+router.use(authRateLimit);
 
 /**
  * @openapi

@@ -173,6 +173,45 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *     responses:
  *       201:
  *         description: Página-filha criada e vinculada via page_edges
+ *
+ * /pages/{id}/breadcrumb:
+ *   get:
+ *     summary: Trilha de ancestrais (breadcrumb) da página, do topo até ela
+ *     description: >
+ *       Sobe a hierarquia de page_edges a partir da página-alvo via CTE
+ *       recursivo. Retorna, do ancestral mais alto (maior depth) até a própria
+ *       página (depth 0), os campos id (child_id), parent_id, slug e depth.
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: id da página-alvo (child_id)
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lista ordenada de ancestrais (breadcrumb)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                   parent_id:
+ *                     type: string
+ *                   slug:
+ *                     type: string
+ *                     nullable: true
+ *                   depth:
+ *                     type: integer
+ *       401:
+ *         description: Token de acesso ausente ou inválido
  */
 
 /**
@@ -597,6 +636,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     // Rotas adicionais (registradas após o CRUD base do super()):
     this.router.post("/:id/page", middleware.handle, this.createChild.bind(this));
     this.router.get("/:id/page", middleware.handle, this.getDataset.bind(this));
+    this.router.get("/:id/breadcrumb", middleware.handle, this.getBreadcrumb.bind(this));
 
     // Colunas da page_root (:id = id da page_root). page_columns não tem rota própria.
     this.router.post("/root/:id/columns", middleware.handle, this.createColumn.bind(this));
@@ -699,6 +739,17 @@ class PageRouter extends BaseRouter<Schema.Page> {
     }
 
     return res.status(StatusCode.OK).json(dataset);
+  }
+
+  // GET /pages/:id/breadcrumb -- trilha de ancestrais (CTE recursivo no controller).
+  private async getBreadcrumb(req: Request, res: Response): Promise<Response> {
+    const crumbs = await pageController.getBreadcrumb(req.params.id as string);
+
+    if (!crumbs) {
+      return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado` });
+    }
+
+    return res.status(StatusCode.OK).json(crumbs);
   }
 
   // --- Colunas da page_root (page_columns; :id = id da page_root) ---

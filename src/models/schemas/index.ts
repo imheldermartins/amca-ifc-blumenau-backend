@@ -31,9 +31,12 @@ export namespace Schema {
   export interface Pages extends Page {}
 
   // --- 4. PAGE EDGES (Hierarquia/Conexões de Páginas) ---
+  // Aresta pai->filho entre pages. Convenção parent/child (antes page_root_id/
+  // page_id) pensada para contextos futuros (árvore/breadcrumb).
   export interface PageEdge extends EntityBase {
-    page_root_id: NonEmptyString; // ID da página raiz (workspace)
-    page_id: NonEmptyString;      // ID da página filha
+    parent_id: NonEmptyString;    // ID da página pai (raiz/workspace no nível 0)
+    child_id: NonEmptyString;     // ID da página filha
+    slug: string | null;          // segmento de caminho da filha (breadcrumb)
   }
   export interface PageEdges extends PageEdge {}
 

@@ -15,6 +15,15 @@ RAFT_ADV_ADDR="${ADV_IP}:4002"
 # Build arguments list
 ARGS="-node-id ${NODE_ID} -http-addr ${HTTP_ADDR} -raft-addr ${RAFT_ADDR} -http-adv-addr ${HTTP_ADV_ADDR} -raft-adv-addr ${RAFT_ADV_ADDR}"
 
+# CORS: valor do header Access-Control-Allow-Origin. O padrão CORS só aceita
+# UMA origem (ou *) nesse header, então a env é um valor único — não é lista.
+# Só protege contra chamadas de browser; client direto (curl) não passa por
+# CORS — a restrição real é o bind da porta no compose (RQLITE_ALLOWED_HOST).
+if [ -n "$RQLITE_HTTP_ALLOW_ORIGIN" ]; then
+    echo "CORS Allow-Origin: $RQLITE_HTTP_ALLOW_ORIGIN"
+    ARGS="$ARGS -http-allow-origin $RQLITE_HTTP_ALLOW_ORIGIN"
+fi
+
 if [ -n "$JOIN_NODE" ]; then
     echo "Modo: WORKER"
     JOIN_ADDR=$JOIN_NODE

@@ -1,0 +1,47 @@
+# PROD: frontend (nginx :80) + backend (:3000) + rqlite (SÓ rede interna).
+#
+# Pré-requisitos:
+#   1. cubs-frontend clonado AO LADO do cubs-backend (contexts relativos abaixo).
+#   2. Copiar os templates e preencher:
+#        docker/backend.prod.env.example -> docker/backend.prod.env
+#        docker/rqlite.prod.env.example  -> docker/rqlite.prod.env
+#   3. Subir e migrar:
+#        docker compose -f docker/docker-compose.prod.yml up -d --build
+#        docker compose -f docker/docker-compose.prod.yml exec backend npx tsx src/core/scripts/migrate.ts
+#
+# Segurança: o rqlite NÃO publica porta nenhuma — só o backend o alcança,
+# pela rede interna do compose (http://rqlite:4001). Complementa o bind
+# restrito do dev (ver docker-compose.dev.yml).
+services:
+  rqlite:
+    build:
+      context: ./rqlite
+    container_name: cubs-rqlite
+    env_file: ./rqlite.prod.env
+    volumes:
+      - rqlite_data:/rqlite/file
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+    container_name: cubs-backend
+    env_file: ./backend.prod.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - rqlite
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../../cubs-frontend
+    container_name: cubs-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  rqlite_data:

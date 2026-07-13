@@ -2,6 +2,7 @@ import db from "@models/index";
 import type { Model } from "@/core/db/model";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
+import { slugify } from "@/utils/slugify";
 
 class PageController implements IBaseController<Schema.Page> {
   private db: Model<Schema.Page> = db.pages;
@@ -86,8 +87,9 @@ class PageController implements IBaseController<Schema.Page> {
   // --- Fluxo adicional: páginas-filhas de uma page_root ---
 
   /**
-   * Adiciona uma página-filha (item/linha) sob a page_root `rootId`:
-   * cria a `pages` (owner_id = usuário do token) e o vínculo em `page_edges`.
+   * Adiciona uma página-filha (item/linha) sob a página pai `rootId`:
+   * cria a `pages` (owner_id = usuário do token) e a aresta em `page_edges`
+   * (parent_id = pai, child_id = filha, slug derivado do título).
    */
   async createChild(
     rootId: string,
@@ -106,8 +108,9 @@ class PageController implements IBaseController<Schema.Page> {
       if (!created) throw new Error("Failed to create child page");
 
       const edge = await db.pageEdges.create({
-        page_root_id: rootId,
-        page_id: created.id,
+        parent_id: rootId,
+        child_id: created.id,
+        slug: slugify(created.title),
       } as unknown as CreateValues<Schema.PageEdge>);
       if (!edge) throw new Error("Failed to link child page to root");
 
@@ -136,10 +139,10 @@ class PageController implements IBaseController<Schema.Page> {
         `'column_name', pc.name, 'column_type', pc.type, 'column_data', pc.data` +
         `)) AS page_columns ` +
         `FROM pages p ` +
-        `INNER JOIN page_edges ph ON ph.page_id = p.id ` +
+        `INNER JOIN page_edges ph ON ph.child_id = p.id ` +
         `LEFT JOIN page_columns_values pcv ON p.id = pcv.page_id ` +
         `LEFT JOIN page_columns pc ON pcv.page_column_id = pc.id ` +
-        `WHERE ph.page_root_id = '${rootId}' ` +
+        `WHERE ph.parent_id = '${rootId}' ` +
         `GROUP BY p.id, p.title`;
 
       const rows = await db.sqlRaw<{ page_id: string; page_title: string | null; page_columns: string }>(
@@ -151,6 +154,44 @@ class PageController implements IBaseController<Schema.Page> {
         ...row,
         page_columns: row.page_columns ? JSON.parse(row.page_columns) : {},
       }));
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(`[${error.cause}] ${error.message}`);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Breadcrumb (trilha de ancestrais) de uma página: sobe a hierarquia de
+   * `page_edges` a partir de `targetPageId`, do topo até a própria página.
+   * CTE recursivo via `db.sqlRaw` PARAMETRIZADO (`?` -> bind), então o id da
+   * URL nunca é concatenado no SQL. Ordena por profundidade decrescente: o
+   * ancestral mais alto vem primeiro, a página-alvo por último.
+   */
+  async getBreadcrumb(targetPageId: string) {
+    try {
+      if (!/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(targetPageId)) throw new Error("Invalid target page id");
+
+      const text =
+        `WITH RECURSIVE ancestors(id, parent_id, slug, depth) AS (` +
+        `SELECT pe.child_id, pe.parent_id, pe.slug, 0 ` +
+        `FROM page_edges pe ` +
+        `WHERE pe.child_id = ? ` +
+        `UNION ALL ` +
+        `SELECT pe.child_id, pe.parent_id, pe.slug, a.depth + 1 ` +
+        `FROM page_edges pe ` +
+        `JOIN ancestors a ON pe.child_id = a.parent_id` +
+        `) SELECT * FROM ancestors ORDER BY depth DESC`;
+
+      const crumbs = await db.sqlRaw<{
+        id: string;
+        parent_id: string;
+        slug: string | null;
+        depth: number;
+      }>({ text, values: [targetPageId] }, "query");
+
+      return crumbs;
     } catch (error) {
       if (error instanceof Error) {
         console.error(`[${error.cause}] ${error.message}`);

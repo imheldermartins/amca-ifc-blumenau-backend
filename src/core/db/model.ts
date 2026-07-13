@@ -45,9 +45,9 @@ export class Model<T> {
 
     const payload = { id, ...data } as CreateValues<T>;
 
-    const raw = this.sql.create(payload);
+    const stmt = this.sql.create(payload);
 
-    const result = await sql(raw);
+    const result = await sql(stmt);
     if (!result)
       throw new Error('Create::Model response is null.', { cause: 'MODELERROR' });
 
@@ -57,33 +57,33 @@ export class Model<T> {
   }
 
   public async find(lookup: LookupValues<T>): Promise<T | null> {
-    const raw = this.sql.read({ ...lookup, limit: 1 });
+    const stmt = this.sql.read({ ...lookup, limit: 1 });
 
-    const [row] = await sql<T>(raw) as T[];
+    const [row] = await sql<T>(stmt) as T[];
 
     return this.deserialize(row ?? null);
   }
 
   public async findAll(lookup?: LookupsConfig<T>): Promise<T[] | null> {
-    const raw = this.sql.read(lookup);
+    const stmt = this.sql.read(lookup);
 
-    const rows = await sql<T>(raw) as T[];
+    const rows = await sql<T>(stmt) as T[];
 
     return rows.map((row) => this.deserialize(row) as T);
   }
 
   public async update(values: UpdateValues<T>, lookup: LookupValues<T>): Promise<boolean> {
-    const raw = this.sql.update(values, lookup);
+    const stmt = this.sql.update(values, lookup);
 
-    const result = await sql(raw);
+    const result = await sql(stmt);
 
     return !!result;
   }
 
   public async delete(lookup: LookupValues<T>): Promise<boolean> {
-    const raw = this.sql.delete(lookup);
+    const stmt = this.sql.delete(lookup);
 
-    const result = await sql(raw);
+    const result = await sql(stmt);
 
     return !!result;
   }
@@ -95,9 +95,12 @@ export class Model<T> {
    * Re-exportado como `db.sqlRaw` em models/index.ts.
    */
   public static async sqlRaw<R = unknown>(
-    query: string,
+    query: string | SqlStatement,
     endpoint: "query" | "execute" | "request" = "request",
   ): Promise<R[]> {
+    // Aceita string crua OU statement parametrizado ({ text, values }). Prefira
+    // o parametrizado quando a query levar input do usuário (ex.: breadcrumb),
+    // pelo mesmo motivo do resto da camada: bind, nunca concatenação.
     const rows = await sql<R>(query, endpoint);
     return Array.isArray(rows) ? rows : [];
   }

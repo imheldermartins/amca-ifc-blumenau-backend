@@ -3,6 +3,7 @@ import { corsConfig } from "@core/http/cors.config";
 import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "@core/http/swagger.config";
+import { globalRateLimit } from "@core/http/rate-limit.config";
 import socketServer from "@core/socket/socket-server";
 
 export interface ServerRoute {
@@ -23,7 +24,7 @@ export default class HttpServer {
   private readonly port: number;
   private readonly routes: ServerRoute[];
 
-  public constructor(routes: ServerRoute[], port: number = Number(process.env.PORT) || 5000) {
+  public constructor(routes: ServerRoute[], port: number = Number(process.env.PORT) || 3000) {
     this.app = express();
     this.port = port;
     this.routes = routes;
@@ -32,6 +33,15 @@ export default class HttpServer {
   }
 
   private setupGlobalMiddlewares(): void {
+    // Atrás de um reverse proxy (nginx em prod), o IP real do client chega no
+    // X-Forwarded-For — sem trust proxy o rate limit contaria tudo como um IP só.
+    // Só ligar quando de fato há proxy na frente (TRUST_PROXY=1), senão o header
+    // vira vetor de spoofing de IP.
+    if (process.env.TRUST_PROXY === "1") {
+      this.app.set("trust proxy", 1);
+    }
+
+    this.app.use(globalRateLimit);
     this.app.use(cors(corsConfig));
     this.app.use(express.json());
     this.app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));

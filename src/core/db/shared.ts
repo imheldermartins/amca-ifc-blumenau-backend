@@ -16,7 +16,7 @@ function isExecute<T = never>(res: Result<T>): res is ExecuteSuccess {
 }
 
 export async function rqlite<T>(
-  sqlQueries: string[], 
+  sqlQueries: RqliteStatement[],
   endpoint: Endpoint
 ): Promise<SQLResponse<T>["results"]> {
   const response = await sendRequest<SQLResponse<T>>(
@@ -58,9 +58,17 @@ export async function rqlite<T>(
  *  Essa função será responsável apenas para requisições de leitura e escrita.
  * @param sql : Comando SQL que será enviado para execução.
  */
-async function sql<T>(sql: string, endpoint: Endpoint = 'request'): Promise<SuccessResult<T> | null> {
-  
-  const [rows] = await rqlite<T>([sql], endpoint);
+async function sql<T>(
+  statement: string | SqlStatement,
+  endpoint: Endpoint = 'request',
+): Promise<SuccessResult<T> | null> {
+
+  // String simples segue crua; statement parametrizado vira `[text, ...values]`,
+  // o formato de bind que o rqlite espera.
+  const wire: RqliteStatement =
+    typeof statement === "string" ? statement : [statement.text, ...statement.values];
+
+  const [rows] = await rqlite<T>([wire], endpoint);
 
   return rows;
 }

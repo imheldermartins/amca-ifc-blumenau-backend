@@ -4,12 +4,15 @@
   "description": "",
   "main": "src/server.ts",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "start:dev": "tsx src/server.ts",
+    "dev": "tsx watch --env-file=.env.development src/server.ts",
+    "start:dev": "tsx --env-file=.env.development src/server.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "migrate:create": "tsx --env-file=.env src/core/scripts/create-migration.ts",
-    "migrate": "tsx --env-file=.env src/core/scripts/migrate.ts"
+    "start": "tsx --env-file=.env.production src/server.ts",
+    "migrate:create": "tsx --env-file=.env.development src/core/scripts/create-migration.ts",
+    "migrate": "tsx --env-file=.env.development src/core/scripts/migrate.ts",
+    "migrate:prod": "tsx --env-file=.env.production src/core/scripts/migrate.ts",
+    "seed": "tsx --env-file=.env.development --env-file=.env.seed src/core/scripts/seed.ts",
+    "test:sql-injection": "tsx --env-file=.env.development src/core/scripts/sql-injection-test.ts"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +33,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "socket.io": "^4.8.3",
     "squel": "^6.0.7",

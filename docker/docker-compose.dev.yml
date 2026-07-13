@@ -1,15 +1,30 @@
+# DEV: só o rqlite roda em container — backend (npm run dev) e frontend
+# (npm run dev) rodam no host.
+#
+#   docker compose -f docker/docker-compose.dev.yml up -d
+#
+# As variáveis ${...} podem ser definidas num docker/.env (opcional — os
+# defaults abaixo cobrem o dev local numa máquina só).
 services:
   rqlite:
     build:
       context: ./rqlite
     container_name: cubs-rqlite
     ports:
-      - "8000:4001" # API HTTP
-      - "4002:4002" # Raft Cluster
+      # Bind restrito: a porta só existe no host permitido (default 127.0.0.1).
+      # Outra máquina da rede recebe "connection refused" — é a camada real de
+      # restrição de acesso (CORS só instrui browsers). Para permitir outro
+      # host/cluster multi-máquina, defina RQLITE_ALLOWED_HOST (ex.: 0.0.0.0
+      # ou o IP da interface desejada).
+      - "${RQLITE_ALLOWED_HOST:-127.0.0.1}:8000:4001" # API HTTP
+      - "${RQLITE_ALLOWED_HOST:-127.0.0.1}:4002:4002" # Raft Cluster
     environment:
       - NODE_ID=${NODE_ID:-1}
       - RQLITE_ADVERTISE_IP=${RQLITE_ADVERTISE_IP}
       - JOIN_NODE=${JOIN_NODE}
+      # Valor ÚNICO para o header Access-Control-Allow-Origin (o padrão CORS
+      # não aceita lista nesse header). Vazio = header desligado.
+      - RQLITE_HTTP_ALLOW_ORIGIN=${RQLITE_HTTP_ALLOW_ORIGIN}
     volumes:
       - rqlite_data:/rqlite/file
     restart: unless-stopped

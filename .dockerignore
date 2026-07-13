@@ -1,0 +1,11 @@
+node_modules
+dist
+docker
+.env
+.env.*
+!.env.example
+.git
+.claude
+CLAUDE.md
+NEXT_STEPS.md
+*.log
