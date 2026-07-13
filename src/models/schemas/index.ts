@@ -30,12 +30,12 @@ export namespace Schema {
   }
   export interface Pages extends Page {}
 
-  // --- 4. PAGE HUBS (Hierarquia/Conexões de Páginas) ---
-  export interface PageHub extends EntityBase {
+  // --- 4. PAGE EDGES (Hierarquia/Conexões de Páginas) ---
+  export interface PageEdge extends EntityBase {
     page_root_id: NonEmptyString; // ID da página raiz (workspace)
     page_id: NonEmptyString;      // ID da página filha
   }
-  export interface PageHubs extends PageHub {}
+  export interface PageEdges extends PageEdge {}
 
   // --- 5. PAGE COLUMNS (Configurações de Colunas) ---
   export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox';

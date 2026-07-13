@@ -87,7 +87,7 @@ class PageController implements IBaseController<Schema.Page> {
 
   /**
    * Adiciona uma página-filha (item/linha) sob a page_root `rootId`:
-   * cria a `pages` (owner_id = usuário do token) e o vínculo em `page_hubs`.
+   * cria a `pages` (owner_id = usuário do token) e o vínculo em `page_edges`.
    */
   async createChild(
     rootId: string,
@@ -105,11 +105,11 @@ class PageController implements IBaseController<Schema.Page> {
       } as unknown as CreateValues<Schema.Page>);
       if (!created) throw new Error("Failed to create child page");
 
-      const hub = await db.pageHubs.create({
+      const edge = await db.pageEdges.create({
         page_root_id: rootId,
         page_id: created.id,
-      } as unknown as CreateValues<Schema.PageHub>);
-      if (!hub) throw new Error("Failed to link child page to root");
+      } as unknown as CreateValues<Schema.PageEdge>);
+      if (!edge) throw new Error("Failed to link child page to root");
 
       return created;
     } catch (error) {
@@ -136,7 +136,7 @@ class PageController implements IBaseController<Schema.Page> {
         `'column_name', pc.name, 'column_type', pc.type, 'column_data', pc.data` +
         `)) AS page_columns ` +
         `FROM pages p ` +
-        `INNER JOIN page_hubs ph ON ph.page_id = p.id ` +
+        `INNER JOIN page_edges ph ON ph.page_id = p.id ` +
         `LEFT JOIN page_columns_values pcv ON p.id = pcv.page_id ` +
         `LEFT JOIN page_columns pc ON pcv.page_column_id = pc.id ` +
         `WHERE ph.page_root_id = '${rootId}' ` +

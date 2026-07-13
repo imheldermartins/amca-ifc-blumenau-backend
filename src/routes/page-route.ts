@@ -172,7 +172,7 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *                 type: object
  *     responses:
  *       201:
- *         description: Página-filha criada e vinculada via page_hubs
+ *         description: Página-filha criada e vinculada via page_edges
  */
 
 /**
