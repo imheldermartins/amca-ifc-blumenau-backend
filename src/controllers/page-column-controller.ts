@@ -107,7 +107,7 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
         name: input.name ?? null,
         type,
         data,
-        page_root_id: input.page_root_id ?? null,
+        parent_id: input.parent_id ?? null,
       } as unknown as CreateValues<Schema.PageColumn>);
 
       if (!created) return { ok: false, reason: "server_error", message: "Erro no servidor" };
@@ -119,8 +119,8 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     }
   }
 
-  // `lookup` permite escopar a coluna (ex.: { id, page_root_id }) -- assim a rota
-  // aninhada não altera coluna de outra page_root.
+  // `lookup` permite escopar a coluna (ex.: { id, parent_id }) -- assim a rota
+  // aninhada não altera coluna de outra página parent.
   async updateColumn(
     lookup: LookupValues<Schema.PageColumn>,
     input: Input.UpdatePageColumn,

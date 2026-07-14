@@ -149,7 +149,7 @@ async function ensureColumn(
   data: Schema.PageColumnData = {},
 ): Promise<Schema.PageColumn> {
   const existing = await db.pageColumns.find(
-    { name, page_root_id: rootId } as LookupValues<Schema.PageColumn>,
+    { name, parent_id: rootId } as LookupValues<Schema.PageColumn>,
   );
   if (existing) {
     stats.skipped += 1;
@@ -157,7 +157,7 @@ async function ensureColumn(
   }
 
   const created = await db.pageColumns.create(
-    { name, type, data, page_root_id: rootId } as unknown as CreateValues<Schema.PageColumn>,
+    { name, type, data, parent_id: rootId } as unknown as CreateValues<Schema.PageColumn>,
   );
   return track(created, `coluna ${name}`);
 }

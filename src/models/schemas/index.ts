@@ -66,7 +66,7 @@ export namespace Schema {
     name: string | null;
     type: ColumnType;
     data: PageColumnData;
-    page_root_id: NonEmptyString | null;
+    parent_id: NonEmptyString | null; // página parent dona da coluna (antes page_root_id)
   }
   export interface PageColumns extends PageColumn {}
 

@@ -13,6 +13,6 @@ interface IBaseController<T> {
  * `{ ok, reason }` do auth-controller). A rota mapeia `reason` -> StatusCode e
  * devolve `message` (pt-BR) tal como veio do domínio/codec.
  */
-type ServiceFailureReason = "not_found" | "validation" | "server_error";
+type ServiceFailureReason = "not_found" | "validation" | "conflict" | "server_error";
 type ServiceFailure = { ok: false; reason: ServiceFailureReason; message: string };
 type ServiceResult<T> = { ok: true; data: T } | ServiceFailure;

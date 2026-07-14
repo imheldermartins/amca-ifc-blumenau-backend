@@ -84,21 +84,21 @@ class PageController implements IBaseController<Schema.Page> {
     }
   }
 
-  // --- Fluxo adicional: páginas-filhas de uma page_root ---
+  // --- Fluxo adicional: páginas-filhas de uma página parent ---
 
   /**
-   * Adiciona uma página-filha (item/linha) sob a página pai `rootId`:
+   * Adiciona uma página-filha (item/linha) sob a página pai `parentId`:
    * cria a `pages` (owner_id = usuário do token) e a aresta em `page_edges`
    * (parent_id = pai, child_id = filha, slug derivado do título).
    */
   async createChild(
-    rootId: string,
+    parentId: string,
     ownerId: string,
     body: Input.CreateChildPage,
   ) {
     try {
-      const root = await this.db.find({ id: rootId } as LookupValues<Schema.Page>);
-      if (!root) throw new Error("Page root not found");
+      const parent = await this.db.find({ id: parentId } as LookupValues<Schema.Page>);
+      if (!parent) throw new Error("Parent page not found");
 
       const created = await this.db.create({
         title: body.title ?? null,
@@ -108,11 +108,11 @@ class PageController implements IBaseController<Schema.Page> {
       if (!created) throw new Error("Failed to create child page");
 
       const edge = await db.pageEdges.create({
-        parent_id: rootId,
+        parent_id: parentId,
         child_id: created.id,
         slug: slugify(created.title),
       } as unknown as CreateValues<Schema.PageEdge>);
-      if (!edge) throw new Error("Failed to link child page to root");
+      if (!edge) throw new Error("Failed to link child page to parent");
 
       return created;
     } catch (error) {
@@ -124,13 +124,13 @@ class PageController implements IBaseController<Schema.Page> {
   }
 
   /**
-   * Lê o dataset de uma page_root (linhas + defs de coluna + valores) com o JOIN
-   * de referência do protótipo, via `db.sqlRaw` (exceção sancionada de SQL cru).
-   * `page_columns` vem como JSON do SQLite e é parseado antes de retornar.
+   * Lê o dataset de uma página parent (linhas + defs de coluna + valores) com o
+   * JOIN de referência do protótipo, via `db.sqlRaw` (exceção sancionada de SQL
+   * cru). `page_columns` vem como JSON do SQLite e é parseado antes de retornar.
    */
-  async getDataset(rootId: string) {
+  async getDataset(parentId: string) {
     try {
-      if (!/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(rootId)) throw new Error("Invalid page root id");
+      if (!/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(parentId)) throw new Error("Invalid parent page id");
 
       const query =
         `SELECT p.id AS page_id, p.title AS page_title, ` +
@@ -142,7 +142,7 @@ class PageController implements IBaseController<Schema.Page> {
         `INNER JOIN page_edges ph ON ph.child_id = p.id ` +
         `LEFT JOIN page_columns_values pcv ON p.id = pcv.page_id ` +
         `LEFT JOIN page_columns pc ON pcv.page_column_id = pc.id ` +
-        `WHERE ph.parent_id = '${rootId}' ` +
+        `WHERE ph.parent_id = '${parentId}' ` +
         `GROUP BY p.id, p.title`;
 
       const rows = await db.sqlRaw<{ page_id: string; page_title: string | null; page_columns: string }>(

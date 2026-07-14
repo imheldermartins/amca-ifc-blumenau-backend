@@ -12,10 +12,12 @@ const messageOf = (error: unknown): string =>
  * concentra TODA a transformação via ColumnValueCodec. O cliente envia/recebe o
  * valor "nu"; o banco guarda o envelope `{"value":<T>}` como string.
  *
- * As variantes *Value (createValue/updateValue/getValue/listValues) devolvem o
- * shape decodificado em ServiceResult (a rota mapeia reason -> StatusCode). Os
- * métodos do IBaseController são acesso BRUTO (não passam pelo codec) e existem
- * só para satisfazer o contrato injetado no BaseRouter -- a rota usa as variantes.
+ * A CÉLULA (page_id, page_column_id) tem no máximo UM valor — UNIQUE no banco.
+ * As variantes *Value (createValue/getValue/updateValue/deleteValue) endereçam
+ * a célula por esse par e devolvem o shape decodificado em ServiceResult (a
+ * rota mapeia reason -> StatusCode; célula já preenchida no create -> conflict).
+ * Os métodos do IBaseController são acesso BRUTO (não passam pelo codec) e
+ * existem só para satisfazer o contrato -- a rota usa as variantes.
  */
 class PageColumnValueController implements IBaseController<Schema.PageColumnValue> {
   private db: Model<Schema.PageColumnValue> = db.pageColumnValues;
@@ -100,6 +102,12 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
       return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
     }
 
+    // Célula já preenchida: o valor é único por (página, coluna) -- use PUT.
+    const occupied = await this.findCell(input.page_id, input.page_column_id);
+    if (occupied) {
+      return { ok: false, reason: "conflict", message: "Valor já existe para esta coluna nesta página" };
+    }
+
     let typed: unknown;
     try {
       typed = codec.validate(this.resolveRawValue(column, input), column);
@@ -124,15 +132,14 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
     }
   }
 
-  async updateValue(id: string, input: Input.UpdatePageColumnValue): Promise<ServiceResult<Schema.DecodedColumnValue>> {
-    const existing = await this.db.find({ id } as LookupValues<Schema.PageColumnValue>);
+  async updateValue(
+    pageId: string,
+    columnId: string,
+    input: Input.UpdatePageColumnValue,
+  ): Promise<ServiceResult<Schema.DecodedColumnValue>> {
+    const existing = await this.findCell(pageId, columnId);
     if (!existing) {
       return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
-    }
-
-    const columnId = input.page_column_id ?? existing.page_column_id;
-    if (!columnId) {
-      return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
     }
 
     const column = await db.pageColumns.find({ id: columnId } as LookupValues<Schema.PageColumn>);
@@ -153,15 +160,13 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
     }
 
     try {
-      const payload = {
-        data: codec.encode(typed),
-        ...(input.page_column_id !== undefined && { page_column_id: input.page_column_id }),
-      } as unknown as UpdateValues<Schema.PageColumnValue>;
+      const payload = { data: codec.encode(typed) } as unknown as UpdateValues<Schema.PageColumnValue>;
+      const lookup = { id: existing.id } as LookupValues<Schema.PageColumnValue>;
 
-      const updated = await this.db.update(payload, { id } as LookupValues<Schema.PageColumnValue>);
+      const updated = await this.db.update(payload, lookup);
       if (!updated) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
-      const row = await this.db.find({ id } as LookupValues<Schema.PageColumnValue>);
+      const row = await this.db.find(lookup);
       if (!row) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
       return { ok: true, data: this.toDecoded(row, column) };
@@ -171,16 +176,14 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
     }
   }
 
-  async getValue(id: string): Promise<ServiceResult<Schema.DecodedColumnValue>> {
+  async getValue(pageId: string, columnId: string): Promise<ServiceResult<Schema.DecodedColumnValue>> {
     try {
-      const row = await this.db.find({ id } as LookupValues<Schema.PageColumnValue>);
+      const row = await this.findCell(pageId, columnId);
       if (!row) {
         return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
       }
 
-      const column = row.page_column_id
-        ? await db.pageColumns.find({ id: row.page_column_id } as LookupValues<Schema.PageColumn>)
-        : null;
+      const column = await db.pageColumns.find({ id: columnId } as LookupValues<Schema.PageColumn>);
       if (!column || !VALUE_CODECS[column.type]) {
         // FK garante a coluna; ausência aqui é estado inesperado.
         return { ok: false, reason: "server_error", message: "Erro no servidor" };
@@ -193,26 +196,29 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
     }
   }
 
-  async listValues(lookup?: LookupsConfig<Schema.PageColumnValue>): Promise<ServiceResult<Schema.DecodedColumnValue[]>> {
+  async deleteValue(pageId: string, columnId: string): Promise<ServiceResult<null>> {
     try {
-      const rows = await this.db.findAll(lookup);
-      if (!rows) return { ok: true, data: [] };
-
-      // Cache por page_column_id: evita refazer a busca da mesma coluna (N+1).
-      const cache = new Map<string, Schema.PageColumn | null>();
-      const decoded: Schema.DecodedColumnValue[] = [];
-
-      for (const row of rows) {
-        const column = await this.resolveColumn(cache, row.page_column_id ?? null);
-        if (!column || !VALUE_CODECS[column.type]) continue; // pula valores órfãos
-        decoded.push(this.toDecoded(row, column));
+      const row = await this.findCell(pageId, columnId);
+      if (!row) {
+        return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
       }
 
-      return { ok: true, data: decoded };
+      const deleted = await this.db.delete({ id: row.id } as LookupValues<Schema.PageColumnValue>);
+      if (!deleted) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+
+      return { ok: true, data: null };
     } catch (error) {
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
     }
+  }
+
+  // A célula é o par (page_id, page_column_id) -- único no banco.
+  private async findCell(pageId: string | null | undefined, columnId: string | null | undefined) {
+    if (!pageId || !columnId) return null;
+    return this.db.find(
+      { page_id: pageId, page_column_id: columnId } as LookupValues<Schema.PageColumnValue>,
+    );
   }
 
   // Resolve o valor "nu" do payload dinâmico: coluna `date` aceita
@@ -244,17 +250,6 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
     };
   }
 
-  private async resolveColumn(
-    cache: Map<string, Schema.PageColumn | null>,
-    columnId: string | null,
-  ): Promise<Schema.PageColumn | null> {
-    if (!columnId) return null;
-    if (cache.has(columnId)) return cache.get(columnId) ?? null;
-
-    const column = await db.pageColumns.find({ id: columnId } as LookupValues<Schema.PageColumn>);
-    cache.set(columnId, column);
-    return column;
-  }
 }
 
 // Singleton: as rotas importam direto, sem conhecer req/res.

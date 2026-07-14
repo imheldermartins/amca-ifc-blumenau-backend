@@ -32,18 +32,19 @@ export namespace Input {
     type?: Schema.ColumnType;
     options?: { value: string; color?: Schema.ColorOptions }[];
     format?: Schema.NumberFormat;
-    page_root_id?: Schema.PageColumn["page_root_id"];
+    parent_id?: Schema.PageColumn["parent_id"];
   };
-  export type UpdatePageColumn = Omit<CreatePageColumn, "page_root_id">;
+  export type UpdatePageColumn = Omit<CreatePageColumn, "parent_id">;
 
   // --- Page Columns Values (valor "nu", dinâmico por tipo; sem ?type) ---
+  // A célula (page_id, page_column_id) vem SEMPRE da URL -- única por banco.
   // date  -> { startDate, endDate } vira "start@end" (ou só value); demais -> { value }
   export type CreatePageColumnValue = Pick<Schema.PageColumnValue, "page_id" | "page_column_id"> & {
     value?: unknown;
     startDate?: string;
     endDate?: string;
   };
-  export type UpdatePageColumnValue = Partial<Pick<Schema.PageColumnValue, "page_column_id">> & {
+  export type UpdatePageColumnValue = {
     value?: unknown;
     startDate?: string;
     endDate?: string;
