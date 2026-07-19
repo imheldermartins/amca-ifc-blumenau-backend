@@ -5,8 +5,10 @@ import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "@core/http/swagger.config";
 import { globalRateLimit } from "@core/http/rate-limit.config";
 import socketServer from "@core/socket/socket-server";
+import { API_PREFIX } from "@/constants/api_prefix";
 
 export interface ServerRoute {
+  /** Caminho do recurso RELATIVO ao API_PREFIX (ex.: "/users" -> "/api/users"). */
   path: string;
   router: Router;
 }
@@ -52,9 +54,14 @@ export default class HttpServer {
     return this;
   }
 
+  /**
+   * Todas as rotas entram sob API_PREFIX ("/api"). O `path` de cada ServerRoute
+   * é relativo ao prefixo ("/users" -> "/api/users"), então router novo já nasce
+   * prefixado sem precisar repetir o "/api" no server.ts.
+   */
   private mountRoutes(): void {
     for (const { path, router } of this.routes) {
-      this.app.use(path, router);
+      this.app.use(`${API_PREFIX}${path}`, router);
     }
   }
 

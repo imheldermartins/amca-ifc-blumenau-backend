@@ -1,4 +1,5 @@
 import swaggerJsdoc from "swagger-jsdoc";
+import { API_PREFIX } from "@/constants/api_prefix";
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -8,6 +9,10 @@ const options: swaggerJsdoc.Options = {
       version: "1.0.0",
       description: "Documentação gerada a partir dos comentários @openapi nas rotas.",
     },
+    // O prefixo das rotas mora aqui, não nos @openapi: assim os comentários
+    // continuam batendo com o caminho declarado no router ("/pages/{id}") e o
+    // "Try it out" do swagger-ui monta a URL final ("/api/pages/{id}").
+    servers: [{ url: API_PREFIX }],
     components: {
       securitySchemes: {
         bearerAuth: {
