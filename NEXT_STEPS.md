@@ -8,6 +8,15 @@ Marque os itens conforme forem concluídos.
 > supervisionado). ⚠️ Descoberto no caminho: o SQLBuilder não escapa `'` em
 > strings (quebra + injection) — sinalizado como tarefa separada.
 
+> **Status (2026-07-19):** prefixo `/api` passou a ser REAL nos dois lados
+> (antes era invenção do mediador) e a leitura de base funciona ponta a ponta:
+> workspace → página de entrada → filhas → `<CubsDatabase />`. O **snapshot**
+> (personalização por view em `pages.data`) tem formato e leitura prontos, mas
+> **escrita ainda não implementada no app**. Contrato completo, status por peça
+> e armadilhas conhecidas: **[docs/INTEGRACAO.md](docs/INTEGRACAO.md)**.
+> ⚠️ Duas descobertas registradas lá (§5): token sobrevive ao usuário após o
+> seed (404 enganoso) e `page_root` só existe para um dono por workspace.
+
 > **Padrão de portas:** frontend **:80** (nginx, prod) / **:5173** (Vite, dev);
 > backend **:3000** (dev e prod); rqlite **:8000→4001** (dev, só no host
 > permitido) / sem porta publicada (prod, rede interna do compose).
@@ -119,9 +128,11 @@ Ideias registradas:
       nginx:alpine na porta 80). `.dockerignore` impede o `.env` local de
       vazar `VITE_CUBS_API_URL` para o bundle de prod.
 - [x] **nginx:** `cubs-frontend/nginx/nginx.conf` — SPA fallback, `/api/` →
-      `backend:3000` (removendo o prefixo, igual ao proxy do Vite),
-      `/socket.io/` com upgrade de WebSocket, `X-Forwarded-For` para o rate
-      limit.
+      `backend:3000` **preservando o prefixo** (`proxy_pass` sem barra final,
+      igual ao proxy do Vite), `/socket.io/` com upgrade de WebSocket,
+      `X-Forwarded-For` para o rate limit.
+      ⚠️ Atualizado em 2026-07-19: até então o nginx e o Vite REMOVIAM o `/api`
+      porque o backend servia na raiz. Ver [docs/INTEGRACAO.md](docs/INTEGRACAO.md) §1.
 - [x] **Compose dev/prod separados:**
       [docker-compose.dev.yml](docker/docker-compose.dev.yml) (só rqlite) e
       [docker-compose.prod.yml](docker/docker-compose.prod.yml) (rqlite +
@@ -177,6 +188,56 @@ id**, para que, se algo cair, os logs "declarem tudo". Correlação por
 - [ ] **Socket no mesmo rastro (FUTURO, supervisionado):** integrar eventos
       socket.io ao mesmo id/stream — depende do trabalho de realtime (§2), que
       não deve ser mexido sem supervisão.
+
+---
+
+## 7. Escrita do snapshot (personalização por view) — ⏳ A FAZER
+
+O **snapshot** é o padrão de personalização por view guardado em `pages.data` —
+definição canônica em [docs/INTEGRACAO.md](docs/INTEGRACAO.md) §2. Formato e
+leitura estão prontos; falta o caminho de volta.
+
+- [ ] **Frontend — read-modify-write:** `PUT /pages/:id` substitui `data`
+      INTEIRO. Salvar uma view exige reenviar todas as outras, senão elas somem.
+      Esse é o ponto que mais convida a bug.
+- [ ] **Decidir o `FALLBACK_VIEW_ID`:** sentinela de cliente
+      (`01KXVZ0000FALLBACKTABLE001`) que hoje nunca é persistida — e não é ULID
+      válido (Crockford exclui `I L O U`). Materializar com ULID real na 1ª
+      gravação, ou filtrar antes de enviar.
+- [ ] **(Opcional) Rota dedicada por view** — evitaria o read-modify-write e a
+      sobrescrita entre clientes. Avaliar junto do realtime (§2).
+- [ ] **Workspace selecionável:** hoje `FIXED_WORKSPACE_ID` está fixo no
+      `DatabaseService` do frontend. Nada mais no código assume workspace única.
+
+---
+
+## 8. Robustez de sessão e acesso — ⏳ A FAZER
+
+Descobertos depurando um 404 em 2026-07-19 (detalhes em
+[docs/INTEGRACAO.md](docs/INTEGRACAO.md) §5).
+
+- [ ] **Token sobrevive ao usuário:** o middleware valida só assinatura e
+      expiração — depois de um `npm run seed` que recria `users`, o token do
+      browser aponta para id fantasma e continua passando. Conferir existência
+      (no middleware, ou só no `refresh`, mais barato) e devolver 401.
+- [ ] **`page_root` de um dono só:** busca por `(id, owner_id)` mas cria com
+      `pages.id` = id da workspace (PK) — segundo usuário colide e recebe 404.
+      **Decisão de produto pendente:** workspace compartilhada (tirar `owner_id`
+      do lookup) ou page_root por usuário (quebra `workspaces.id == pages.id`,
+      exige migration). Ligado ao `page_users` abaixo.
+- [ ] **Erro honesto:** a colisão de PK vira "Workspace não encontrado" (404).
+      Um 409 com mensagem própria apontaria a causa direto.
+- [ ] **Autorização inconsistente:** `/pages/:id` filtra por `owner_id`, mas
+      `/pages/:id/page` e `/pages/parent/:id/columns` não filtram nada. Alinhar
+      junto com a decisão acima.
+- [ ] **Deletar coluna deixa valores órfãos:** `deleteColumn` só remove a linha
+      de `page_columns`; os `page_columns_values` daquela coluna ficam no banco
+      apontando para um id morto — nenhuma FK tem `ON DELETE CASCADE`.
+      Reproduzido em 2026-07-19. Resolver no controller (apagar os valores junto)
+      ou na migration (recriar a FK com cascade — lembrando que o SQLite só
+      aplica FK com `PRAGMA foreign_keys = ON` na conexão).
+      Obs.: o rastro que a MESMA operação deixa no snapshot é benigno (a leitura
+      ignora id desconhecido) — ver [docs/INTEGRACAO.md](docs/INTEGRACAO.md) §2.
 
 ---
 
