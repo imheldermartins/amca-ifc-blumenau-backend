@@ -77,18 +77,18 @@ export namespace Schema {
   }
   export interface PageColumnsValues extends PageColumnValue {}
 
-  // --- 7. PAGE MEMBERS (Membros/Acesso de Página) ---
+  // --- 7. PAGE COLLABORATORS (Colaboradores/Acesso de Página) ---
   // Vínculo N:N entre páginas e usuários com acesso àquela página (além do
   // owner_id da própria pages). UNIQUE(page_id, user_id) no banco.
-  export interface PageMember extends EntityBase {
+  export interface PageCollaborator extends EntityBase {
     page_id: NonEmptyString;   // ID da página
-    user_id: NonEmptyString;   // ID do usuário-membro
+    user_id: NonEmptyString;   // ID do usuário-colaborador
   }
-  export interface PageMembers extends PageMember {}
+  export interface PageCollaborators extends PageCollaborator {}
 
-  // Resumo do usuário devolvido por GET /pages/:id/members (join com `users`):
-  // só a identificação, sem o vínculo nem campos sensíveis.
-  export interface PageMemberSummary {
+  // Resumo do usuário devolvido por GET /pages/:id/collaborators (join com
+  // `users`): só a identificação, sem o vínculo nem campos sensíveis.
+  export interface PageCollaboratorSummary {
     id: NonEmptyString;
     name: string | null;
     email: string;

@@ -111,6 +111,17 @@ export class SQLBuilder<T> {
     return this.toStatement();
   }
 
+  /**
+   * UPDATE com `updated_at` recarimbado SEMPRE -- é a contrapartida de
+   * `AutoManagedFields`: se o campo é automático, quem o mantém é esta camada,
+   * e não cada controller lembrando de setá-lo (antes ninguém setava, e o
+   * `updated_at` de toda tabela ficava congelado na hora do INSERT).
+   *
+   * Um lugar só, e é o certo: TODA escrita passa por aqui, e o valor vem do
+   * PRÓPRIO banco (`CURRENT_TIMESTAMP` via `rstr`, sem bind) -- mesmo formato
+   * e mesmo relógio do `created_at`, sem depender da hora da máquina que
+   * rodou o Node.
+   */
   public update(values: UpdateValues<T>, lookup: LookupValues<T>): SqlStatement {
     this.sql = squel.update().table(this.tableName);
 
@@ -124,6 +135,10 @@ export class SQLBuilder<T> {
       this.assertIdentifier(key);
       this.sql?.set(key, this.toParamValue(value));
     });
+
+    // Depois dos campos do caller: se alguém insistir em mandar `updated_at`
+    // (o tipo proíbe, mas JS não), o automático é que vale.
+    this.sql.set("updated_at", squel.rstr("CURRENT_TIMESTAMP"));
 
     lookupEntries.forEach(([key, value]) => {
       this.assertIdentifier(key);

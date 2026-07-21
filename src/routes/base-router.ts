@@ -33,6 +33,11 @@ export abstract class BaseRouter<T> {
   }
 
   protected registerRoutes(): void {
+    // ANTES do CRUD, sempre: o express casa na ORDEM de registro, e "/:id"
+    // engole qualquer caminho fixo irmão registrado depois ("/pages/shared"
+    // viraria id="shared"). Registrar aqui é o que garante a precedência.
+    this.staticRoutes();
+
     const ops = this.enabledOperations();
 
     if (ops.has("all")) this.router.get("/", ...this.middlewaresFor("all"), this.all.bind(this));
@@ -41,6 +46,17 @@ export abstract class BaseRouter<T> {
     if (ops.has("update")) this.router.put("/:id", ...this.middlewaresFor("update"), this.update.bind(this));
     if (ops.has("delete")) this.router.delete("/:id", ...this.middlewaresFor("delete"), this.delete.bind(this));
   }
+
+  /**
+   * Rotas de CAMINHO FIXO que precisam vencer o "/:id" do CRUD (ex.:
+   * `GET /pages/shared`). Registradas antes de tudo por `registerRoutes()`.
+   *
+   * IMPORTANTE: sobrescreva como MÉTODO, não como arrow field, e não dependa
+   * de campo de classe da subclasse (`resourceName` ainda é undefined aqui) --
+   * isto roda dentro do super(). Handlers do prototype (`this.x.bind(this)`)
+   * e singletons de módulo funcionam normalmente.
+   */
+  protected staticRoutes(): void {}
 
   /**
    * Operações HTTP que serão registradas -- por padrão, o CRUD completo.

@@ -2,11 +2,14 @@ import type { Request, Response } from "express";
 import pageController from "@/controllers/page-controller";
 import pageColumnController from "@/controllers/page-column-controller";
 import pageColumnValueController from "@/controllers/page-column-value-controller";
-import pageMemberController from "@/controllers/page-member-controller";
+import pageCollaboratorController from "@/controllers/page-collaborator-controller";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { BaseRouter } from "@routes/base-router";
 import middleware from "@/core/auth/middleware";
+import { requirePageAccess } from "@/core/auth/page-access-middleware";
+import pageAccessController from "@/controllers/page-access-controller";
+import realtimeService from "@core/socket/realtime-service";
 import { StatusCode } from "@core/http/status-code";
 
 const reasonToStatus = (reason: ServiceFailureReason): StatusCode => {
@@ -586,9 +589,9 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  * @openapi
  * components:
  *   schemas:
- *     PageMember:
+ *     PageCollaborator:
  *       type: object
- *       description: Vínculo (page_members) de um usuário com acesso à página.
+ *       description: Vínculo (page_collaborators) de um usuário com acesso à página.
  *       properties:
  *         id:
  *           type: string
@@ -597,9 +600,9 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *           type: string
  *         user_id:
  *           type: string
- *     PageMemberSummary:
+ *     PageCollaboratorSummary:
  *       type: object
- *       description: Resumo do usuário-membro (sem o vínculo), usado na listagem.
+ *       description: Resumo do usuário-colaborador (sem o vínculo), usado na listagem.
  *       properties:
  *         id:
  *           type: string
@@ -610,13 +613,13 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *         email:
  *           type: string
  *
- * /pages/{id}/members:
+ * /pages/{id}/collaborators:
  *   get:
- *     summary: Lista os membros da página (resumo do usuário)
+ *     summary: Lista os colaboradores da página (resumo do usuário)
  *     description: >
- *       Devolve os usuários com acesso à página (join de page_members com
+ *       Devolve os usuários com acesso à página (join de page_collaborators com
  *       users), apenas com id, name e email -- nunca dados sensíveis. Página
- *       sem membros responde lista vazia.
+ *       sem colaboradores responde lista vazia.
  *     tags: [Pages]
  *     security:
  *       - bearerAuth: []
@@ -629,20 +632,20 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *           type: string
  *     responses:
  *       200:
- *         description: Lista de membros (pode ser vazia)
+ *         description: Lista de colaboradores (pode ser vazia)
  *         content:
  *           application/json:
  *             schema:
  *               type: array
  *               items:
- *                 $ref: '#/components/schemas/PageMemberSummary'
+ *                 $ref: '#/components/schemas/PageCollaboratorSummary'
  *       401:
  *         description: Token de acesso ausente ou inválido
  *   post:
- *     summary: Adiciona usuários (membros) à página, em lote
+ *     summary: Adiciona usuários (colaboradores) à página, em lote
  *     description: >
- *       Vincula um ou mais usuários à página via page_members. Idempotente: quem
- *       já é membro entra em `skipped` (sem colidir no UNIQUE). Todos os
+ *       Vincula um ou mais usuários à página via page_collaborators. Idempotente: quem
+ *       já colabora entra em `skipped` (sem colidir no UNIQUE). Todos os
  *       `userIds` precisam existir; caso contrário nada é gravado (404).
  *     tags: [Pages]
  *     security:
@@ -669,7 +672,7 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *             required: [userIds]
  *     responses:
  *       201:
- *         description: Membros processados (criados e/ou já existentes)
+ *         description: Colaboradores processados (criados e/ou já existentes)
  *         content:
  *           application/json:
  *             schema:
@@ -679,10 +682,10 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *                   type: array
  *                   description: Vínculos criados agora
  *                   items:
- *                     $ref: '#/components/schemas/PageMember'
+ *                     $ref: '#/components/schemas/PageCollaborator'
  *                 skipped:
  *                   type: array
- *                   description: user_ids que já eram membros
+ *                   description: user_ids que já eram colaboradores
  *                   items:
  *                     type: string
  *       400:
@@ -692,11 +695,11 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *       404:
  *         description: Página ou algum dos usuários não encontrado
  *
- * /pages/{id}/members/{memberId}:
+ * /pages/{id}/collaborators/{collaboratorId}:
  *   get:
- *     summary: Detalha o vínculo (page_members) de um membro na página
+ *     summary: Detalha o vínculo (page_collaborators) de um colaborador na página
  *     description: >
- *       Diferente da listagem: aqui volta a LINHA da tabela page_members
+ *       Diferente da listagem: aqui volta a LINHA da tabela page_collaborators
  *       (id do vínculo, page_id, user_id e timestamps), não o resumo do usuário.
  *     tags: [Pages]
  *     security:
@@ -709,9 +712,9 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *         schema:
  *           type: string
  *       - in: path
- *         name: memberId
+ *         name: collaboratorId
  *         required: true
- *         description: user_id do membro
+ *         description: user_id do colaborador
  *         schema:
  *           type: string
  *     responses:
@@ -720,15 +723,15 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/PageMember'
+ *               $ref: '#/components/schemas/PageCollaborator'
  *       400:
  *         description: id inválido
  *       401:
  *         description: Token de acesso ausente ou inválido
  *       404:
- *         description: Vínculo (membro) não encontrado nesta página
+ *         description: Vínculo (colaborador) não encontrado nesta página
  *   delete:
- *     summary: Remove um membro da página
+ *     summary: Remove um colaborador da página
  *     tags: [Pages]
  *     security:
  *       - bearerAuth: []
@@ -740,20 +743,20 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *         schema:
  *           type: string
  *       - in: path
- *         name: memberId
+ *         name: collaboratorId
  *         required: true
- *         description: user_id do membro a remover
+ *         description: user_id do colaborador a remover
  *         schema:
  *           type: string
  *     responses:
  *       204:
- *         description: Membro removido
+ *         description: Colaborador removido
  *       400:
  *         description: id inválido
  *       401:
  *         description: Token de acesso ausente ou inválido
  *       404:
- *         description: Vínculo (membro) não encontrado nesta página
+ *         description: Vínculo (colaborador) não encontrado nesta página
  */
 
 /**
@@ -768,37 +771,51 @@ class PageRouter extends BaseRouter<Schema.Page> {
   constructor() {
     super(pageController, {
       all: [middleware.handle],
-      get: [middleware.handle],
+      get: [middleware.handle, requirePageAccess()],
       create: [middleware.handle],
-      update: [middleware.handle],
+      update: [middleware.handle, requirePageAccess()],
+      // DELETE segue exclusivo do DONO (o handler filtra por `owner_id`):
+      // colaborar numa base não é poder apagá-la.
       delete: [middleware.handle],
     });
 
-    // Rotas adicionais (registradas após o CRUD base do super()):
-    this.router.post("/:id/page", middleware.handle, this.createChild.bind(this));
-    this.router.get("/:id/page", middleware.handle, this.getDataset.bind(this));
-    this.router.get("/:id/breadcrumb", middleware.handle, this.getBreadcrumb.bind(this));
+    // Rotas adicionais (registradas após o CRUD base do super()). O
+    // `requirePageAccess` é o guarda de dono-ou-colaborador (herdado pela árvore).
+    this.router.post("/:id/page", middleware.handle, requirePageAccess(), this.createChild.bind(this));
+    this.router.get("/:id/page", middleware.handle, requirePageAccess(), this.getDataset.bind(this));
+    this.router.get("/:id/breadcrumb", middleware.handle, requirePageAccess(), this.getBreadcrumb.bind(this));
 
-    // Membros (page_members): acesso N:N à página. Adição em lote; leitura e
-    // remoção unitárias por :memberId (= user_id).
-    this.router.get("/:id/members", middleware.handle, this.listMembers.bind(this));
-    this.router.get("/:id/members/:memberId", middleware.handle, this.getMember.bind(this));
-    this.router.post("/:id/members", middleware.handle, this.addMembers.bind(this));
-    this.router.delete("/:id/members/:memberId", middleware.handle, this.removeMember.bind(this));
+    // Colaboradores (page_collaborators): acesso N:N à página. Adição em lote; leitura e
+    // remoção unitárias por :collaboratorId (= user_id).
+    this.router.get("/:id/collaborators", middleware.handle, this.listCollaborators.bind(this));
+    this.router.get("/:id/collaborators/:collaboratorId", middleware.handle, this.getCollaborator.bind(this));
+    this.router.post("/:id/collaborators", middleware.handle, this.addCollaborators.bind(this));
+    this.router.delete("/:id/collaborators/:collaboratorId", middleware.handle, this.removeCollaborator.bind(this));
 
     // Colunas da página parent (:id = id da parent). page_columns não tem rota própria.
-    this.router.post("/parent/:id/columns", middleware.handle, this.createColumn.bind(this));
-    this.router.get("/parent/:id/columns", middleware.handle, this.listColumns.bind(this));
-    this.router.get("/parent/:id/columns/:column_id", middleware.handle, this.getColumn.bind(this));
-    this.router.put("/parent/:id/columns/:column_id", middleware.handle, this.updateColumn.bind(this));
-    this.router.delete("/parent/:id/columns/:column_id", middleware.handle, this.deleteColumn.bind(this));
+    this.router.post("/parent/:id/columns", middleware.handle, requirePageAccess(), this.createColumn.bind(this));
+    this.router.get("/parent/:id/columns", middleware.handle, requirePageAccess(), this.listColumns.bind(this));
+    this.router.get("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.getColumn.bind(this));
+    this.router.put("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.updateColumn.bind(this));
+    this.router.delete("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.deleteColumn.bind(this));
 
     // Valor (célula) de uma coluna numa página (:id = page_id da linha, :column_id = coluna).
     // Singular: a célula (página, coluna) tem no máximo UM valor (UNIQUE no banco).
-    this.router.post("/:id/column/:column_id/value", middleware.handle, this.createValue.bind(this));
-    this.router.get("/:id/column/:column_id/value", middleware.handle, this.getValue.bind(this));
-    this.router.put("/:id/column/:column_id/value", middleware.handle, this.updateValue.bind(this));
-    this.router.delete("/:id/column/:column_id/value", middleware.handle, this.deleteValue.bind(this));
+    this.router.post("/:id/column/:column_id/value", middleware.handle, requirePageAccess(), this.createValue.bind(this));
+    this.router.get("/:id/column/:column_id/value", middleware.handle, requirePageAccess(), this.getValue.bind(this));
+    this.router.put("/:id/column/:column_id/value", middleware.handle, requirePageAccess(), this.updateValue.bind(this));
+    this.router.delete("/:id/column/:column_id/value", middleware.handle, requirePageAccess(), this.deleteValue.bind(this));
+  }
+
+  /**
+   * `GET /pages/shared` é caminho FIXO e precisa vencer o `GET /:id` do CRUD —
+   * registrado aqui, e não no construtor, porque o super() já registra o
+   * "/:id" antes de o corpo do construtor rodar (era exatamente o bug: a aba
+   * "Colaborando" pedia /pages/shared e o express respondia com o handler de
+   * página, id="shared", que não passa nem no formato de ULID → 404).
+   */
+  protected override staticRoutes(): void {
+    this.router.get("/shared", middleware.handle, this.listShared.bind(this));
   }
 
   protected override async all(req: Request, res: Response): Promise<Response> {
@@ -806,10 +823,13 @@ class PageRouter extends BaseRouter<Schema.Page> {
     return res.status(StatusCode.OK).json(items ?? []);
   }
 
+  /**
+   * A busca é por id SEM `owner_id`: quem pode ver já foi decidido pelo
+   * `requirePageAccess` (dono OU colaborador, herdado pela árvore). Filtrar por dono
+   * aqui era o que impedia o colaborador de abrir a base compartilhada.
+   */
   protected override async get(req: Request, res: Response): Promise<Response> {
-    const item = await this.controller.get(
-      { id: req.params.id, owner_id: req.userId } as LookupValues<Schema.Page>,
-    );
+    const item = await this.controller.get({ id: req.params.id } as LookupValues<Schema.Page>);
 
     if (!item) {
       return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado` });
@@ -845,12 +865,43 @@ class PageRouter extends BaseRouter<Schema.Page> {
     } as UpdateValues<Schema.Page>;
 
     const item = await this.controller.update(
-      { id: req.params.id, owner_id: req.userId } as LookupValues<Schema.Page>,
+      { id: req.params.id } as LookupValues<Schema.Page>,
       payload,
     );
 
     if (!item) {
       return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado ou falha ao atualizar` });
+    }
+
+    // Emite só DEPOIS do commit — o socket notifica, nunca grava. As duas
+    // metades desta rota vão para salas DIFERENTES, porque são coisas
+    // diferentes:
+    //
+    //  - `data` é o SNAPSHOT das views desta página → sala da PRÓPRIA página
+    //    (quem está com ela aberta);
+    //  - `title` é o rótulo da página enquanto LINHA de outra → sala da
+    //    PARENT, que é a tabela onde ela aparece.
+    if (data !== undefined) {
+      realtimeService.emitViewUpdated({
+        pageId: req.params.id as string,
+        data,
+        updatedAt: new Date().toISOString(),
+        originUserId: req.userId as string,
+      });
+    }
+
+    if (title !== undefined) {
+      const rowId = req.params.id as string;
+      const parentId = await pageAccessController.getParentId(rowId);
+      if (parentId) {
+        realtimeService.emitRowUpdated({
+          pageId: parentId,
+          rowId,
+          title: title ?? null,
+          updatedAt: new Date().toISOString(),
+          originUserId: req.userId as string,
+        });
+      }
     }
 
     return res.status(StatusCode.OK).json(item);
@@ -876,7 +927,21 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
     }
 
+    // A sala é a PARENT (a tabela aberta), e a linha nova é a filha.
+    realtimeService.emitRowCreated({
+      pageId: req.params.id as string,
+      rowId: child.id,
+      updatedAt: new Date().toISOString(),
+      originUserId: req.userId as string,
+    });
+
     return res.status(StatusCode.CREATED).json(child);
+  }
+
+  /** GET /pages/shared -- páginas onde sou MEMBRO (aba "Colaborando"). */
+  private async listShared(req: Request, res: Response): Promise<Response> {
+    const pages = await pageAccessController.listSharedPages(req.userId as string);
+    return res.status(StatusCode.OK).json(pages ?? []);
   }
 
   private async getDataset(req: Request, res: Response): Promise<Response> {
@@ -900,20 +965,20 @@ class PageRouter extends BaseRouter<Schema.Page> {
     return res.status(StatusCode.OK).json(crumbs);
   }
 
-  // --- Membros da página (page_members; :id = page_id, :memberId = user_id) ---
+  // --- Colaboradores da página (page_collaborators; :id = page_id, :collaboratorId = user_id) ---
 
-  // GET /pages/:id/members -- lista os membros como resumo do usuário.
-  private async listMembers(req: Request, res: Response): Promise<Response> {
-    const members = await pageMemberController.listMembers(req.params.id as string);
+  // GET /pages/:id/collaborators -- lista os colaboradores como resumo do usuário.
+  private async listCollaborators(req: Request, res: Response): Promise<Response> {
+    const members = await pageCollaboratorController.listCollaborators(req.params.id as string);
 
     return res.status(StatusCode.OK).json(members ?? []);
   }
 
-  // GET /pages/:id/members/:memberId -- detalhe do vínculo em page_members.
-  private async getMember(req: Request, res: Response): Promise<Response> {
-    const result = await pageMemberController.getMember(
+  // GET /pages/:id/collaborators/:collaboratorId -- detalhe do vínculo em page_collaborators.
+  private async getCollaborator(req: Request, res: Response): Promise<Response> {
+    const result = await pageCollaboratorController.getCollaborator(
       req.params.id as string,
-      req.params.memberId as string,
+      req.params.collaboratorId as string,
     );
 
     if (!result.ok) {
@@ -923,11 +988,11 @@ class PageRouter extends BaseRouter<Schema.Page> {
     return res.status(StatusCode.OK).json(result.data);
   }
 
-  // POST /pages/:id/members -- adiciona em lote { userIds: [<ULID>, ...] }.
-  private async addMembers(req: Request, res: Response): Promise<Response> {
-    const { userIds } = (req.body ?? {}) as Input.AddPageMembers;
+  // POST /pages/:id/collaborators -- adiciona em lote { userIds: [<ULID>, ...] }.
+  private async addCollaborators(req: Request, res: Response): Promise<Response> {
+    const { userIds } = (req.body ?? {}) as Input.AddPageCollaborators;
 
-    const result = await pageMemberController.addMembers(req.params.id as string, userIds);
+    const result = await pageCollaboratorController.addCollaborators(req.params.id as string, userIds);
 
     if (!result.ok) {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
@@ -936,11 +1001,11 @@ class PageRouter extends BaseRouter<Schema.Page> {
     return res.status(StatusCode.CREATED).json(result.data);
   }
 
-  // DELETE /pages/:id/members/:memberId -- remove um membro (memberId = user_id).
-  private async removeMember(req: Request, res: Response): Promise<Response> {
-    const result = await pageMemberController.removeMember(
+  // DELETE /pages/:id/collaborators/:collaboratorId -- remove um colaborador (collaboratorId = user_id).
+  private async removeCollaborator(req: Request, res: Response): Promise<Response> {
+    const result = await pageCollaboratorController.removeCollaborator(
       req.params.id as string,
-      req.params.memberId as string,
+      req.params.collaboratorId as string,
     );
 
     if (!result.ok) {
@@ -1015,6 +1080,17 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
 
+    // Cobre rename E reordenação/edição de options: a coluna vai INTEIRA, do
+    // jeito que ficou — o client substitui, não remenda. A sala é a parent
+    // (`:id`), que é a tabela onde a coluna vive.
+    realtimeService.emitColumnUpdated({
+      pageId: req.params.id as string,
+      columnId: req.params.column_id as string,
+      column: result.data,
+      updatedAt: new Date().toISOString(),
+      originUserId: req.userId as string,
+    });
+
     return res.status(StatusCode.OK).json(result.data);
   }
 
@@ -1048,6 +1124,10 @@ class PageRouter extends BaseRouter<Schema.Page> {
     if (!result.ok) {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
+
+    // Célula que NASCE é `cell-updated` como qualquer outra: para quem assiste,
+    // "estava vazia, agora tem valor" é a mesma coisa que uma edição.
+    await this.emitCell(req, body.value ?? null);
 
     return res.status(StatusCode.CREATED).json(result.data);
   }
@@ -1084,7 +1164,30 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
 
+    await this.emitCell(req, body.value ?? null);
+
     return res.status(StatusCode.OK).json(result.data);
+  }
+
+  /**
+   * Propaga uma célula para a sala da TABELA. O `:id` da rota é a LINHA (uma
+   * página filha), mas quem tem a página aberta assinou a sala da PARENT — daí
+   * a resolução do parent antes de emitir. Linha sem parent (não deveria
+   * acontecer numa tabela) simplesmente não propaga, em vez de explodir.
+   */
+  private async emitCell(req: Request, value: unknown): Promise<void> {
+    const rowId = req.params.id as string;
+    const parentId = await pageAccessController.getParentId(rowId);
+    if (!parentId) return;
+
+    realtimeService.emitCellUpdated({
+      pageId: parentId,
+      rowId,
+      columnId: req.params.column_id as string,
+      value,
+      updatedAt: new Date().toISOString(),
+      originUserId: req.userId as string,
+    });
   }
 
   // DELETE /pages/:id/column/:column_id/value -- remove o valor da célula (404 se vazia).
@@ -1097,6 +1200,10 @@ class PageRouter extends BaseRouter<Schema.Page> {
     if (!result.ok) {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
+
+    // Limpar a célula é uma atualização para `null` — mesmo evento, sem um
+    // "cell-deleted" que o client teria de tratar como caso especial.
+    await this.emitCell(req, null);
 
     return res.status(StatusCode.NO_CONTENT).send();
   }

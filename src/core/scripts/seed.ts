@@ -199,10 +199,10 @@ async function ensureChildPage(
   return page;
 }
 
-/** Vínculo de acesso (page_members): adiciona `userId` como membro de `pageId`. */
+/** Vínculo de acesso (page_collaborators): adiciona `userId` como colaborador de `pageId`. */
 async function ensureMember(pageId: string, userId: string): Promise<void> {
-  const existing = await db.pageMembers.find(
-    { page_id: pageId, user_id: userId } as LookupValues<Schema.PageMember>,
+  const existing = await db.pageCollaborators.find(
+    { page_id: pageId, user_id: userId } as LookupValues<Schema.PageCollaborator>,
   );
   if (existing) {
     stats.skipped += 1;
@@ -210,10 +210,10 @@ async function ensureMember(pageId: string, userId: string): Promise<void> {
   }
 
   track(
-    await db.pageMembers.create(
-      { page_id: pageId, user_id: userId } as unknown as CreateValues<Schema.PageMember>,
+    await db.pageCollaborators.create(
+      { page_id: pageId, user_id: userId } as unknown as CreateValues<Schema.PageCollaborator>,
     ),
-    `membro ${userId} em ${pageId}`,
+    `colaborador ${userId} em ${pageId}`,
   );
 }
 
@@ -278,14 +278,14 @@ async function main(): Promise<void> {
   const admin = await ensureUser("Coordenação Cubs", "admin@cubs.local", passwordHash);
 
   // Colaboradores da coordenação: usuários extras (login com a senha do
-  // .env.seed) que ganham ACESSO às páginas do admin via page_members --
-  // exercita o vínculo N:N de membros criado na migration de page_members.
+  // .env.seed) que ganham ACESSO às páginas do admin via page_collaborators --
+  // exercita o vínculo N:N de colaboradores criado na migration de page_collaborators.
   const collaborators = [
     await ensureUser("Bolsista Monitor", "monitor@cubs.local", passwordHash),
     await ensureUser("Assistente de Coordenação", "assistente@cubs.local", passwordHash),
   ];
 
-  // page_roots do admin -- recebem os colaboradores como membros no fim do seed.
+  // page_roots do admin -- recebem os colaboradores como colaboradores no fim do seed.
   const adminRoots: string[] = [];
 
   // 1. Professores como usuários (login com a senha do .env.seed).
@@ -411,7 +411,7 @@ async function main(): Promise<void> {
     await ensureValue(page, progressoColumn, projeto.progresso);
   }
 
-  // 5. Membros (page_members): cada colaborador ganha acesso a todas as
+  // 5. Colaboradores (page_collaborators): cada colaborador ganha acesso a todas as
   //    page_roots do admin (além do próprio owner_id de cada página).
   for (const rootId of adminRoots) {
     for (const collaborator of collaborators) {

@@ -23,10 +23,10 @@ export namespace Input {
   // --- Users (criação é só via /auth/register; aqui é o update administrativo) ---
   export type UpdateUser = Partial<Pick<Schema.User, "name" | "email">>;
 
-  // --- Page Members (page_members) ---
-  // POST /pages/:id/members adiciona em lote: { userIds: [<ULID>, ...] }.
-  // A remoção é unitária pela URL (/members/:memberId), sem body.
-  export type AddPageMembers = { userIds?: string[] };
+  // --- Page Collaborators (page_collaborators) ---
+  // POST /pages/:id/collaborators adiciona em lote: { userIds: [<ULID>, ...] }.
+  // A remoção é unitária pela URL (/collaborators/:collaboratorId), sem body.
+  export type AddPageCollaborators = { userIds?: string[] };
 
   // --- Page Columns (payload dinâmico por tipo; `type` normalmente vem da ?type) ---
   // select  -> { options: [{ value, color? }] }  (id gerado no backend)

@@ -12,6 +12,13 @@ type SqlStatement = { text: string; values: unknown[] };
  */
 type RqliteStatement = string | unknown[];
 
+/**
+ * Campos que o CHAMADOR nunca informa -- a camada de dados cuida deles:
+ * `id` e `created_at` nascem no INSERT (ULID e DEFAULT do schema), e
+ * `updated_at` é recarimbado a CADA update pelo SQLBuilder. Por isso ficam
+ * fora de `CreateValues`/`UpdateValues`: passar um deles à mão seria
+ * contradizer a automação, não configurá-la.
+ */
 type AutoManagedFields = 'id' | 'created_at' | 'updated_at';
 
 type CreateValues<T> = Omit<T, AutoManagedFields>;

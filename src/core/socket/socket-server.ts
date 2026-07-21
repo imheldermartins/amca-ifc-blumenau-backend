@@ -1,7 +1,12 @@
 import type { Server as NodeHttpServer } from "node:http";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
 import jwtService from "@core/auth/jwt-service";
 import { corsConfig } from "@core/http/cors.config";
+import realtimeService from "@core/socket/realtime-service";
+import type {
+  RealtimeClientToServerEvents,
+  RealtimeServerToClientEvents,
+} from "@core/socket/realtime-service";
 
 /**
  * Contrato de eventos com o frontend (espelhado em
@@ -14,20 +19,32 @@ export interface EchoReply {
   at: string;
 }
 
-export interface ServerToClientEvents {
+/**
+ * Eventos da conexão. Os de SALA (CubsDatabase) são declarados em
+ * `realtime-service.ts`, junto dos payloads, e compostos aqui — assim existe
+ * UM tipo de servidor, e emitir evento de sala continua checado pelo TS.
+ */
+export interface ServerToClientEvents extends RealtimeServerToClientEvents {
   "presence:count": (count: number) => void;
   "echo:reply": (payload: EchoReply) => void;
 }
 
-export interface ClientToServerEvents {
+export interface ClientToServerEvents extends RealtimeClientToServerEvents {
   "echo:send": (message: string) => void;
 }
 
-interface SocketData {
+export interface SocketData {
   userId: string;
 }
 
-type CubsSocketServer = Server<
+export type CubsSocketServer = Server<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  SocketData
+>;
+
+export type CubsSocket = Socket<
   ClientToServerEvents,
   ServerToClientEvents,
   Record<string, never>,
@@ -68,8 +85,13 @@ class SocketServer {
       }
     });
 
+    // A camada de salas (CubsDatabase) recebe o mesmo io já autenticado: o
+    // `socket.data.userId` do middleware acima é o que autoriza cada join.
+    realtimeService.initialize(this.io);
+
     this.io.on("connection", (socket) => {
       this.broadcastPresence();
+      realtimeService.registerHandlers(socket);
 
       socket.on("echo:send", (message) => {
         socket.emit("echo:reply", {

@@ -5,7 +5,7 @@ import { pages } from "@models/page-model";
 import { pageEdges } from "@models/page-edge-model";
 import { pageColumns } from "@models/page-column-model";
 import { pageColumnValues } from "@models/page-column-value-model";
-import { pageMembers } from "@models/page-member-model";
+import { pageCollaborators } from "@models/page-collaborator-model";
 
 export default {
     users,
@@ -14,6 +14,6 @@ export default {
     pageEdges,
     pageColumns,
     pageColumnValues,
-    pageMembers,
+    pageCollaborators,
     sqlRaw: Model.sqlRaw,
 };
