@@ -3,7 +3,6 @@ import { ulid } from "ulid";
 import db from "@models/index";
 import type { Schema } from "@/models/schemas/index";
 import { VALUE_CODECS } from "@/services/value-codec";
-import { slugify } from "@/utils/slugify";
 
 /**
  * Seed do Cub's — popula a base com dados reais/realistas do IFC:
@@ -192,13 +191,30 @@ async function ensureChildPage(
       await db.pageEdges.create({
         parent_id: rootId,
         child_id: page.id,
-        slug: slugify(title),
       } as unknown as CreateValues<Schema.PageEdge>),
       `edge ${title}`,
     );
   }
 
   return page;
+}
+
+/** Vínculo de acesso (page_members): adiciona `userId` como membro de `pageId`. */
+async function ensureMember(pageId: string, userId: string): Promise<void> {
+  const existing = await db.pageMembers.find(
+    { page_id: pageId, user_id: userId } as LookupValues<Schema.PageMember>,
+  );
+  if (existing) {
+    stats.skipped += 1;
+    return;
+  }
+
+  track(
+    await db.pageMembers.create(
+      { page_id: pageId, user_id: userId } as unknown as CreateValues<Schema.PageMember>,
+    ),
+    `membro ${userId} em ${pageId}`,
+  );
 }
 
 /** Valor de célula via VALUE_CODECS (valida + envelopa como as rotas fazem). */
@@ -261,6 +277,17 @@ async function main(): Promise<void> {
   // Sem apóstrofo no nome: o SQLBuilder atual não escapa "'" (bug conhecido).
   const admin = await ensureUser("Coordenação Cubs", "admin@cubs.local", passwordHash);
 
+  // Colaboradores da coordenação: usuários extras (login com a senha do
+  // .env.seed) que ganham ACESSO às páginas do admin via page_members --
+  // exercita o vínculo N:N de membros criado na migration de page_members.
+  const collaborators = [
+    await ensureUser("Bolsista Monitor", "monitor@cubs.local", passwordHash),
+    await ensureUser("Assistente de Coordenação", "assistente@cubs.local", passwordHash),
+  ];
+
+  // page_roots do admin -- recebem os colaboradores como membros no fim do seed.
+  const adminRoots: string[] = [];
+
   // 1. Professores como usuários (login com a senha do .env.seed).
   for (const professor of [...BLUMENAU_PROFESSORS, ...VIDEIRA_PROFESSORS]) {
     await ensureUser(professor.name, professor.email, passwordHash);
@@ -282,6 +309,7 @@ async function main(): Promise<void> {
 
   for (const campus of campi) {
     const { root } = await ensureWorkspaceWithRoot(campus.workspaceName, admin.id);
+    adminRoots.push(root.id);
 
     const emailColumn = await ensureColumn(root.id, "E-mail", "text");
     const areaColumn = await ensureColumn(root.id, "Área", "select", {
@@ -305,6 +333,7 @@ async function main(): Promise<void> {
   // 3. Turmas (alunos por turma — sem dados pessoais de alunos, que não são
   //    públicos como os contatos institucionais dos docentes).
   const { root: turmasRoot } = await ensureWorkspaceWithRoot("IFC — Turmas", admin.id);
+  adminRoots.push(turmasRoot.id);
   const cursoColumn = await ensureColumn(turmasRoot.id, "Curso", "text");
   const campusColumn = await ensureColumn(turmasRoot.id, "Campus", "select", {
     options: [option("Blumenau", "blue"), option("Videira", "orange")],
@@ -329,6 +358,7 @@ async function main(): Promise<void> {
 
   // 4. Fábrica de Software: projetos como linhas.
   const { root: fabricaRoot } = await ensureWorkspaceWithRoot("Fábrica de Software", admin.id);
+  adminRoots.push(fabricaRoot.id);
   const statusColumn = await ensureColumn(fabricaRoot.id, "Status", "select", {
     options: [
       option("Backlog", "grey"),
@@ -379,6 +409,14 @@ async function main(): Promise<void> {
     await ensureValue(page, responsavelColumn, projeto.responsavel);
     await ensureValue(page, entregaColumn, projeto.entrega);
     await ensureValue(page, progressoColumn, projeto.progresso);
+  }
+
+  // 5. Membros (page_members): cada colaborador ganha acesso a todas as
+  //    page_roots do admin (além do próprio owner_id de cada página).
+  for (const rootId of adminRoots) {
+    for (const collaborator of collaborators) {
+      await ensureMember(rootId, collaborator.id);
+    }
   }
 
   console.log(

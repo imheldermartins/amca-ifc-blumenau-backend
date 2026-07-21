@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import pageController from "@/controllers/page-controller";
 import pageColumnController from "@/controllers/page-column-controller";
 import pageColumnValueController from "@/controllers/page-column-value-controller";
+import pageMemberController from "@/controllers/page-member-controller";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { BaseRouter } from "@routes/base-router";
@@ -182,7 +183,7 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *     description: >
  *       Sobe a hierarquia de page_edges a partir da página-alvo via CTE
  *       recursivo. Retorna, do ancestral mais alto (maior depth) até a própria
- *       página (depth 0), os campos id (child_id), parent_id, slug e depth.
+ *       página (depth 0), os campos id (child_id), parent_id e depth.
  *     tags: [Pages]
  *     security:
  *       - bearerAuth: []
@@ -207,9 +208,6 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *                     type: string
  *                   parent_id:
  *                     type: string
- *                   slug:
- *                     type: string
- *                     nullable: true
  *                   depth:
  *                     type: integer
  *       401:
@@ -585,6 +583,180 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  */
 
 /**
+ * @openapi
+ * components:
+ *   schemas:
+ *     PageMember:
+ *       type: object
+ *       description: Vínculo (page_members) de um usuário com acesso à página.
+ *       properties:
+ *         id:
+ *           type: string
+ *           readOnly: true
+ *         page_id:
+ *           type: string
+ *         user_id:
+ *           type: string
+ *     PageMemberSummary:
+ *       type: object
+ *       description: Resumo do usuário-membro (sem o vínculo), usado na listagem.
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: id do USUÁRIO (não do vínculo)
+ *         name:
+ *           type: string
+ *           nullable: true
+ *         email:
+ *           type: string
+ *
+ * /pages/{id}/members:
+ *   get:
+ *     summary: Lista os membros da página (resumo do usuário)
+ *     description: >
+ *       Devolve os usuários com acesso à página (join de page_members com
+ *       users), apenas com id, name e email -- nunca dados sensíveis. Página
+ *       sem membros responde lista vazia.
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: id da página
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Lista de membros (pode ser vazia)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/PageMemberSummary'
+ *       401:
+ *         description: Token de acesso ausente ou inválido
+ *   post:
+ *     summary: Adiciona usuários (membros) à página, em lote
+ *     description: >
+ *       Vincula um ou mais usuários à página via page_members. Idempotente: quem
+ *       já é membro entra em `skipped` (sem colidir no UNIQUE). Todos os
+ *       `userIds` precisam existir; caso contrário nada é gravado (404).
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: id da página
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userIds:
+ *                 type: array
+ *                 description: ULIDs dos usuários a vincular
+ *                 items:
+ *                   type: string
+ *             required: [userIds]
+ *     responses:
+ *       201:
+ *         description: Membros processados (criados e/ou já existentes)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 added:
+ *                   type: array
+ *                   description: Vínculos criados agora
+ *                   items:
+ *                     $ref: '#/components/schemas/PageMember'
+ *                 skipped:
+ *                   type: array
+ *                   description: user_ids que já eram membros
+ *                   items:
+ *                     type: string
+ *       400:
+ *         description: userIds ausente/vazio ou com ULID inválido
+ *       401:
+ *         description: Token de acesso ausente ou inválido
+ *       404:
+ *         description: Página ou algum dos usuários não encontrado
+ *
+ * /pages/{id}/members/{memberId}:
+ *   get:
+ *     summary: Detalha o vínculo (page_members) de um membro na página
+ *     description: >
+ *       Diferente da listagem: aqui volta a LINHA da tabela page_members
+ *       (id do vínculo, page_id, user_id e timestamps), não o resumo do usuário.
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: id da página
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         description: user_id do membro
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Vínculo encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PageMember'
+ *       400:
+ *         description: id inválido
+ *       401:
+ *         description: Token de acesso ausente ou inválido
+ *       404:
+ *         description: Vínculo (membro) não encontrado nesta página
+ *   delete:
+ *     summary: Remove um membro da página
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: id da página
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         description: user_id do membro a remover
+ *         schema:
+ *           type: string
+ *     responses:
+ *       204:
+ *         description: Membro removido
+ *       400:
+ *         description: id inválido
+ *       401:
+ *         description: Token de acesso ausente ou inválido
+ *       404:
+ *         description: Vínculo (membro) não encontrado nesta página
+ */
+
+/**
  * Pages: CRUD completo protegido por JWT. O `owner_id` SEMPRE vem do token
  * (req.userId), nunca do payload, e as leituras/escritas são escopadas ao dono.
  * As rotas adicionais (motor de páginas) são registradas ao lado do CRUD base,
@@ -606,6 +778,13 @@ class PageRouter extends BaseRouter<Schema.Page> {
     this.router.post("/:id/page", middleware.handle, this.createChild.bind(this));
     this.router.get("/:id/page", middleware.handle, this.getDataset.bind(this));
     this.router.get("/:id/breadcrumb", middleware.handle, this.getBreadcrumb.bind(this));
+
+    // Membros (page_members): acesso N:N à página. Adição em lote; leitura e
+    // remoção unitárias por :memberId (= user_id).
+    this.router.get("/:id/members", middleware.handle, this.listMembers.bind(this));
+    this.router.get("/:id/members/:memberId", middleware.handle, this.getMember.bind(this));
+    this.router.post("/:id/members", middleware.handle, this.addMembers.bind(this));
+    this.router.delete("/:id/members/:memberId", middleware.handle, this.removeMember.bind(this));
 
     // Colunas da página parent (:id = id da parent). page_columns não tem rota própria.
     this.router.post("/parent/:id/columns", middleware.handle, this.createColumn.bind(this));
@@ -719,6 +898,56 @@ class PageRouter extends BaseRouter<Schema.Page> {
     }
 
     return res.status(StatusCode.OK).json(crumbs);
+  }
+
+  // --- Membros da página (page_members; :id = page_id, :memberId = user_id) ---
+
+  // GET /pages/:id/members -- lista os membros como resumo do usuário.
+  private async listMembers(req: Request, res: Response): Promise<Response> {
+    const members = await pageMemberController.listMembers(req.params.id as string);
+
+    return res.status(StatusCode.OK).json(members ?? []);
+  }
+
+  // GET /pages/:id/members/:memberId -- detalhe do vínculo em page_members.
+  private async getMember(req: Request, res: Response): Promise<Response> {
+    const result = await pageMemberController.getMember(
+      req.params.id as string,
+      req.params.memberId as string,
+    );
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.OK).json(result.data);
+  }
+
+  // POST /pages/:id/members -- adiciona em lote { userIds: [<ULID>, ...] }.
+  private async addMembers(req: Request, res: Response): Promise<Response> {
+    const { userIds } = (req.body ?? {}) as Input.AddPageMembers;
+
+    const result = await pageMemberController.addMembers(req.params.id as string, userIds);
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.CREATED).json(result.data);
+  }
+
+  // DELETE /pages/:id/members/:memberId -- remove um membro (memberId = user_id).
+  private async removeMember(req: Request, res: Response): Promise<Response> {
+    const result = await pageMemberController.removeMember(
+      req.params.id as string,
+      req.params.memberId as string,
+    );
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    return res.status(StatusCode.NO_CONTENT).send();
   }
 
   // --- Colunas da página parent (page_columns; :id = id da página parent) ---

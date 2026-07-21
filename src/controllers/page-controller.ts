@@ -2,7 +2,6 @@ import db from "@models/index";
 import type { Model } from "@/core/db/model";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
-import { slugify } from "@/utils/slugify";
 
 class PageController implements IBaseController<Schema.Page> {
   private db: Model<Schema.Page> = db.pages;
@@ -89,7 +88,7 @@ class PageController implements IBaseController<Schema.Page> {
   /**
    * Adiciona uma página-filha (item/linha) sob a página pai `parentId`:
    * cria a `pages` (owner_id = usuário do token) e a aresta em `page_edges`
-   * (parent_id = pai, child_id = filha, slug derivado do título).
+   * (parent_id = pai, child_id = filha).
    */
   async createChild(
     parentId: string,
@@ -110,7 +109,6 @@ class PageController implements IBaseController<Schema.Page> {
       const edge = await db.pageEdges.create({
         parent_id: parentId,
         child_id: created.id,
-        slug: slugify(created.title),
       } as unknown as CreateValues<Schema.PageEdge>);
       if (!edge) throw new Error("Failed to link child page to parent");
 
@@ -174,12 +172,12 @@ class PageController implements IBaseController<Schema.Page> {
       if (!/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(targetPageId)) throw new Error("Invalid target page id");
 
       const text =
-        `WITH RECURSIVE ancestors(id, parent_id, slug, depth) AS (` +
-        `SELECT pe.child_id, pe.parent_id, pe.slug, 0 ` +
+        `WITH RECURSIVE ancestors(id, parent_id, depth) AS (` +
+        `SELECT pe.child_id, pe.parent_id, 0 ` +
         `FROM page_edges pe ` +
         `WHERE pe.child_id = ? ` +
         `UNION ALL ` +
-        `SELECT pe.child_id, pe.parent_id, pe.slug, a.depth + 1 ` +
+        `SELECT pe.child_id, pe.parent_id, a.depth + 1 ` +
         `FROM page_edges pe ` +
         `JOIN ancestors a ON pe.child_id = a.parent_id` +
         `) SELECT * FROM ancestors ORDER BY depth DESC`;
@@ -187,7 +185,6 @@ class PageController implements IBaseController<Schema.Page> {
       const crumbs = await db.sqlRaw<{
         id: string;
         parent_id: string;
-        slug: string | null;
         depth: number;
       }>({ text, values: [targetPageId] }, "query");
 
