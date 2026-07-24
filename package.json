@@ -12,6 +12,7 @@
     "migrate": "tsx --env-file=.env.development src/core/scripts/migrate.ts",
     "migrate:prod": "tsx --env-file=.env.production src/core/scripts/migrate.ts",
     "seed": "tsx --env-file=.env.development --env-file=.env.seed src/core/scripts/seed.ts",
+    "test": "vitest run",
     "test:sql-injection": "tsx --env-file=.env.development src/core/scripts/sql-injection-test.ts"
   },
   "keywords": [],
@@ -20,6 +21,7 @@
   "type": "module",
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
@@ -29,11 +31,14 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "express-rate-limit": "^8.5.2",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "socket.io": "^4.8.3",
     "squel": "^6.0.7",

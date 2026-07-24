@@ -162,15 +162,36 @@ páginas com `data: {}`. Foram gravadas à mão pelo `PUT /pages/:id`.
 
 ## 3. Rotas que o frontend consome
 
-Todas exigem `Authorization: Bearer <access token>`.
+As rotas de dados exigem `Authorization: Bearer <access token>`. As de sessão
+usam o **cookie** de refresh — ver o quadro de auth abaixo.
 
 | Rota | Papel no fluxo | Consumidor |
 |---|---|---|
-| `POST /api/auth/login` `/register` | par de tokens | `AuthService` |
+| `POST /api/auth/login` `/register` | `{ user, accessToken }` + cookie de refresh | `AuthService` |
+| `POST /api/auth/refresh` | novo access token (cookie → cookie) | `ApiService` |
+| `POST /api/auth/logout` | revoga a sessão, limpa o cookie | `AuthService.signOut` |
+| `GET /api/auth/me` | o usuário do token (sustenta o guard) | `AuthService.restore` |
 | `GET /api/workspaces/:id/page_root` | resolve o **ponto de entrada** (GET-or-create) | `getEntryPage` |
 | `GET /api/pages/:id` | a página; `data` traz o **snapshot** | `getPage` → `settings` |
 | `GET /api/pages/parent/:id/columns` | definição das colunas | `getColumns` → `headerCols` |
 | `GET /api/pages/:id/page` | filhas + valores (as linhas) | `getChildren` → `rows` |
+
+### Auth por cookie (o refresh não trafega no corpo)
+
+O par JWT vai para lugares diferentes de propósito: o **refresh** (7d) só existe
+como cookie `HttpOnly` (JS não lê → XSS não exfiltra); o **access** (15min) vai
+no corpo e mora em MEMÓRIA no frontend (some no reload). A sessão sobrevive ao
+F5 pelo cookie, via `restore()` (`/auth/refresh` → `/auth/me`).
+
+- **Escrita sempre por HTTP** já valia para a base; agora vale para a sessão
+  também — o cookie é a única credencial persistida, e ela é do servidor.
+- `refresh`/`logout` exigem o header `X-Cubs-Client` (guarda de CSRF;
+  `SameSite=Lax` já fecha o vetor, o header é a segunda camada). Sem ele: 403.
+- `logout` **revoga de verdade** (incrementa `users.token_version`): um refresh
+  vazado morre no logout, não só quando expira.
+- Política do cookie por ambiente (dev `cubs_rt` sem Secure; prod
+  `__Host-cubs_rt` com Secure) é fonte única em `core/auth/cookie.config.ts`.
+- Como testar isso no Insomnia (o refresh saiu do corpo): `docs/INSOMNIA.md`.
 
 `loadPage(pageId)` dispara as três leituras em paralelo e passa por
 `parseDatabase`. `loadWorkspace` é só `getEntryPage` seguido de `loadPage`.
@@ -196,7 +217,7 @@ página de entrada). "Root" é convenção falada, não estado da página nem co
 
 | Peça | Status |
 |---|---|
-| Auth (login/register/refresh, JWT + rotação) | ✅ |
+| Auth (refresh em cookie HttpOnly, access em memória, logout revoga) | ✅ |
 | Prefixo `/api` ponta a ponta | ✅ verificado dev (Vite) e prod (nginx) |
 | Leitura de base (workspace → página → filhas → UI) | ✅ |
 | Snapshot: formato + leitura | ✅ |
@@ -227,7 +248,10 @@ O sintoma é confuso: `GET /workspaces/:id/page_root` responde **404
 browser (token velho). Se a resposta muda com o token, o problema é de sessão —
 não de rota nem de proxy. Um 404 de proxy nunca chega no SQL.
 
-**Solução:** `localStorage.clear()` e login de novo.
+**Solução:** logout e login de novo. (A sessão não mora mais no `localStorage`
+— é o cookie de refresh + o access em memória. Um "hard reload" não basta,
+porque o cookie válido restaura o mesmo token fantasma; o logout REVOGA. Se
+precisar forçar pela mão, apague o cookie `cubs_rt` no devtools e recarregue.)
 
 ### 5.2 `page_root` só existe para UM dono por workspace
 

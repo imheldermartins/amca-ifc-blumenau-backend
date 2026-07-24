@@ -8,11 +8,14 @@ export namespace Schema {
   export interface Users extends User {}
 
   /**
-   * Uso INTERNO (auth). Inclui o hash da senha que vive na coluna users.password_hash.
+   * Uso INTERNO (auth). Inclui o hash da senha que vive na coluna
+   * users.password_hash e o token_version (o kill switch dos refresh tokens).
    * NUNCA serializar em respostas HTTP -- use o tipo `User` público para isso.
    */
   export interface UserCredentials extends User {
     password_hash: string | null;
+    /** Incrementado no logout: invalida todo refresh já emitido para a conta. */
+    token_version: number;
   }
 
   // --- 2. WORKSPACES ---

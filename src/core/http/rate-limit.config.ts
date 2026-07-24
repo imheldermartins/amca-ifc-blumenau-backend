@@ -7,9 +7,13 @@ import { StatusCode } from "@core/http/status-code";
  *
  *  - globalRateLimit: todas as rotas HTTP. Generoso — só corta abuso
  *    (RATE_LIMIT_MAX req por RATE_LIMIT_WINDOW_MS; default 300/min).
- *  - authRateLimit: só /auth (login/register/refresh). Agressivo — poucas
- *    tentativas por janela para frear adivinhação de senha
- *    (AUTH_RATE_LIMIT_MAX por AUTH_RATE_LIMIT_WINDOW_MS; default 20/15min).
+ *  - authRateLimit: SÓ /auth/login e /auth/register (aplicado por-rota no
+ *    auth-router, não no router todo). Agressivo — poucas tentativas por
+ *    janela para frear adivinhação de SENHA (AUTH_RATE_LIMIT_MAX por
+ *    AUTH_RATE_LIMIT_WINDOW_MS; default 20/15min). refresh/logout/me NÃO
+ *    entram aqui: não adivinham senha, e o refresh é a checagem de sessão do
+ *    boot — sob o agressivo, o próprio app estourava o limite e travava o
+ *    login.
  *
  * Atrás do nginx (prod), TRUST_PROXY=1 é obrigatório (ver http-server.ts):
  * sem ele o IP visto aqui seria o do proxy, e o limite valeria para TODOS

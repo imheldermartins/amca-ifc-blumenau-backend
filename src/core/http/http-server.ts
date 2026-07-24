@@ -1,6 +1,8 @@
 import express, { type Express, type Router, type RequestHandler } from "express";
 import { corsConfig } from "@core/http/cors.config";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "@core/http/swagger.config";
 import { globalRateLimit } from "@core/http/rate-limit.config";
@@ -43,9 +45,26 @@ export default class HttpServer {
       this.app.set("trust proxy", 1);
     }
 
+    // helmet: cabeçalhos de defesa em profundidade (HSTS, nosniff, frameguard,
+    // sem x-powered-by). A CSP fica DESLIGADA aqui de propósito — este servidor
+    // só devolve JSON, e uma CSP em resposta de API não protege nada. Quem
+    // precisa dela é o SPA, e ela mora no nginx que serve o build.
+    this.app.use(helmet({ contentSecurityPolicy: false }));
+
     this.app.use(globalRateLimit);
     this.app.use(cors(corsConfig));
-    this.app.use(express.json());
+
+    // Limite EXPLÍCITO de corpo. O default do express também é 100kb, mas
+    // implícito: deixar escrito é o que impede alguém de aumentar sem pensar.
+    // O maior payload legítimo é o snapshot das views (`pages.data`), que
+    // cresce com colunas × views — 256kb dá folga larga sem virar vetor de
+    // memória.
+    this.app.use(express.json({ limit: "256kb" }));
+
+    // Necessário para ler o cookie de sessão (o refresh) em /auth/refresh e
+    // /auth/logout — sem isto, req.cookies é undefined.
+    this.app.use(cookieParser());
+
     this.app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
   }
 
