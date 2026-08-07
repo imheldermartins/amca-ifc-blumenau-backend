@@ -3,10 +3,13 @@ import db from "@models/index";
 import type { Model } from "@/core/db/model";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
+import { VALUE_CODECS } from "@/services/value-codec";
 
 const COLUMN_TYPES: readonly Schema.ColumnType[] = ["text", "numeric", "select", "date", "checkbox"];
 const COLOR_OPTIONS: readonly Schema.ColorOptions[] = ["red", "orange", "yellow", "green", "blue", "grey"];
 const NUMBER_FORMATS: readonly Schema.NumberFormat[] = ["percentage", "currency"];
+const CURRENCY_CODES: readonly Schema.CurrencyCode[] = ["BRL"];
+const TEXT_MASKS: readonly Schema.TextMask[] = ["cpf", "cep", "phone-br", "date"];
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
 
 const isColumnType = (value: unknown): value is Schema.ColumnType =>
@@ -15,6 +18,30 @@ const isColorOption = (value: unknown): value is Schema.ColorOptions =>
   typeof value === "string" && (COLOR_OPTIONS as readonly string[]).includes(value);
 const isNumberFormat = (value: unknown): value is Schema.NumberFormat =>
   typeof value === "string" && (NUMBER_FORMATS as readonly string[]).includes(value);
+const isCurrencyCode = (value: unknown): value is Schema.CurrencyCode =>
+  typeof value === "string" && (CURRENCY_CODES as readonly string[]).includes(value);
+const isTextMask = (value: unknown): value is Schema.TextMask =>
+  typeof value === "string" && (TEXT_MASKS as readonly string[]).includes(value);
+
+/**
+ * Config BASE de um tipo — o `data` "limpo", sem herança de outros tipos. É o
+ * destino do "reset de tipos" (rota /reset) e o ponto de partida do create.
+ * `select` nasce com `options: []`; os demais com `{}`.
+ */
+const baseData = (type: Schema.ColumnType): Schema.PageColumnData =>
+  type === "select" ? { options: [] } : {};
+
+/**
+ * Valor de célula PADRÃO por tipo, aplicado pelo /reset às células divergentes.
+ * `clear` = apagar o valor (célula fica vazia); os demais gravam o default.
+ */
+const CELL_RESET: Record<Schema.ColumnType, { clear: true } | { clear: false; value: unknown }> = {
+  text: { clear: false, value: "" },
+  numeric: { clear: false, value: 0 },
+  checkbox: { clear: false, value: false },
+  select: { clear: true },
+  date: { clear: true },
+};
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : "Erro no servidor";
@@ -97,7 +124,8 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
 
     let data: Schema.PageColumnData;
     try {
-      data = this.buildData(type, input);
+      // Parte da base do tipo e mescla o que vier no payload (whitelist).
+      data = this.mergeData(baseData(type), input);
     } catch (error) {
       return { ok: false, reason: "validation", message: messageOf(error) };
     }
@@ -138,9 +166,19 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     const payload: UpdateValues<Schema.PageColumn> = {};
     if (input.name !== undefined) payload.name = input.name;
     if (input.type !== undefined) payload.type = input.type;
-    if (input.options !== undefined || input.format !== undefined) {
+
+    // O `data` é PARCIAL e ACUMULA: mescla o que vier com o `existing.data`, sem
+    // apagar o config de outro tipo (a preservação da troca de tipo) e sem
+    // deixar passar chave desconhecida (whitelist). Trocar SÓ o `type` não mexe
+    // no data — o config antigo fica preservado para um eventual retrocesso.
+    const hasConfig =
+      input.options !== undefined ||
+      input.format !== undefined ||
+      input.currency !== undefined ||
+      input.mask !== undefined;
+    if (hasConfig) {
       try {
-        payload.data = this.buildData(effectiveType, input);
+        payload.data = this.mergeData(existing.data, input);
       } catch (error) {
         return { ok: false, reason: "validation", message: messageOf(error) };
       }
@@ -164,34 +202,137 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
   }
 
   /**
-   * Monta o `data` da coluna a partir do payload dinâmico por tipo:
-   *  - `select`  -> exige `options` (array de { value, color? }); normaliza cada uma
-   *    (gera o ULID do id; color é opcional).
-   *  - `numeric` -> `format?` ('percentage' | 'currency'), só armazenado.
-   *  - demais    -> `{}` (sem config).
-   * Lança (mensagem pt-BR) em configuração inválida.
+   * Mescla o `data` existente com o payload, chave a chave, VALIDANDO cada uma
+   * pelo seu domínio e IGNORANDO qualquer chave desconhecida (whitelist nas
+   * DUAS pontas: parte só das chaves conhecidas do existente, então lixo de um
+   * write antigo não sobrevive). Lança (pt-BR) em valor inválido de chave
+   * conhecida.
+   *
+   * NÃO filtra por tipo de propósito: o `data` ACUMULA config de vários tipos
+   * (a preservação da troca de tipo). A limpeza vem só pelo `resetColumn`.
    */
-  private buildData(
-    type: Schema.ColumnType,
-    input: { options?: unknown; format?: unknown },
+  private mergeData(
+    existing: Schema.PageColumnData | undefined,
+    input: { options?: unknown; format?: unknown; currency?: unknown; mask?: unknown },
   ): Schema.PageColumnData {
-    if (type === "select") {
-      const options = input.options;
-      if (!Array.isArray(options)) {
+    const data: Schema.PageColumnData = {};
+
+    // 1) preserva só o que o existente tem de VÁLIDO.
+    if (Array.isArray(existing?.options)) data.options = existing.options;
+    if (isNumberFormat(existing?.format)) data.format = existing.format;
+    if (isCurrencyCode(existing?.currency)) data.currency = existing.currency;
+    if (isTextMask(existing?.mask)) data.mask = existing.mask;
+
+    // 2) aplica o payload, chave a chave. Convenção:
+    //    - undefined = não veio → PRESERVA o que estava;
+    //    - null      = LIMPA aquela config (ex.: "nenhuma máscara");
+    //    - valor     = valida e grava.
+    if (input.options === null) delete data.options;
+    else if (input.options !== undefined) {
+      if (!Array.isArray(input.options)) {
         throw new Error(`Configuração de opções inválida para a coluna "select"`);
       }
-      return { options: options.map((option) => this.normalizeOption(option)) };
+      data.options = input.options.map((option) => this.normalizeOption(option));
     }
 
-    if (type === "numeric") {
-      if (input.format === undefined) return {};
-      if (!isNumberFormat(input.format)) {
-        throw new Error("Formato numérico inválido");
+    if (input.format === null) delete data.format;
+    else if (input.format !== undefined) {
+      if (!isNumberFormat(input.format)) throw new Error("Formato numérico inválido");
+      data.format = input.format;
+    }
+
+    if (input.currency === null) delete data.currency;
+    else if (input.currency !== undefined) {
+      if (!isCurrencyCode(input.currency)) throw new Error("Moeda inválida");
+      data.currency = input.currency;
+    }
+
+    if (input.mask === null) delete data.mask;
+    else if (input.mask !== undefined) {
+      if (!isTextMask(input.mask)) throw new Error("Máscara inválida");
+      data.mask = input.mask;
+    }
+
+    return data;
+  }
+
+  /**
+   * "Reset de tipos" — a limpeza DESTRUTIVA que resolve a divergência. Grava o
+   * `data` na BASE do tipo atual (descarta o config preservado dos outros
+   * tipos) e sobrescreve as células cujo valor não valida mais sob a base
+   * (`CELL_RESET`: apaga ou grava o default do tipo). Devolve a coluna já em
+   * base e os `page_id` tocados, para a rota emitir os eventos de realtime.
+   */
+  async resetColumn(
+    lookup: LookupValues<Schema.PageColumn>,
+  ): Promise<ServiceResult<{ column: Schema.PageColumn; resetPageIds: string[] }>> {
+    const existing = await this.db.find(lookup);
+    if (!existing) {
+      return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
+    }
+    if (!isColumnType(existing.type)) {
+      return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
+    }
+
+    try {
+      const base = baseData(existing.type);
+      await this.db.update(
+        { data: base } as UpdateValues<Schema.PageColumn>,
+        lookup,
+      );
+
+      const column = await this.db.find(lookup);
+      if (!column) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+
+      const resetPageIds = await this.resetDivergingValues(column);
+      return { ok: true, data: { column, resetPageIds } };
+    } catch (error) {
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+  }
+
+  /**
+   * Percorre os valores da coluna e, para cada célula cujo valor NÃO valida sob
+   * a coluna (já em base), aplica o `CELL_RESET` do tipo (apaga ou grava o
+   * default). Devolve os `page_id` tocados. A divergência é medida contra a
+   * BASE — para select isso zera todas as células (base sem options), o
+   * "reset total" pretendido.
+   */
+  private async resetDivergingValues(column: Schema.PageColumn): Promise<string[]> {
+    const codec = VALUE_CODECS[column.type];
+    if (!codec) return [];
+
+    const values = (await db.pageColumnValues.findAll({
+      page_column_id: column.id,
+    } as unknown as LookupsConfig<Schema.PageColumnValue>)) ?? [];
+
+    const reset = CELL_RESET[column.type];
+    const touched: string[] = [];
+
+    for (const row of values) {
+      if (!row.page_id) continue;
+
+      let valid = true;
+      try {
+        codec.validate(codec.decode(row.data as unknown as string), column);
+      } catch {
+        valid = false;
       }
-      return { format: input.format };
+      if (valid) continue;
+
+      if (reset.clear) {
+        await db.pageColumnValues.delete({ id: row.id } as LookupValues<Schema.PageColumnValue>);
+      } else {
+        await db.pageColumnValues.update(
+          { data: codec.encode(reset.value) } as unknown as UpdateValues<Schema.PageColumnValue>,
+          { id: row.id } as LookupValues<Schema.PageColumnValue>,
+        );
+      }
+      touched.push(row.page_id);
     }
 
-    return {};
+    return touched;
   }
 
   private normalizeOption(option: unknown): Schema.SelectOption {

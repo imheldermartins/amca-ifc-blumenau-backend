@@ -797,6 +797,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     this.router.get("/parent/:id/columns", middleware.handle, requirePageAccess(), this.listColumns.bind(this));
     this.router.get("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.getColumn.bind(this));
     this.router.put("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.updateColumn.bind(this));
+    this.router.post("/parent/:id/columns/:column_id/reset", middleware.handle, requirePageAccess(), this.resetColumn.bind(this));
     this.router.delete("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.deleteColumn.bind(this));
 
     // Valor (célula) de uma coluna numa página (:id = page_id da linha, :column_id = coluna).
@@ -1026,6 +1027,8 @@ class PageRouter extends BaseRouter<Schema.Page> {
       ...(body.name !== undefined && { name: body.name }),
       ...(body.options !== undefined && { options: body.options }),
       ...(body.format !== undefined && { format: body.format }),
+      ...(body.currency !== undefined && { currency: body.currency }),
+      ...(body.mask !== undefined && { mask: body.mask }),
       ...(type !== undefined && { type }),
       parent_id: req.params.id as Schema.PageColumn["parent_id"],
     });
@@ -1068,6 +1071,8 @@ class PageRouter extends BaseRouter<Schema.Page> {
       ...(body.name !== undefined && { name: body.name }),
       ...(body.options !== undefined && { options: body.options }),
       ...(body.format !== undefined && { format: body.format }),
+      ...(body.currency !== undefined && { currency: body.currency }),
+      ...(body.mask !== undefined && { mask: body.mask }),
       ...(type !== undefined && { type }),
     };
 
@@ -1092,6 +1097,45 @@ class PageRouter extends BaseRouter<Schema.Page> {
     });
 
     return res.status(StatusCode.OK).json(result.data);
+  }
+
+  // POST /pages/parent/:id/columns/:column_id/reset -- "reset de tipos".
+  private async resetColumn(req: Request, res: Response): Promise<Response> {
+    const result = await pageColumnController.resetColumn(
+      { id: req.params.column_id, parent_id: req.params.id } as LookupValues<Schema.PageColumn>,
+    );
+
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    const { column, resetPageIds } = result.data;
+    const now = new Date().toISOString();
+
+    // A coluna voltou à base (sala da parent). O client substitui a coluna.
+    realtimeService.emitColumnUpdated({
+      pageId: req.params.id as string,
+      columnId: req.params.column_id as string,
+      column,
+      updatedAt: now,
+      originUserId: req.userId as string,
+    });
+
+    // Cada célula tocada: o valor divergente foi apagado/resetado. `value: null`
+    // cobre o apagado; o cliente relê a base no `reload` do reset de qualquer
+    // forma (mudança em massa), então o payload aqui é a notificação.
+    for (const pageId of resetPageIds) {
+      realtimeService.emitCellUpdated({
+        pageId: req.params.id as string,
+        rowId: pageId,
+        columnId: req.params.column_id as string,
+        value: null,
+        updatedAt: now,
+        originUserId: req.userId as string,
+      });
+    }
+
+    return res.status(StatusCode.OK).json(column);
   }
 
   // DELETE /pages/parent/:id/columns/:column_id

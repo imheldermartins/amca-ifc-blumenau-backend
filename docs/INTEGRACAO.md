@@ -175,6 +175,19 @@ usam o **cookie** de refresh — ver o quadro de auth abaixo.
 | `GET /api/pages/:id` | a página; `data` traz o **snapshot** | `getPage` → `settings` |
 | `GET /api/pages/parent/:id/columns` | definição das colunas | `getColumns` → `headerCols` |
 | `GET /api/pages/:id/page` | filhas + valores (as linhas) | `getChildren` → `rows` |
+| `PUT /api/pages/parent/:id/columns/:cid` | config da coluna (name/type/options/**format/currency/mask**) | menu de coluna |
+| `POST /api/pages/parent/:id/columns/:cid/reset` | "reset de tipos" (zera o `data`, reseta células divergentes) | `onColumnReset` |
+
+### Config de coluna (`page_columns.data`) e troca de tipo
+
+`data` ACUMULA o config de vários tipos: `options` (select), `format`+`currency`
+(numeric), `mask` (text). Trocar o tipo é **não-destrutivo** — o `buildData`
+MESCLA (preserva o config do tipo antigo) e faz **whitelist** (chave desconhecida
+não persiste; no PUT, `null` numa chave a LIMPA). A limpeza total é só o
+`/reset`: volta o `data` à base do tipo e sobrescreve as células cujo valor não
+valida mais (numeric→0, checkbox→false, text→"", select/date→vazio). `mask` e
+`currency` são novos no `data`; hoje só a moeda BRL e as máscaras cpf/cep/
+phone-br/date. Ver `page-column-controller.mergeData`/`resetColumn`.
 
 ### Auth por cookie (o refresh não trafega no corpo)
 

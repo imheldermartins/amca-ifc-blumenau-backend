@@ -30,16 +30,32 @@ export namespace Input {
 
   // --- Page Columns (payload dinâmico por tipo; `type` normalmente vem da ?type) ---
   // select  -> { options: [{ value, color? }] }  (id gerado no backend)
-  // numeric -> { format? }                        ('percentage' | 'currency')
-  // text/date/checkbox -> sem config
+  // numeric -> { format? } (+ { currency? } quando format = currency)
+  // text    -> { mask? }
+  // date/checkbox -> sem config
+  //
+  // O update é PARCIAL e o `data` ACUMULA (o buildData mescla): mandar só
+  // `format` não apaga um `mask` já gravado. Ver page-column-controller.
   export type CreatePageColumn = {
     name?: string | null;
     type?: Schema.ColumnType;
     options?: { value: string; color?: Schema.ColorOptions }[];
     format?: Schema.NumberFormat;
+    currency?: Schema.CurrencyCode;
+    mask?: Schema.TextMask;
     parent_id?: Schema.PageColumn["parent_id"];
   };
-  export type UpdatePageColumn = Omit<CreatePageColumn, "parent_id">;
+
+  // No UPDATE, cada config aceita `null` = LIMPAR aquela chave (ex.: tirar a
+  // máscara). `undefined`/ausente = preserva. Ver mergeData no controller.
+  export type UpdatePageColumn = {
+    name?: string | null;
+    type?: Schema.ColumnType;
+    options?: { value: string; color?: Schema.ColorOptions }[] | null;
+    format?: Schema.NumberFormat | null;
+    currency?: Schema.CurrencyCode | null;
+    mask?: Schema.TextMask | null;
+  };
 
   // --- Page Columns Values (valor "nu", dinâmico por tipo; sem ?type) ---
   // A célula (page_id, page_column_id) vem SEMPRE da URL -- única por banco.

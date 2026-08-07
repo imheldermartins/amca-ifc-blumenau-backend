@@ -58,10 +58,32 @@ export namespace Schema {
   // Formato de exibição de uma coluna `numeric` (só armazenado; parse é posterior).
   export type NumberFormat = 'percentage' | 'currency';
 
-  // Config da coluna (page_columns.data): `options` (select) / `format` (numeric).
+  // Moeda de uma coluna `numeric` com format `currency`. Espelha o CurrencyCode
+  // do front (cubs-components/lib/masks.ts). Por ora só BRL; ampliar exige
+  // registrar a moeda LÁ (formatter Intl) e aqui.
+  export type CurrencyCode = 'BRL';
+
+  // Máscara de uma coluna `text`. Espelha as máscaras de PATTERN do front
+  // (applyMask); percentage/currency são de numeric, não entram aqui.
+  export type TextMask = 'cpf' | 'cep' | 'phone-br' | 'date';
+
+  /**
+   * Config da coluna (page_columns.data) — por tipo:
+   *  - select  -> `options`
+   *  - numeric -> `format` (+ `currency` quando `format = currency`)
+   *  - text    -> `mask`
+   *
+   * IMPORTANTE: o `data` ACUMULA o config de vários tipos de propósito. Trocar o
+   * tipo da coluna NÃO apaga o config do tipo anterior (ex.: `text→numeric`
+   * preserva o `mask`), para que reverter o tipo restaure tudo. A limpeza só
+   * acontece no "reset de tipos" (destrutivo, explícito). Ver `buildData` no
+   * page-column-controller e a rota /reset.
+   */
   export interface PageColumnData {
     options?: SelectOption[];
     format?: NumberFormat;
+    currency?: CurrencyCode;
+    mask?: TextMask;
   }
 
   export interface PageColumn extends EntityBase {
