@@ -26,11 +26,13 @@ export interface ServerRoute {
 export default class HttpServer {
   private readonly app: Express;
   private readonly port: number;
+  private readonly host: string | undefined;
   private readonly routes: ServerRoute[];
 
   public constructor(routes: ServerRoute[], port: number = Number(process.env.PORT) || 3000) {
     this.app = express();
     this.port = port;
+    this.host = process.env.HOST?.trim() || undefined;
     this.routes = routes;
 
     this.setupGlobalMiddlewares();
@@ -87,9 +89,13 @@ export default class HttpServer {
   public start(): void {
     this.mountRoutes();
 
-    const server = this.app.listen(this.port, () => {
-      console.log(`Server running on http://localhost:${this.port}`);
-    });
+    const onListening = () => {
+      const advertisedHost = this.host ?? "localhost";
+      console.log(`Server running on http://${advertisedHost}:${this.port}`);
+    };
+    const server = this.host
+      ? this.app.listen(this.port, this.host, onListening)
+      : this.app.listen(this.port, onListening);
 
     // Socket.io pega carona no mesmo http.Server/porta do express.
     socketServer.attach(server);

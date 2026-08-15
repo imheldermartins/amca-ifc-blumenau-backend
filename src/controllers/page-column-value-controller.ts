@@ -90,9 +90,7 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
       return { ok: false, reason: "validation", message: "page_id é obrigatório" };
     }
 
-    const column = await db.pageColumns.find(
-      { id: input.page_column_id } as LookupValues<Schema.PageColumn>,
-    );
+    const column = await this.findColumnForCell(input.page_id, input.page_column_id);
     if (!column) {
       return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
     }
@@ -142,7 +140,7 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
       return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
     }
 
-    const column = await db.pageColumns.find({ id: columnId } as LookupValues<Schema.PageColumn>);
+    const column = await this.findColumnForCell(pageId, columnId);
     if (!column) {
       return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
     }
@@ -183,10 +181,9 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
         return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
       }
 
-      const column = await db.pageColumns.find({ id: columnId } as LookupValues<Schema.PageColumn>);
+      const column = await this.findColumnForCell(pageId, columnId);
       if (!column || !VALUE_CODECS[column.type]) {
-        // FK garante a coluna; ausência aqui é estado inesperado.
-        return { ok: false, reason: "server_error", message: "Erro no servidor" };
+        return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
 
       return { ok: true, data: this.toDecoded(row, column) };
@@ -201,6 +198,14 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
       const row = await this.findCell(pageId, columnId);
       if (!row) {
         return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
+      }
+
+      // A coluna precisa pertencer à parent DIRETA da página-linha. Sem esta
+      // checagem, qualquer columnId conhecido podia ser combinado com uma row
+      // acessível e apagar uma célula cruzada entre duas databases.
+      const column = await this.findColumnForCell(pageId, columnId);
+      if (!column) {
+        return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
 
       const deleted = await this.db.delete({ id: row.id } as LookupValues<Schema.PageColumnValue>);
@@ -219,6 +224,33 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
     return this.db.find(
       { page_id: pageId, page_column_id: columnId } as LookupValues<Schema.PageColumnValue>,
     );
+  }
+
+  /**
+   * Resolve a coluna somente quando ela pertence à parent DIRETA da row.
+   *
+   * `page_columns.parent_id` define a database dona da coluna e `page_edges`
+   * liga essa parent à página-filha usada como linha. Validar apenas a
+   * existência isolada dos dois ids aceitava combinações entre databases.
+   * O mesmo 404 de coluna cobre ausência e relação inválida, sem revelar ids.
+   */
+  private async findColumnForCell(
+    pageId: string | null | undefined,
+    columnId: string | null | undefined,
+  ): Promise<Schema.PageColumn | null> {
+    if (!pageId || !columnId) return null;
+
+    const column = await db.pageColumns.find(
+      { id: columnId } as LookupValues<Schema.PageColumn>,
+    );
+    if (!column?.parent_id) return null;
+
+    const edge = await db.pageEdges.find({
+      parent_id: column.parent_id,
+      child_id: pageId,
+    } as LookupValues<Schema.PageEdge>);
+
+    return edge ? column : null;
   }
 
   // Resolve o valor "nu" do payload dinâmico: coluna `date` aceita

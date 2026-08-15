@@ -8,8 +8,9 @@ type QuerySuccess<T> = {
 };
 
 type ExecuteSuccess = {
-    last_insert_id: number;
     rows_affected: number;
+    last_insert_id?: number;
+    rows?: null;
 };
 
 type SuccessResult<T> = T[] | boolean;

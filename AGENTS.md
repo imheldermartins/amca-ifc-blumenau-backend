@@ -3,6 +3,9 @@
 API Express + socket.io do Cub's (plataforma de páginas estilo Notion-lite),
 persistindo em **rqlite** (SQLite distribuído, falado via HTTP).
 
+Para o contrato cross-repo de edição e diagnóstico da `CubsDatabase`, leia
+também [`../cubs-frontend/CODEX.md`](../cubs-frontend/CODEX.md).
+
 ## Comandos
 
 - `docker compose -f docker/docker-compose.dev.yml up -d` — rqlite dev

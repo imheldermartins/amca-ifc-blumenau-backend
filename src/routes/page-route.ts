@@ -1171,7 +1171,10 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
     // Célula que NASCE é `cell-updated` como qualquer outra: para quem assiste,
     // "estava vazia, agora tem valor" é a mesma coisa que uma edição.
-    await this.emitCell(req, body.value ?? null);
+    // O evento leva a fonte de verdade confirmada pelo codec. Para `date`, por
+    // exemplo, `{ startDate, endDate }` é persistido como `start@end`; olhar
+    // apenas `body.value` emitia `null` apesar de o banco conter o range.
+    await this.emitCell(req, result.data.value);
 
     return res.status(StatusCode.CREATED).json(result.data);
   }
@@ -1208,7 +1211,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
 
-    await this.emitCell(req, body.value ?? null);
+    await this.emitCell(req, result.data.value);
 
     return res.status(StatusCode.OK).json(result.data);
   }

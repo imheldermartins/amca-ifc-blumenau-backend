@@ -29,8 +29,10 @@ interface RealtimePayload {
   pageId: string;
   /** Carimbo do commit (ISO). O client descarta evento mais VELHO que o dado. */
   updatedAt: string;
-  /** Quem originou. O client ignora o próprio eco (não é do socket: é do USUÁRIO,
-   *  então duas abas da mesma conta também não brigam entre si). */
+  /**
+   * Quem originou, para auditoria e feedback. Não controla a audiência:
+   * dono e colaboradores recebem inclusive o próprio eco autoritativo.
+   */
   originUserId: string;
 }
 
@@ -171,11 +173,15 @@ class RealtimeService {
   }
 
   /**
-   * Emite para TODA a sala, inclusive quem originou. O filtro de eco fica no
-   * client (por `originUserId`) de propósito: a mesma conta pode ter duas abas
-   * abertas, e `socket.broadcast` só excluiria a aba que escreveu — a outra
-   * ficaria desatualizada. Além disso a escrita entra por HTTP, então aqui nem
-   * sempre existe o socket de origem para excluir.
+   * Emite para TODA a audiência autorizada da página, inclusive quem
+   * originou. Owner e collaborator não formam canais concorrentes: depois do
+   * `canAccessPage`, ambos entram na mesma sala e recebem exatamente o mesmo
+   * broadcast. Essa simetria evita o defeito owner -> collaborator funcionar
+   * diferente de collaborator -> owner.
+   *
+   * Não use `socket.broadcast`: a escrita entra por HTTP, então nem sempre há
+   * um socket de origem para excluir; além disso, excluir uma aba deixaria
+   * outras abas da mesma conta sem o eco autoritativo do commit.
    */
   private emit<E extends keyof RealtimeServerToClientEvents>(
     pageId: string,
