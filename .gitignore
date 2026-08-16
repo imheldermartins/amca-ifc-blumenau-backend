@@ -9,5 +9,12 @@ dist/
 # Envs reais de produção dos containers (os .example ficam no git)
 docker/*.prod.env
 
-.claude
+# Orientações e handoffs de agentes — essenciais localmente, não no repositório
+.agents/
+.claude/
+.codex/
+AGENTS.md
 CLAUDE.md
+CODEX.md
+GEMINI.md
+NEXT_STEPS.md
