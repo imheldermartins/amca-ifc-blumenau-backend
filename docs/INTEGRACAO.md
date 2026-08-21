@@ -68,6 +68,9 @@ personalização das **views** daquela base, indexada pelo ULID da view:
       "page_title",                       // + a coluna sintética de título
       "01KXDN4B3X8J9NXGSTMK8PRFMF"
     ],
+    "orderedRows": [                      // opcional; ordem das páginas-filhas
+      "01KXDN4B3X8J9NXGSTMK8PRFMG"
+    ],
     "columnWidths": {                     // opcional; px por coluna
       "page_title": 280
     }
@@ -115,7 +118,7 @@ deletar uma coluna deixa rastro em `orderedHeaderCols` e `columnWidths` — e
 - **Leitura tolera:** `reorderByIds` da lib ignora ids desconhecidos e joga
   itens fora da lista para o fim. Coluna morta no snapshot **não quebra a UI** —
   vira lixo acumulado, não corrupção. Verificado em 2026-07-19.
-- **Ao implementar a escrita:** não ressuscitar id morto; podar
+- **Durante a escrita:** não ressuscitar id morto; podar
   oportunisticamente é suficiente, já que a gravação reescreve o objeto inteiro.
 
 ⚠️ **Separado disso, e mais sério:** deletar coluna também deixa os VALORES
@@ -142,21 +145,22 @@ efeito do snapshot — é do backend — e está registrado em
 | Formato | ✅ definido e estável |
 | Leitura (backend → UI) | ✅ `parseViewSettings` / `parseDatabase` em `src/lib/databaseParser.ts` |
 | Fallback sem view salva | ✅ `createFallbackViewSettings` (uma tab `table` com todas as colunas) |
-| **Escrita (UI → backend)** | ❌ **não implementada.** `apiService.put` existe mas nunca é chamado; os únicos POSTs do app são `/auth/login` e `/auth/register` |
+| **Escrita (UI → backend)** | ✅ `usePageDatabase` → `PageWriteService.saveViewSnapshot` → `PUT /pages/:id` |
 | Rota dedicada por view | ❌ não existe; hoje só o `PUT /pages/:id` genérico |
 
-As views que existem hoje na base do seed **não vieram do seed** — ele cria
-páginas com `data: {}`. Foram gravadas à mão pelo `PUT /pages/:id`.
+O seed cria páginas com `data: {}`. A leitura monta uma view fallback estável;
+na primeira personalização, o app a materializa com ULID real e grava o
+snapshot completo pelo `PUT /pages/:id`.
 
-### Em aberto (decidir ao implementar a escrita)
+### Persistência e concorrência
 
 - **`FALLBACK_VIEW_ID`** (`01KXVZ0000FALLBACKTABLE001`) é sentinela de cliente e
-  hoje nunca é persistida. Se a escrita salvar `settings` cru, ela vira chave no
-  banco — e não é ULID válido (Crockford base32 exclui `I L O U`). Decidir:
-  materializar com ULID real na primeira gravação, ou filtrar antes de enviar.
+  nunca é persistida. A primeira alteração de ordem/largura materializa a view
+  com ULID real, troca a chave no estado otimista e só então envia o snapshot.
 - **Concorrência:** dois clientes salvando views da mesma página se sobrescrevem
-  (o último `PUT` vence, e leva o `data` inteiro). Só importa quando houver
-  edição simultânea — mesmo momento do realtime (§2 do NEXT_STEPS).
+  (o último `PUT` vence, e leva o `data` inteiro). Dentro de uma sessão, os PUTs
+  de snapshot são serializados e cada um parte do `settingsRef` já atualizado;
+  concorrência entre clientes ainda segue last-write-wins.
 
 ---
 
@@ -234,7 +238,7 @@ página de entrada). "Root" é convenção falada, não estado da página nem co
 | Prefixo `/api` ponta a ponta | ✅ verificado dev (Vite) e prod (nginx) |
 | Leitura de base (workspace → página → filhas → UI) | ✅ |
 | Snapshot: formato + leitura | ✅ |
-| Snapshot: escrita pelo app | ❌ não implementado |
+| Snapshot: escrita pelo app | ✅ (ordem de linhas/colunas e largura) |
 | CRUD de colunas/valores pela UI | ❌ rotas existem no backend, UI não chama |
 | Workspace selecionável | ❌ `FIXED_WORKSPACE_ID` fixo no `DatabaseService` |
 | Realtime (socket.io) | 🔭 base pronta; bloqueado por decisão (NEXT_STEPS §2) |
