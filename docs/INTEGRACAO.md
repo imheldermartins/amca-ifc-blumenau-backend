@@ -4,9 +4,9 @@ Contrato entre os dois repositórios e status de cada peça. Documento **canôni
 do que está acordado — quando o código e este arquivo divergirem, o código ganha
 e este arquivo é o que precisa ser corrigido.
 
-> **Status: 2026-07-19.** Leitura de base ponta a ponta funcionando (workspace →
-> página → filhas). Escrita do snapshot ainda **não implementada no app**.
-> Realtime parado por decisão (ver [NEXT_STEPS.md](../NEXT_STEPS.md) §2).
+> **Status: 2026-08-28.** Leitura e escrita do snapshot funcionam ponta a
+> ponta; a coluna mestra de título tem apresentação por view. O realtime de
+> célula/linha/coluna/view também está ligado nos dois lados.
 
 ---
 
@@ -64,6 +64,11 @@ personalização das **views** daquela base, indexada pelo ULID da view:
     "view": "table",                      // table | board | calendar
     "name": "Docentes",                   // rótulo da tab
     "filters": "",                        // string opaca ("group=<colId>", "order=updated_at")
+    "title": {                            // projeção mestra de pages.title
+      "key": "title",                    // identidade canônica e imutável
+      "column_name": "Docente",          // rótulo desta view
+      "mask": "cpf"                      // opcional; apresentação por view
+    },
     "orderedHeaderCols": [                // ordem das colunas; ids de page_columns
       "page_title",                       // + a coluna sintética de título
       "01KXDN4B3X8J9NXGSTMK8PRFMF"
@@ -133,6 +138,12 @@ efeito do snapshot — é do backend — e está registrado em
 - **`page_title` é coluna sintética**, não uma `page_columns`. O id é
   propositalmente não-ULID (`TITLE_COLUMN_ID`, com `_` e 10 chars) para nunca
   colidir com coluna real e ser reconhecível dentro de `orderedHeaderCols`.
+- A coluna sintética carrega **`key: "title"`**: essa é a ligação imutável
+  com `pages.title`. O `title.column_name` do snapshot é apenas o rótulo da
+  coluna naquela view; renomeá-lo não altera os títulos das páginas. Seu tipo é
+  sempre `text` e não pode ser trocado; `title.mask` continua configurável e
+  também é por view. Snapshots antigos sem `title` recebem a prévia padrão em
+  memória e passam a persistir a identidade na próxima personalização.
 - **Leitura é tolerante:** `parseViewSettings` descarta em silêncio qualquer
   entrada de `data` que não tenha cara de view. `data` é campo livre — o app
   pode guardar outras coisas ali, e elas não devem virar tab quebrada.
