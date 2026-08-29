@@ -252,7 +252,7 @@ página de entrada). "Root" é convenção falada, não estado da página nem co
 | Snapshot: escrita pelo app | ✅ (ordem de linhas/colunas e largura) |
 | CRUD de colunas/valores pela UI | ❌ rotas existem no backend, UI não chama |
 | Workspace selecionável | ❌ `FIXED_WORKSPACE_ID` fixo no `DatabaseService` |
-| Realtime (socket.io) | 🔭 base pronta; bloqueado por decisão (NEXT_STEPS §2) |
+| Realtime (socket.io) | ✅ commits por HTTP + broadcast; resize tem preview volatile durante o drag |
 | Permissões / `page_users` | 📋 só brainstorm (NEXT_STEPS) |
 
 ---

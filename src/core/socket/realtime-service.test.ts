@@ -79,6 +79,20 @@ class FakeSocket {
     return this;
   }
 
+  to(room: string) {
+    const socket = this;
+    return {
+      get volatile() {
+        return this;
+      },
+      emit(event: string, payload: unknown) {
+        for (const socketId of socket.io.sockets.adapter.rooms.get(room) ?? []) {
+          if (socketId !== socket.id) socket.io.socketsById.get(socketId)?.receive(event, payload);
+        }
+      },
+    };
+  }
+
   async join(room: string): Promise<void> {
     this.rooms.add(room);
     const members = this.io.sockets.adapter.rooms.get(room) ?? new Set<string>();
@@ -177,5 +191,42 @@ describe("RealtimeService: audiência owner/collaborator", () => {
     expect(owner.payloads("cell-updated")).toEqual([collaboratorUpdate]);
     expect(collaborator.payloads("cell-updated")).toEqual([collaboratorUpdate]);
     expect(stranger.payloads("cell-updated")).toEqual([]);
+  });
+
+  it("repassa preview volatile somente aos outros membros da sala autorizada", async () => {
+    const io = new FakeIo();
+    realtimeService.initialize(io as unknown as CubsSocketServer);
+    access.canAccessPage.mockImplementation(async (userId, pageId) =>
+      pageId === PAGE_ID && (userId === OWNER_ID || userId === COLLABORATOR_ID),
+    );
+
+    const owner = register(io, "socket-owner", OWNER_ID);
+    const collaborator = register(io, "socket-collaborator", COLLABORATOR_ID);
+    const stranger = register(io, "socket-stranger", STRANGER_ID);
+
+    await owner.trigger("join-page-database", { pageId: PAGE_ID });
+    await collaborator.trigger("join-page-database", { pageId: PAGE_ID });
+    await stranger.trigger("join-page-database", { pageId: PAGE_ID });
+    owner.clear();
+    collaborator.clear();
+    stranger.clear();
+
+    const preview = {
+      pageId: PAGE_ID,
+      viewId: "01KXDN4B9A7MYYCTQS1K452QAA",
+      columnId: COLUMN_ID,
+      width: 384,
+    };
+    await owner.trigger("resize-column", { ...preview, originUserId: STRANGER_ID });
+
+    expect(owner.payloads("column-resizing")).toEqual([]);
+    expect(collaborator.payloads("column-resizing")).toEqual([
+      { ...preview, originUserId: OWNER_ID },
+    ]);
+    expect(stranger.payloads("column-resizing")).toEqual([]);
+
+    await stranger.trigger("resize-column", preview);
+    await owner.trigger("resize-column", { ...preview, width: Number.NaN });
+    expect(collaborator.payloads("column-resizing")).toHaveLength(1);
   });
 });

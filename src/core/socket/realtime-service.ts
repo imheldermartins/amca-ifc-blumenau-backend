@@ -11,9 +11,10 @@ import type { CubsSocket, CubsSocketServer } from "@core/socket/socket-server";
  * justamente quem está olhando a mesma tabela.
  *
  * **Escrita NUNCA passa por aqui.** Quem grava é o HTTP (router → controller →
- * rqlite, sempre no líder do Raft); o socket só propaga o fato DEPOIS do
- * commit. Isso evita escrita duplicada, fora de ordem ou num nó que não é
- * líder — a consistência continua sendo do Raft, o socket é notificação.
+ * rqlite, sempre no líder do Raft). O único tráfego client → sala além da
+ * membresia é o preview EFÊMERO do resize: ele só anima os outros clientes e
+ * nunca toca no banco. A largura definitiva continua vindo do `view-updated`
+ * emitido DEPOIS do commit HTTP.
  *
  * **Autorização no join é obrigatória**: sem ela, qualquer autenticado que
  * adivinhasse um ULID escutaria as edições de outro tenant. A pergunta é a
@@ -24,7 +25,7 @@ import type { CubsSocket, CubsSocketServer } from "@core/socket/socket-server";
  * `joined-page-database`; `cell-updated` etc.
  */
 
-/** Payload comum a todo evento de sala — a base do merge no client. */
+/** Payload comum a todo evento DURÁVEL de sala — a base do merge no client. */
 interface RealtimePayload {
   pageId: string;
   /** Carimbo do commit (ISO). O client descarta evento mais VELHO que o dado. */
@@ -35,6 +36,21 @@ interface RealtimePayload {
    */
   originUserId: string;
 }
+
+/**
+ * Frame efêmero do resize. Não leva `updatedAt` porque não é dado persistido
+ * nem participa do relógio de merge; o snapshot confirmado continua sendo a
+ * única fonte durável da largura.
+ */
+export interface ColumnResizingPayload {
+  pageId: string;
+  viewId: string;
+  columnId: string;
+  width: number;
+  originUserId: string;
+}
+
+export type ResizeColumnCommand = Omit<ColumnResizingPayload, "originUserId">;
 
 export interface CellUpdatedPayload extends RealtimePayload {
   rowId: string;
@@ -85,6 +101,7 @@ export interface RealtimeServerToClientEvents {
   "cell-updated": (payload: CellUpdatedPayload) => void;
   "row-updated": (payload: RowUpdatedPayload) => void;
   "column-updated": (payload: ColumnUpdatedPayload) => void;
+  "column-resizing": (payload: ColumnResizingPayload) => void;
   "view-updated": (payload: ViewUpdatedPayload) => void;
   "row-created": (payload: RowPayload) => void;
   "row-deleted": (payload: RowPayload) => void;
@@ -93,6 +110,7 @@ export interface RealtimeServerToClientEvents {
 export interface RealtimeClientToServerEvents {
   "join-page-database": (payload: { pageId: string }) => void;
   "leave-page-database": (payload: { pageId: string }) => void;
+  "resize-column": (payload: ResizeColumnCommand) => void;
 }
 
 class RealtimeService {
@@ -127,6 +145,25 @@ class RealtimeService {
       if (!pageId) return;
       await socket.leave(roomFor(pageId));
       this.broadcastPresence(pageId);
+    });
+
+    socket.on("resize-column", (payload) => {
+      const preview = readResizeColumn(payload);
+      if (!preview) return;
+
+      // O join já executou `canAccessPage`; conferir a membresia em memória é
+      // suficiente e evita uma consulta de autorização a cada frame do drag.
+      // Também impede um socket autenticado de publicar numa sala que não abriu.
+      const roomName = roomFor(preview.pageId);
+      if (!socket.rooms.has(roomName)) return;
+
+      const room = socket.to(roomName).volatile as unknown as {
+        emit: (event: "column-resizing", payload: ColumnResizingPayload) => void;
+      };
+      room.emit("column-resizing", {
+        ...preview,
+        originUserId: socket.data.userId,
+      });
     });
 
     // Sair da conexão inteira também esvazia as salas — o socket.io remove o
@@ -212,6 +249,23 @@ function readPageId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const pageId = (payload as { pageId?: unknown }).pageId;
   return typeof pageId === "string" && pageId.length > 0 ? pageId : null;
+}
+
+/** Valida o frame sem confiar em ids, largura ou autoria vindos do client. */
+function readResizeColumn(payload: unknown): ResizeColumnCommand | null {
+  if (!payload || typeof payload !== "object") return null;
+  const candidate = payload as Record<string, unknown>;
+  const pageId = readShortText(candidate.pageId);
+  const viewId = readShortText(candidate.viewId);
+  const columnId = readShortText(candidate.columnId);
+  const width = candidate.width;
+  if (!pageId || !viewId || !columnId || typeof width !== "number") return null;
+  if (!Number.isFinite(width) || width <= 0) return null;
+  return { pageId, viewId, columnId, width };
+}
+
+function readShortText(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 && value.length <= 128 ? value : null;
 }
 
 // Singleton: as rotas importam e emitem direto, sem conhecer socket.io.
