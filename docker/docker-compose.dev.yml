@@ -3,8 +3,9 @@
 #
 #   docker compose -f docker/docker-compose.dev.yml up -d
 #
-# As variáveis ${...} podem ser definidas num docker/.env (opcional — os
-# defaults abaixo cobrem o dev local numa máquina só).
+# As variáveis ${...} podem ser definidas no .env da raiz quando o comando
+# acima é executado de lá (opcional — os defaults cobrem o dev local numa
+# máquina só). O perfil LAN usa `--env-file docker/.env.lan` explicitamente.
 services:
   rqlite:
     build:
