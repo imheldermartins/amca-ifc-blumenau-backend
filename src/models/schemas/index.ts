@@ -46,7 +46,17 @@ export namespace Schema {
   export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox';
 
   // Cores aceitas para as opções de uma coluna `select`.
-  export type ColorOptions = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'grey';
+  export const COLOR_OPTIONS = [
+    'red',
+    'pink',
+    'orange',
+    'yellow',
+    'green',
+    'blue',
+    'purple',
+    'grey',
+  ] as const;
+  export type ColorOptions = (typeof COLOR_OPTIONS)[number];
 
   // Uma opção de coluna `select`, persistida em page_columns.data.options.
   export interface SelectOption {

@@ -4,9 +4,10 @@ Contrato entre os dois repositórios e status de cada peça. Documento **canôni
 do que está acordado — quando o código e este arquivo divergirem, o código ganha
 e este arquivo é o que precisa ser corrigido.
 
-> **Status: 2026-08-28.** Leitura e escrita do snapshot funcionam ponta a
-> ponta; a coluna mestra de título tem apresentação por view. O realtime de
-> célula/linha/coluna/view também está ligado nos dois lados.
+> **Status: 2026-08-30.** Leitura, escrita e realtime v1 funcionam ponta a
+> ponta. O protocolo é modular, orientado à página e agnóstico ao renderer;
+> contrato e decisão canônica estão em
+> [ADR 0001](adr/0001-realtime-v1.md).
 
 ---
 
@@ -239,6 +240,50 @@ chamada com outro id.
 A workspace resolve **só o ponto de entrada** (`workspaces.id == pages.id` da
 página de entrada). "Root" é convenção falada, não estado da página nem coluna.
 
+### Realtime v1 (contrato cross-repo)
+
+A escrita é exclusivamente HTTP. Depois que o controller/rqlite confirma, a
+rota chama um método semântico de `PageRealtimePublisher`; Socket.IO apenas
+propaga o fato para `page-database:{pageId}`. Falha de broadcast é logada e não
+transforma uma escrita persistida em falso erro HTTP.
+
+O wire canônico é
+[`src/core/socket/realtime-contract-v1.ts`](../src/core/socket/realtime-contract-v1.ts),
+sem imports internos. O frontend consome uma cópia gerada em
+`src/services/realtime-contract-v1.ts`. Sincronize e confira a partir do
+backend:
+
+```bash
+npm run realtime:contract:sync
+npm run realtime:contract:check
+```
+
+Roteamento dos fatos duráveis:
+
+| Mutação confirmada | Audiência/evento |
+|---|---|
+| valor criado, alterado ou limpo | parent da linha → `cell-updated` |
+| `pages.title` como linha | parent → `row-updated` |
+| `pages.title` como página aberta | própria página → `page-updated` |
+| definição completa de coluna real | página dona → `column-updated` |
+| snapshot completo (`pages.data`) | própria página → `view-updated` |
+| linha criada/excluída | parent → `row-created` / `row-deleted` |
+| coluna criada/excluída | página dona → `column-created` / `column-deleted` |
+
+`column-resizing` é efêmero, específico por `viewId` e não ecoa ao autor. O
+resize final chega no snapshot durável. Owner e collaborator têm a mesma
+audiência; estranho recebe `page-database-denied`. O autor recebe o próprio eco
+durável para selar o relógio do servidor.
+
+No frontend, `PageRealtimeChannel` concentra join/leave/listeners e
+`usePageDatabase` continua sendo o estado canônico `ParsedDatabase`. Eventos
+estruturais e ACKs disparam resync coalescido. Reconexão sempre exige novo join
+e refetch somente depois de `joined-page-database`.
+
+Nenhum nome do protocolo depende de table, board ou calendar. Valor, título da
+linha e metadata de coluna real são globais; nome/máscara da coluna sintética,
+ordens, filtros e larguras continuam dentro do snapshot por view.
+
 ---
 
 ## 4. Status por peça
@@ -250,9 +295,9 @@ página de entrada). "Root" é convenção falada, não estado da página nem co
 | Leitura de base (workspace → página → filhas → UI) | ✅ |
 | Snapshot: formato + leitura | ✅ |
 | Snapshot: escrita pelo app | ✅ (ordem de linhas/colunas e largura) |
-| CRUD de colunas/valores pela UI | ❌ rotas existem no backend, UI não chama |
+| Edição de colunas/valores pela UI | ✅ HTTP otimista + eco pós-commit |
 | Workspace selecionável | ❌ `FIXED_WORKSPACE_ID` fixo no `DatabaseService` |
-| Realtime (socket.io) | ✅ commits por HTTP + broadcast; resize tem preview volatile durante o drag |
+| Realtime v1 (socket.io) | ✅ modular, contrato gerado, resync e smoke multi-cliente |
 | Permissões / `page_users` | 📋 só brainstorm (NEXT_STEPS) |
 
 ---

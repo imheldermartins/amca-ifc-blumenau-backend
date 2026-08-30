@@ -1,115 +1,75 @@
 import type { Server as NodeHttpServer } from "node:http";
-import { Server, type Socket } from "socket.io";
+import { Server } from "socket.io";
 import jwtService from "@core/auth/jwt-service";
 import { corsConfig } from "@core/http/cors.config";
-import realtimeService from "@core/socket/realtime-service";
 import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "@core/socket/realtime-contract-v1";
+import { realtimeChannelRegistry } from "@core/socket/realtime-composition";
+import type { CubsSocket, CubsSocketServer, SocketData } from "@core/socket/socket-types";
+
+export type { CubsSocket, CubsSocketServer, SocketData } from "@core/socket/socket-types";
+export type {
+  ClientToServerEvents,
+  EchoReply,
   RealtimeClientToServerEvents,
   RealtimeServerToClientEvents,
-} from "@core/socket/realtime-service";
-
-/**
- * Contrato de eventos com o frontend (espelhado em
- * cubs-frontend/src/services/SocketService.ts). Ao criar um evento novo,
- * atualize os DOIS lados.
- */
-export interface EchoReply {
-  message: string;
-  userId: string;
-  at: string;
-}
-
-/**
- * Eventos da conexão. Os de SALA (CubsDatabase) são declarados em
- * `realtime-service.ts`, junto dos payloads, e compostos aqui — assim existe
- * UM tipo de servidor, e emitir evento de sala continua checado pelo TS.
- */
-export interface ServerToClientEvents extends RealtimeServerToClientEvents {
-  "presence:count": (count: number) => void;
-  "echo:reply": (payload: EchoReply) => void;
-}
-
-export interface ClientToServerEvents extends RealtimeClientToServerEvents {
-  "echo:send": (message: string) => void;
-}
-
-export interface SocketData {
-  userId: string;
-}
-
-export type CubsSocketServer = Server<
-  ClientToServerEvents,
   ServerToClientEvents,
-  Record<string, never>,
-  SocketData
->;
+} from "@core/socket/realtime-contract-v1";
 
-export type CubsSocket = Socket<
-  ClientToServerEvents,
-  ServerToClientEvents,
-  Record<string, never>,
-  SocketData
->;
+export interface AccessTokenVerifier {
+  verifyAccessToken(token: string): { sub: string };
+}
+
+export interface SocketChannelRegistry {
+  attach(io: CubsSocketServer): void;
+  register(socket: CubsSocket): void;
+}
 
 /**
- * Camada socket.io do Cub's: pega carona no MESMO http.Server/porta do
- * express (attach é chamado dentro de HttpServer.start()).
- *
- * O handshake exige um access token válido — o mesmo JWT das rotas HTTP:
- * o client conecta com `io(url, { auth: { token } })` e o id do usuário
- * fica disponível em `socket.data.userId` para qualquer handler.
- *
- * Eventos atuais (demonstração do canal):
- *  - "presence:count" (server -> todos): total de conexões ativas.
- *  - "echo:send" (client -> server) / "echo:reply" (server -> client):
- *    eco da mensagem, carimbado com userId e timestamp.
+ * Adaptador Socket.IO: cria o servidor, autentica o handshake e entrega cada
+ * conexao ao registry. Regras de pagina e eventos vivem nos channels.
  */
-class SocketServer {
+export class SocketServer {
   private io: CubsSocketServer | null = null;
 
-  public attach(httpServer: NodeHttpServer): void {
-    this.io = new Server(httpServer, { cors: corsConfig });
+  constructor(
+    private readonly registry: SocketChannelRegistry = realtimeChannelRegistry,
+    private readonly tokens: AccessTokenVerifier = jwtService,
+  ) {}
+
+  attach(httpServer: NodeHttpServer): CubsSocketServer {
+    this.io = new Server<
+      ClientToServerEvents,
+      ServerToClientEvents,
+      Record<string, never>,
+      SocketData
+    >(httpServer, { cors: corsConfig });
 
     this.io.use((socket, next) => {
       const token: unknown = socket.handshake.auth?.token;
-
       if (typeof token !== "string" || token.length === 0) {
-        return next(new Error("Não autorizado"));
+        next(new Error("Não autorizado"));
+        return;
       }
 
       try {
-        socket.data.userId = jwtService.verifyAccessToken(token).sub;
+        const { sub } = this.tokens.verifyAccessToken(token);
+        if (typeof sub !== "string" || sub.length === 0) {
+          throw new Error("JWT sem subject");
+        }
+        socket.data.userId = sub;
         next();
       } catch {
         next(new Error("Não autorizado"));
       }
     });
 
-    // A camada de salas (CubsDatabase) recebe o mesmo io já autenticado: o
-    // `socket.data.userId` do middleware acima é o que autoriza cada join.
-    realtimeService.initialize(this.io);
-
-    this.io.on("connection", (socket) => {
-      this.broadcastPresence();
-      realtimeService.registerHandlers(socket);
-
-      socket.on("echo:send", (message) => {
-        socket.emit("echo:reply", {
-          message: String(message),
-          userId: socket.data.userId,
-          at: new Date().toISOString(),
-        });
-      });
-
-      socket.on("disconnect", () => this.broadcastPresence());
-    });
-  }
-
-  private broadcastPresence(): void {
-    if (!this.io) return;
-    this.io.emit("presence:count", this.io.engine.clientsCount);
+    this.registry.attach(this.io);
+    this.io.on("connection", (socket) => this.registry.register(socket));
+    return this.io;
   }
 }
 
-// Singleton: o HttpServer importa e anexa direto, sem conhecer socket.io.
 export default new SocketServer();

@@ -9,7 +9,7 @@ import { BaseRouter } from "@routes/base-router";
 import middleware from "@/core/auth/middleware";
 import { requirePageAccess } from "@/core/auth/page-access-middleware";
 import pageAccessController from "@/controllers/page-access-controller";
-import realtimeService from "@core/socket/realtime-service";
+import pageRealtimePublisher from "@core/socket/page-realtime-publisher";
 import { StatusCode } from "@core/http/status-code";
 
 const reasonToStatus = (reason: ServiceFailureReason): StatusCode => {
@@ -232,7 +232,7 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *           type: string
  *         color:
  *           type: string
- *           enum: [red, orange, yellow, green, blue, grey]
+ *           enum: [red, pink, orange, yellow, green, blue, purple, grey]
  *       required: [value]
  *     PageColumn:
  *       type: object
@@ -336,7 +336,7 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *                       type: string
  *                     color:
  *                       type: string
- *                       enum: [red, orange, yellow, green, blue, grey]
+ *                       enum: [red, pink, orange, yellow, green, blue, purple, grey]
  *                   required: [value]
  *               format:
  *                 type: string
@@ -414,7 +414,7 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *                       type: string
  *                     color:
  *                       type: string
- *                       enum: [red, orange, yellow, green, blue, grey]
+ *                       enum: [red, pink, orange, yellow, green, blue, purple, grey]
  *                   required: [value]
  *               format:
  *                 type: string
@@ -874,47 +874,38 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado ou falha ao atualizar` });
     }
 
-    // Emite só DEPOIS do commit — o socket notifica, nunca grava. As duas
-    // metades desta rota vão para salas DIFERENTES, porque são coisas
-    // diferentes:
-    //
-    //  - `data` é o SNAPSHOT das views desta página → sala da PRÓPRIA página
-    //    (quem está com ela aberta);
-    //  - `title` é o rótulo da página enquanto LINHA de outra → sala da
-    //    PARENT, que é a tabela onde ela aparece.
-    if (data !== undefined) {
-      realtimeService.emitViewUpdated({
-        pageId: req.params.id as string,
-        data,
-        updatedAt: new Date().toISOString(),
-        originUserId: req.userId as string,
-      });
-    }
-
-    if (title !== undefined) {
-      const rowId = req.params.id as string;
-      const parentId = await pageAccessController.getParentId(rowId);
-      if (parentId) {
-        realtimeService.emitRowUpdated({
-          pageId: parentId,
-          rowId,
-          title: title ?? null,
-          updatedAt: new Date().toISOString(),
-          originUserId: req.userId as string,
-        });
-      }
-    }
+    // Publicação pós-commit: um único método semântico roteia snapshot para a
+    // própria página e título para a própria página + parent, com o mesmo
+    // relógio. A rota não conhece rooms, nomes de evento ou Socket.IO.
+    await pageRealtimePublisher.pageChanged({
+      pageId: req.params.id as string,
+      ...(data !== undefined && { data: item.data }),
+      ...(title !== undefined && { title: item.title }),
+      originUserId: req.userId as string,
+    });
 
     return res.status(StatusCode.OK).json(item);
   }
 
   protected override async delete(req: Request, res: Response): Promise<Response> {
+    const rowId = req.params.id as string;
+    // A aresta pode desaparecer com a exclusão; capture o destino antes, mas
+    // publique somente depois do controller confirmar o commit.
+    const parentId = await pageAccessController.getParentId(rowId);
     const deleted = await this.controller.delete(
-      { id: req.params.id, owner_id: req.userId } as LookupValues<Schema.Page>,
+      { id: rowId, owner_id: req.userId } as LookupValues<Schema.Page>,
     );
 
     if (!deleted) {
       return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado` });
+    }
+
+    if (parentId) {
+      await pageRealtimePublisher.rowDeleted({
+        pageId: parentId,
+        rowId,
+        originUserId: req.userId as string,
+      });
     }
 
     return res.status(StatusCode.NO_CONTENT).send();
@@ -928,11 +919,9 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
     }
 
-    // A sala é a PARENT (a tabela aberta), e a linha nova é a filha.
-    realtimeService.emitRowCreated({
+    await pageRealtimePublisher.rowCreated({
       pageId: req.params.id as string,
       rowId: child.id,
-      updatedAt: new Date().toISOString(),
       originUserId: req.userId as string,
     });
 
@@ -1037,6 +1026,12 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
 
+    await pageRealtimePublisher.columnCreated({
+      pageId: req.params.id as string,
+      columnId: result.data.id,
+      originUserId: req.userId as string,
+    });
+
     return res.status(StatusCode.CREATED).json(result.data);
   }
 
@@ -1085,14 +1080,10 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
 
-    // Cobre rename E reordenação/edição de options: a coluna vai INTEIRA, do
-    // jeito que ficou — o client substitui, não remenda. A sala é a parent
-    // (`:id`), que é a tabela onde a coluna vive.
-    realtimeService.emitColumnUpdated({
+    await pageRealtimePublisher.columnUpdated({
       pageId: req.params.id as string,
       columnId: req.params.column_id as string,
       column: result.data,
-      updatedAt: new Date().toISOString(),
       originUserId: req.userId as string,
     });
 
@@ -1109,31 +1100,14 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
 
-    const { column, resetPageIds } = result.data;
-    const now = new Date().toISOString();
-
-    // A coluna voltou à base (sala da parent). O client substitui a coluna.
-    realtimeService.emitColumnUpdated({
+    const { column, resetCells } = result.data;
+    await pageRealtimePublisher.columnReset({
       pageId: req.params.id as string,
       columnId: req.params.column_id as string,
       column,
-      updatedAt: now,
+      cells: resetCells,
       originUserId: req.userId as string,
     });
-
-    // Cada célula tocada: o valor divergente foi apagado/resetado. `value: null`
-    // cobre o apagado; o cliente relê a base no `reload` do reset de qualquer
-    // forma (mudança em massa), então o payload aqui é a notificação.
-    for (const pageId of resetPageIds) {
-      realtimeService.emitCellUpdated({
-        pageId: req.params.id as string,
-        rowId: pageId,
-        columnId: req.params.column_id as string,
-        value: null,
-        updatedAt: now,
-        originUserId: req.userId as string,
-      });
-    }
 
     return res.status(StatusCode.OK).json(column);
   }
@@ -1147,6 +1121,12 @@ class PageRouter extends BaseRouter<Schema.Page> {
     if (!deleted) {
       return res.status(StatusCode.NOT_FOUND).json({ message: `"Page_column" não encontrado` });
     }
+
+    await pageRealtimePublisher.columnDeleted({
+      pageId: req.params.id as string,
+      columnId: req.params.column_id as string,
+      originUserId: req.userId as string,
+    });
 
     return res.status(StatusCode.NO_CONTENT).send();
   }
@@ -1216,23 +1196,12 @@ class PageRouter extends BaseRouter<Schema.Page> {
     return res.status(StatusCode.OK).json(result.data);
   }
 
-  /**
-   * Propaga uma célula para a sala da TABELA. O `:id` da rota é a LINHA (uma
-   * página filha), mas quem tem a página aberta assinou a sala da PARENT — daí
-   * a resolução do parent antes de emitir. Linha sem parent (não deveria
-   * acontecer numa tabela) simplesmente não propaga, em vez de explodir.
-   */
+  /** Publica a célula confirmada; o publisher resolve a parent/room da linha. */
   private async emitCell(req: Request, value: unknown): Promise<void> {
-    const rowId = req.params.id as string;
-    const parentId = await pageAccessController.getParentId(rowId);
-    if (!parentId) return;
-
-    realtimeService.emitCellUpdated({
-      pageId: parentId,
-      rowId,
+    await pageRealtimePublisher.cellUpdated({
+      rowId: req.params.id as string,
       columnId: req.params.column_id as string,
       value,
-      updatedAt: new Date().toISOString(),
       originUserId: req.userId as string,
     });
   }

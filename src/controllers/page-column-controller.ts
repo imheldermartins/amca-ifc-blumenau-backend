@@ -1,12 +1,12 @@
 import { ulid } from "ulid";
 import db from "@models/index";
 import type { Model } from "@/core/db/model";
-import type { Schema } from "@/models/schemas/index";
+import { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { VALUE_CODECS } from "@/services/value-codec";
 
 const COLUMN_TYPES: readonly Schema.ColumnType[] = ["text", "numeric", "select", "date", "checkbox"];
-const COLOR_OPTIONS: readonly Schema.ColorOptions[] = ["red", "orange", "yellow", "green", "blue", "grey"];
+const COLOR_OPTIONS: readonly Schema.ColorOptions[] = Schema.COLOR_OPTIONS;
 const NUMBER_FORMATS: readonly Schema.NumberFormat[] = ["percentage", "currency"];
 const CURRENCY_CODES: readonly Schema.CurrencyCode[] = ["BRL"];
 const TEXT_MASKS: readonly Schema.TextMask[] = ["cpf", "cep", "phone-br", "date"];
@@ -261,11 +261,15 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
    * `data` na BASE do tipo atual (descarta o config preservado dos outros
    * tipos) e sobrescreve as células cujo valor não valida mais sob a base
    * (`CELL_RESET`: apaga ou grava o default do tipo). Devolve a coluna já em
-   * base e os `page_id` tocados, para a rota emitir os eventos de realtime.
+   * base e cada célula com o valor efetivamente persistido, para o realtime
+   * não transformar defaults falsy (`""`, `0`, `false`) em ausência (`null`).
    */
   async resetColumn(
     lookup: LookupValues<Schema.PageColumn>,
-  ): Promise<ServiceResult<{ column: Schema.PageColumn; resetPageIds: string[] }>> {
+  ): Promise<ServiceResult<{
+    column: Schema.PageColumn;
+    resetCells: Array<{ rowId: string; value: unknown }>;
+  }>> {
     const existing = await this.db.find(lookup);
     if (!existing) {
       return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
@@ -284,8 +288,8 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
       const column = await this.db.find(lookup);
       if (!column) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
-      const resetPageIds = await this.resetDivergingValues(column);
-      return { ok: true, data: { column, resetPageIds } };
+      const resetCells = await this.resetDivergingValues(column);
+      return { ok: true, data: { column, resetCells } };
     } catch (error) {
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
@@ -299,7 +303,9 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
    * BASE — para select isso zera todas as células (base sem options), o
    * "reset total" pretendido.
    */
-  private async resetDivergingValues(column: Schema.PageColumn): Promise<string[]> {
+  private async resetDivergingValues(
+    column: Schema.PageColumn,
+  ): Promise<Array<{ rowId: string; value: unknown }>> {
     const codec = VALUE_CODECS[column.type];
     if (!codec) return [];
 
@@ -308,7 +314,7 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     } as unknown as LookupsConfig<Schema.PageColumnValue>)) ?? [];
 
     const reset = CELL_RESET[column.type];
-    const touched: string[] = [];
+    const touched: Array<{ rowId: string; value: unknown }> = [];
 
     for (const row of values) {
       if (!row.page_id) continue;
@@ -329,7 +335,10 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
           { id: row.id } as LookupValues<Schema.PageColumnValue>,
         );
       }
-      touched.push(row.page_id);
+      touched.push({
+        rowId: row.page_id,
+        value: reset.clear ? null : reset.value,
+      });
     }
 
     return touched;

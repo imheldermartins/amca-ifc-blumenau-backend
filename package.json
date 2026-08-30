@@ -13,6 +13,8 @@
     "migrate": "tsx --env-file=.env.development src/core/scripts/migrate.ts",
     "migrate:prod": "tsx --env-file=.env.production src/core/scripts/migrate.ts",
     "seed": "tsx --env-file=.env.development --env-file=.env.seed src/core/scripts/seed.ts",
+    "realtime:contract:sync": "tsx src/core/scripts/realtime-contract.ts sync",
+    "realtime:contract:check": "tsx src/core/scripts/realtime-contract.ts check",
     "test": "vitest run",
     "test:sql-injection": "tsx --env-file=.env.development src/core/scripts/sql-injection-test.ts"
   },
@@ -31,6 +33,7 @@
     "@types/swagger-ui-express": "^4.1.8",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "socket.io-client": "4.8.3",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^3.2.4"
