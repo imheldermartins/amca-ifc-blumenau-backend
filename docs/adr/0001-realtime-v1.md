@@ -117,11 +117,11 @@ o próprio eco: ele confirma o estado otimista e sela o relógio do servidor.
 | `pages.title` | parent → `row-updated` | atualiza a coluna sintética da linha |
 | `pages.title` | própria página → `page-updated` | atualiza o chrome de `PageShell` |
 | definição de coluna real | página dona → `column-updated` | substitui o header inteiro |
-| `pages.data` | própria página → `view-updated` | substitui o snapshot completo |
+| patch de view, filtros/grupos ou reconcile de `pages.data` | própria página → `view-updated` | substitui o snapshot recebido; filtros remotos ficam pendentes até “Atualizar” |
 | criação/exclusão de linha | parent → `row-created/deleted` | agenda resync estrutural |
 | criação/exclusão de coluna | página dona → `column-created/deleted` | agenda resync estrutural |
 | resize em andamento | página → `column-resizing` | preview por `viewId`, sem eco |
-| resize final | PUT de `pages.data` → `view-updated` | snapshot remove o preview |
+| resize final | PATCH atômico da view → `view-updated` | snapshot remove o preview |
 
 Na exclusão de página, a parent é capturada antes do DELETE e o evento só é
 publicado depois do sucesso. O reset de coluna publica a coluna e cada célula

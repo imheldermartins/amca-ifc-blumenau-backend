@@ -3,6 +3,7 @@ import pageController from "@/controllers/page-controller";
 import pageColumnController from "@/controllers/page-column-controller";
 import pageColumnValueController from "@/controllers/page-column-value-controller";
 import pageCollaboratorController from "@/controllers/page-collaborator-controller";
+import pageViewController from "@/controllers/page-view-controller";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { BaseRouter } from "@routes/base-router";
@@ -760,6 +761,145 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  */
 
 /**
+ * @openapi
+ * components:
+ *   schemas:
+ *     PublicKeyMetadata:
+ *       type: object
+ *       required: [key, aliases]
+ *       properties:
+ *         key:
+ *           type: string
+ *           example: area_de_atuacao
+ *         aliases:
+ *           type: array
+ *           items:
+ *             type: string
+ *     ViewFilterClause:
+ *       type: object
+ *       required: [columnId, condition, values]
+ *       properties:
+ *         columnId:
+ *           type: string
+ *           description: ULID canônico da coluna ou page_title
+ *         condition:
+ *           type: string
+ *           enum: [equals, contains, greaterThan, lessThan, between]
+ *         values:
+ *           type: array
+ *           items:
+ *             type: string
+ *     ViewFiltersV2:
+ *       type: object
+ *       required: [version, updatedAt, clauses, groupBy, passthrough]
+ *       properties:
+ *         version:
+ *           type: integer
+ *           enum: [2]
+ *         updatedAt:
+ *           type: string
+ *           nullable: true
+ *           readOnly: true
+ *         clauses:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ViewFilterClause'
+ *         groupBy:
+ *           type: array
+ *           items:
+ *             type: string
+ *         passthrough:
+ *           type: array
+ *           items:
+ *             type: array
+ *             minItems: 2
+ *             maxItems: 2
+ *             items:
+ *               type: string
+ *
+ * /pages/{id}/views/{viewId}/filters:
+ *   put:
+ *     summary: Substitui filtros e agrupamentos de uma view atomicamente
+ *     description: updatedAt é rejeitado no request e carimbado pelo servidor.
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: viewId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             allOf:
+ *               - $ref: '#/components/schemas/ViewFiltersV2'
+ *     responses:
+ *       200:
+ *         description: Documento confirmado e carimbado
+ *       400:
+ *         description: Documento, ids ou condições inválidos
+ *       401:
+ *         description: Token inválido
+ *       404:
+ *         description: Página/view não encontrada ou sem acesso
+ *
+ * /pages/{id}/views/{viewId}:
+ *   patch:
+ *     summary: Altera campos de apresentação de uma view sem regravar outras
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: viewId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: Aceita view, name, title, orderedHeaderCols, orderedRows e columnWidths.
+ *     responses:
+ *       200:
+ *         description: View atualizada
+ *       400:
+ *         description: Patch inválido
+ *       404:
+ *         description: Página/view não encontrada ou sem acesso
+ *
+ * /pages/{id}/filter-keys/reconcile:
+ *   post:
+ *     summary: Repara public keys e promove filtros legados para v2
+ *     description: Operação idempotente sobre JSON existente; não aplica migration.
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Catálogo e snapshots reconciliados
+ *       404:
+ *         description: Página não encontrada ou sem acesso
+ */
+
+/**
  * Pages: CRUD completo protegido por JWT. O `owner_id` SEMPRE vem do token
  * (req.userId), nunca do payload, e as leituras/escritas são escopadas ao dono.
  * As rotas adicionais (motor de páginas) são registradas ao lado do CRUD base,
@@ -787,10 +927,16 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
     // Colaboradores (page_collaborators): acesso N:N à página. Adição em lote; leitura e
     // remoção unitárias por :collaboratorId (= user_id).
-    this.router.get("/:id/collaborators", middleware.handle, this.listCollaborators.bind(this));
-    this.router.get("/:id/collaborators/:collaboratorId", middleware.handle, this.getCollaborator.bind(this));
-    this.router.post("/:id/collaborators", middleware.handle, this.addCollaborators.bind(this));
-    this.router.delete("/:id/collaborators/:collaboratorId", middleware.handle, this.removeCollaborator.bind(this));
+    this.router.get("/:id/collaborators", middleware.handle, requirePageAccess(), this.listCollaborators.bind(this));
+    this.router.get("/:id/collaborators/:collaboratorId", middleware.handle, requirePageAccess(), this.getCollaborator.bind(this));
+    this.router.post("/:id/collaborators", middleware.handle, requirePageAccess(), this.addCollaborators.bind(this));
+    this.router.delete("/:id/collaborators/:collaboratorId", middleware.handle, requirePageAccess(), this.removeCollaborator.bind(this));
+
+    // Configuração de view. Filtros têm endpoint semântico próprio; os demais
+    // campos usam patch por caminho para nunca reescrever `pages.data` inteiro.
+    this.router.put("/:id/views/:viewId/filters", middleware.handle, requirePageAccess(), this.updateViewFilters.bind(this));
+    this.router.patch("/:id/views/:viewId", middleware.handle, requirePageAccess(), this.patchView.bind(this));
+    this.router.post("/:id/filter-keys/reconcile", middleware.handle, requirePageAccess(), this.reconcileFilterKeys.bind(this));
 
     // Colunas da página parent (:id = id da parent). page_columns não tem rota própria.
     this.router.post("/parent/:id/columns", middleware.handle, requirePageAccess(), this.createColumn.bind(this));
@@ -1005,6 +1151,83 @@ class PageRouter extends BaseRouter<Schema.Page> {
     return res.status(StatusCode.NO_CONTENT).send();
   }
 
+  private async updateViewFilters(req: Request, res: Response): Promise<Response> {
+    const result = await pageViewController.updateFilters(
+      req.params.id as string,
+      req.params.viewId as string,
+      req.body,
+    );
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    await pageRealtimePublisher.pageChanged({
+      pageId: req.params.id as string,
+      data: result.data.data,
+      originUserId: req.userId as string,
+    });
+    return res.status(StatusCode.OK).json({
+      viewId: result.data.viewId,
+      filters: result.data.filters,
+    });
+  }
+
+  private async patchView(req: Request, res: Response): Promise<Response> {
+    const result = await pageViewController.patchView(
+      req.params.id as string,
+      req.params.viewId as string,
+      req.body,
+    );
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    if (result.data.changed) {
+      await pageRealtimePublisher.pageChanged({
+        pageId: req.params.id as string,
+        data: result.data.data,
+        originUserId: req.userId as string,
+      });
+    }
+    return res.status(StatusCode.OK).json({
+      viewId: result.data.viewId,
+      view: result.data.view,
+    });
+  }
+
+  private async reconcileFilterKeys(req: Request, res: Response): Promise<Response> {
+    const result = await pageViewController.reconcile(req.params.id as string);
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+
+    const columnsById = new Map(result.data.columns.map((column) => [String(column.id), column]));
+    for (const columnId of result.data.changedColumnIds) {
+      const column = columnsById.get(columnId);
+      if (!column) continue;
+      await pageRealtimePublisher.columnUpdated({
+        pageId: req.params.id as string,
+        columnId,
+        column,
+        originUserId: req.userId as string,
+      });
+    }
+    if (result.data.changedPage) {
+      await pageRealtimePublisher.pageChanged({
+        pageId: req.params.id as string,
+        data: result.data.data,
+        originUserId: req.userId as string,
+      });
+    }
+
+    return res.status(StatusCode.OK).json({
+      pageId: result.data.pageId,
+      data: result.data.data,
+      columns: result.data.columns,
+      catalog: result.data.catalog,
+    });
+  }
+
   // --- Colunas da página parent (page_columns; :id = id da página parent) ---
 
   // POST /pages/parent/:id/columns?type=<type> -- type vem da query; parent_id da URL.
@@ -1114,12 +1337,12 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
   // DELETE /pages/parent/:id/columns/:column_id
   private async deleteColumn(req: Request, res: Response): Promise<Response> {
-    const deleted = await pageColumnController.delete(
+    const result = await pageColumnController.deleteColumn(
       { id: req.params.column_id, parent_id: req.params.id } as LookupValues<Schema.PageColumn>,
     );
 
-    if (!deleted) {
-      return res.status(StatusCode.NOT_FOUND).json({ message: `"Page_column" não encontrado` });
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     await pageRealtimePublisher.columnDeleted({

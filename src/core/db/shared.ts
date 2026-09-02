@@ -4,6 +4,7 @@ import { RAFT_URL } from "@/constants/raft_url";
 const WORKSPACE_DB_API_URL = RAFT_URL;
 
 type Endpoint = 'query' | 'execute' | 'request';
+type RqliteOptions = { transaction?: boolean };
 
 const isError = <T = any>(res: Result<T>): res is ErrorQuerying => 'error' in res;
 
@@ -53,26 +54,32 @@ export function parseRqliteResults<T>(
 export function rqlite<T>(
   sqlQueries: RqliteStatement[],
   endpoint: 'query',
+  options?: RqliteOptions,
 ): Promise<T[][]>;
 export function rqlite<T = never>(
   sqlQueries: RqliteStatement[],
   endpoint: 'execute',
+  options?: RqliteOptions,
 ): Promise<boolean[]>;
 export function rqlite<T>(
   sqlQueries: RqliteStatement[],
   endpoint: 'request',
+  options?: RqliteOptions,
 ): Promise<SuccessResult<T>[]>;
 export function rqlite<T>(
   sqlQueries: RqliteStatement[],
   endpoint: Endpoint,
+  options?: RqliteOptions,
 ): Promise<SuccessResult<T>[]>;
 export async function rqlite<T>(
   sqlQueries: RqliteStatement[],
-  endpoint: Endpoint
+  endpoint: Endpoint,
+  options: RqliteOptions = {},
 ): Promise<SuccessResult<T>[]> {
+  const transaction = options.transaction ? "&transaction" : "";
   const response = await sendRequest<SQLResponse<T>>(
     "post",
-    `${WORKSPACE_DB_API_URL}/db/${endpoint}?pretty&associative`,
+    `${WORKSPACE_DB_API_URL}/db/${endpoint}?pretty&associative${transaction}`,
     [...sqlQueries],
   );
 

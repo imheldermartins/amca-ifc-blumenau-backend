@@ -39,7 +39,7 @@ export namespace Input {
   export type CreatePageColumn = {
     name?: string | null;
     type?: Schema.ColumnType;
-    options?: { value: string; color?: Schema.ColorOptions }[];
+    options?: { id?: string; value: string; color?: Schema.ColorOptions }[];
     format?: Schema.NumberFormat;
     currency?: Schema.CurrencyCode;
     mask?: Schema.TextMask;
@@ -51,7 +51,7 @@ export namespace Input {
   export type UpdatePageColumn = {
     name?: string | null;
     type?: Schema.ColumnType;
-    options?: { value: string; color?: Schema.ColorOptions }[] | null;
+    options?: { id?: string; value: string; color?: Schema.ColorOptions }[] | null;
     format?: Schema.NumberFormat | null;
     currency?: Schema.CurrencyCode | null;
     mask?: Schema.TextMask | null;

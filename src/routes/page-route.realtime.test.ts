@@ -7,6 +7,7 @@ const PAGE_ID = "01KXDN4B182DJGAKPX0940H54N";
 const PARENT_ID = "01KXDN4B182DJGAKPX0940H55A";
 const ROW_ID = "01KXDN4B7A7MYYCTQS1K452QKW";
 const COLUMN_ID = "01KXDN4B3X8J9NXGSTMK8PRFMF";
+const VIEW_ID = "01KXVVKQ5DC06250MCYVHMJP1V";
 
 const doubles = vi.hoisted(() => ({
   page: {
@@ -25,7 +26,7 @@ const doubles = vi.hoisted(() => ({
     createColumn: vi.fn(),
     updateColumn: vi.fn(),
     resetColumn: vi.fn(),
-    delete: vi.fn(),
+    deleteColumn: vi.fn(),
   },
   value: {
     createValue: vi.fn(),
@@ -39,7 +40,13 @@ const doubles = vi.hoisted(() => ({
     addCollaborators: vi.fn(),
     removeCollaborator: vi.fn(),
   },
+  view: {
+    updateFilters: vi.fn(),
+    patchView: vi.fn(),
+    reconcile: vi.fn(),
+  },
   access: {
+    canAccessPage: vi.fn(),
     getParentId: vi.fn(),
     listSharedPages: vi.fn(),
   },
@@ -61,6 +68,7 @@ vi.mock("@/controllers/page-column-value-controller", () => ({ default: doubles.
 vi.mock("@/controllers/page-collaborator-controller", () => ({
   default: doubles.collaborators,
 }));
+vi.mock("@/controllers/page-view-controller", () => ({ default: doubles.view }));
 vi.mock("@/controllers/page-access-controller", () => ({ default: doubles.access }));
 vi.mock("@core/socket/page-realtime-publisher", () => ({ default: doubles.publisher }));
 vi.mock("@/core/auth/middleware", () => ({
@@ -71,10 +79,6 @@ vi.mock("@/core/auth/middleware", () => ({
     },
   },
 }));
-vi.mock("@/core/auth/page-access-middleware", () => ({
-  requirePageAccess: () => (_request: unknown, _response: unknown, next: () => void) => next(),
-}));
-
 let server: Server;
 let baseUrl: string;
 
@@ -98,12 +102,13 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  doubles.access.canAccessPage.mockResolvedValue(true);
   doubles.access.getParentId.mockResolvedValue(PARENT_ID);
 });
 
 async function request(
   path: string,
-  method: "POST" | "PUT" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown,
 ): Promise<Response> {
   const init: RequestInit = {
@@ -159,7 +164,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
       .toBe(201);
     expect(doubles.publisher.columnCreated).toHaveBeenCalledOnce();
 
-    doubles.column.delete.mockResolvedValueOnce(true);
+    doubles.column.deleteColumn.mockResolvedValueOnce({ ok: true, data: { id: COLUMN_ID } });
     expect((await request(`/pages/parent/${PAGE_ID}/columns/${COLUMN_ID}`, "DELETE")).status)
       .toBe(204);
     expect(doubles.publisher.columnDeleted).toHaveBeenCalledOnce();
@@ -271,5 +276,144 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
 
     expect(doubles.publisher.columnUpdated).not.toHaveBeenCalled();
     expect(doubles.publisher.cellUpdated).not.toHaveBeenCalled();
+  });
+
+  it("publica exatamente um view-updated após gravar filtros e nenhum em falha", async () => {
+    const filters = {
+      version: 2,
+      updatedAt: "2026-09-01T12:00:00.000Z",
+      clauses: [],
+      groupBy: [],
+      passthrough: [],
+    };
+    const data = { [VIEW_ID]: { view: "table", name: "Tabela", filters } };
+    doubles.view.updateFilters.mockResolvedValueOnce({
+      ok: true,
+      data: { viewId: VIEW_ID, filters, data },
+    });
+
+    const response = await request(`/pages/${PAGE_ID}/views/${VIEW_ID}/filters`, "PUT", {
+      version: 2,
+      clauses: [],
+      groupBy: [],
+      passthrough: [],
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ viewId: VIEW_ID, filters });
+    expect(doubles.publisher.pageChanged).toHaveBeenCalledOnce();
+    expect(doubles.publisher.pageChanged).toHaveBeenCalledWith({
+      pageId: PAGE_ID,
+      data,
+      originUserId: USER_ID,
+    });
+
+    doubles.publisher.pageChanged.mockClear();
+    doubles.view.updateFilters.mockResolvedValueOnce({
+      ok: false,
+      reason: "validation",
+      message: "inválido",
+    });
+    expect((await request(
+      `/pages/${PAGE_ID}/views/${VIEW_ID}/filters`,
+      "PUT",
+      { version: 2, updatedAt: "cliente" },
+    )).status).toBe(400);
+    expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
+  });
+
+  it("patch atômico e reconcile emitem apenas os fatos efetivamente alterados", async () => {
+    const view = { view: "table", name: "Tabela", columnWidths: { [COLUMN_ID]: 320 } };
+    const data = { [VIEW_ID]: view };
+    doubles.view.patchView.mockResolvedValueOnce({
+      ok: true,
+      data: { viewId: VIEW_ID, view, data, changed: true },
+    });
+    expect((await request(
+      `/pages/${PAGE_ID}/views/${VIEW_ID}`,
+      "PATCH",
+      { columnWidths: { [COLUMN_ID]: 320 } },
+    )).status).toBe(200);
+    expect(doubles.publisher.pageChanged).toHaveBeenCalledOnce();
+
+    vi.clearAllMocks();
+    doubles.view.patchView.mockResolvedValueOnce({
+      ok: true,
+      data: { viewId: VIEW_ID, view, data, changed: false },
+    });
+    expect((await request(`/pages/${PAGE_ID}/views/${VIEW_ID}`, "PATCH", { name: "Tabela" })).status)
+      .toBe(200);
+    expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
+
+    const column = { id: COLUMN_ID, parent_id: PAGE_ID, name: "Área", type: "text", data: {} };
+    doubles.view.reconcile.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        pageId: PAGE_ID,
+        data,
+        columns: [column],
+        catalog: { views: [], columns: [] },
+        changedPage: true,
+        changedColumnIds: [COLUMN_ID],
+      },
+    });
+    expect((await request(`/pages/${PAGE_ID}/filter-keys/reconcile`, "POST")).status).toBe(200);
+    expect(doubles.publisher.columnUpdated).toHaveBeenCalledOnce();
+    expect(doubles.publisher.pageChanged).toHaveBeenCalledOnce();
+
+    doubles.publisher.columnUpdated.mockClear();
+    doubles.publisher.pageChanged.mockClear();
+    doubles.view.reconcile.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        pageId: PAGE_ID,
+        data,
+        columns: [column],
+        catalog: { views: [], columns: [] },
+        changedPage: false,
+        changedColumnIds: [],
+      },
+    });
+    expect((await request(`/pages/${PAGE_ID}/filter-keys/reconcile`, "POST")).status).toBe(200);
+    expect(doubles.publisher.columnUpdated).not.toHaveBeenCalled();
+    expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
+  });
+
+  it("não publica patch ou reconcile quando o commit é recusado", async () => {
+    doubles.view.patchView.mockResolvedValueOnce({
+      ok: false,
+      reason: "not_found",
+      message: "View não encontrada",
+    });
+    expect((await request(
+      `/pages/${PAGE_ID}/views/${VIEW_ID}`,
+      "PATCH",
+      { columnWidths: { [COLUMN_ID]: 320 } },
+    )).status).toBe(404);
+
+    doubles.view.reconcile.mockResolvedValueOnce({
+      ok: false,
+      reason: "server_error",
+      message: "Erro no servidor",
+    });
+    expect((await request(`/pages/${PAGE_ID}/filter-keys/reconcile`, "POST")).status).toBe(500);
+
+    expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
+    expect(doubles.publisher.columnUpdated).not.toHaveBeenCalled();
+  });
+
+  it("nega estranho antes do controller e de qualquer emissão", async () => {
+    doubles.access.canAccessPage.mockResolvedValueOnce(false);
+
+    const response = await request(`/pages/${PAGE_ID}/views/${VIEW_ID}/filters`, "PUT", {
+      version: 2,
+      clauses: [],
+      groupBy: [],
+      passthrough: [],
+    });
+
+    expect(response.status).toBe(404);
+    expect(doubles.access.canAccessPage).toHaveBeenCalledWith(USER_ID, PAGE_ID);
+    expect(doubles.view.updateFilters).not.toHaveBeenCalled();
+    expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,21 @@ import type { Model } from "@/core/db/model";
 import { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { VALUE_CODECS } from "@/services/value-codec";
+import { updatePageJsonPaths } from "@/core/db/page-json";
+import {
+  FILTER_KEY_REGISTRY_DATA_KEY,
+  appendDeletedColumnKeys,
+  collectPageColumnReservations,
+  optionTombstones,
+  sanitizeReservedOptionKeys,
+} from "@/services/filter-key-registry";
+import {
+  allocateDuplicateLabel,
+  collectReservedPublicKeys,
+  normalizePublicKey,
+  reconcilePublicKeyMetadata,
+  sanitizePublicKeyMetadata,
+} from "@/services/public-key";
 
 const COLUMN_TYPES: readonly Schema.ColumnType[] = ["text", "numeric", "select", "date", "checkbox"];
 const COLOR_OPTIONS: readonly Schema.ColorOptions[] = Schema.COLOR_OPTIONS;
@@ -100,18 +115,8 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
   }
 
   async delete(lookup: LookupValues<Schema.PageColumn>) {
-    try {
-      const deleted = await this.db.delete(lookup);
-
-      if (!deleted) throw new Error("Failed to delete page column");
-
-      return deleted;
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`[${error.cause}] ${error.message}`);
-      }
-      return false;
-    }
+    const result = await this.deleteColumn(lookup);
+    return result.ok;
   }
 
   // --- Variantes com validação (usadas pela rota; retornam ServiceResult) ---
@@ -123,16 +128,53 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     }
 
     let data: Schema.PageColumnData;
+    let name = input.name ?? null;
+    let siblings: Schema.PageColumn[] = [];
+    let parent: Schema.Page | null = null;
     try {
+      if (input.parent_id) {
+        [siblings, parent] = await Promise.all([
+          this.db
+            .findAll({ parent_id: input.parent_id } as LookupsConfig<Schema.PageColumn>)
+            .then((columns) => columns ?? []),
+          db.pages.find({ id: input.parent_id } as LookupValues<Schema.Page>),
+        ]);
+      }
+    } catch (error) {
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+
+    try {
+      if (typeof name === "string") {
+        name = allocateDuplicateLabel(name, siblings.map((column) => column.name));
+      }
+
       // Parte da base do tipo e mescla o que vier no payload (whitelist).
       data = this.mergeData(baseData(type), input);
+      data.publicKey = reconcilePublicKeyMetadata(
+        name,
+        "coluna",
+        null,
+        new Set([
+          ...collectReservedPublicKeys(
+            siblings.map((column) => ({
+              id: column.id,
+              label: column.name,
+              publicKey: column.data?.publicKey,
+            })),
+            "coluna",
+          ),
+          ...collectPageColumnReservations(parent?.data),
+        ]),
+      );
     } catch (error) {
       return { ok: false, reason: "validation", message: messageOf(error) };
     }
 
     try {
       const created = await this.db.create({
-        name: input.name ?? null,
+        name,
         type,
         data,
         parent_id: input.parent_id ?? null,
@@ -153,7 +195,13 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     lookup: LookupValues<Schema.PageColumn>,
     input: Input.UpdatePageColumn,
   ): Promise<ServiceResult<Schema.PageColumn>> {
-    const existing = await this.db.find(lookup);
+    let existing: Schema.PageColumn | null;
+    try {
+      existing = await this.db.find(lookup);
+    } catch (error) {
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
     if (!existing) {
       return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
     }
@@ -176,12 +224,52 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
       input.format !== undefined ||
       input.currency !== undefined ||
       input.mask !== undefined;
-    if (hasConfig) {
-      try {
-        payload.data = this.mergeData(existing.data, input);
-      } catch (error) {
-        return { ok: false, reason: "validation", message: messageOf(error) };
+    let siblings: Schema.PageColumn[] = [];
+    let parent: Schema.Page | null = null;
+    try {
+      if (existing.parent_id) {
+        [siblings, parent] = await Promise.all([
+          this.db
+            .findAll({ parent_id: existing.parent_id } as LookupsConfig<Schema.PageColumn>)
+            .then((columns) => columns ?? []),
+          db.pages.find({ id: existing.parent_id } as LookupValues<Schema.Page>),
+        ]);
       }
+    } catch (error) {
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+
+    try {
+      const nextData = hasConfig
+        ? this.mergeData(existing.data, input)
+        : this.mergeData(existing.data, {});
+      const reserved = collectReservedPublicKeys(
+        siblings
+          .filter((column) => column.id !== existing.id)
+          .map((column) => ({
+            id: column.id,
+            label: column.name,
+            publicKey: column.data?.publicKey,
+          })),
+        "coluna",
+      );
+      collectPageColumnReservations(parent?.data).forEach((key) => reserved.add(key));
+      const nextName = input.name !== undefined ? input.name : existing.name;
+      nextData.publicKey = reconcilePublicKeyMetadata(
+        nextName,
+        "coluna",
+        existing.data?.publicKey,
+        reserved,
+        {
+          forceRename:
+            input.name !== undefined &&
+            normalizePublicKey(existing.name, "coluna") !== normalizePublicKey(nextName, "coluna"),
+        },
+      );
+      if (JSON.stringify(nextData) !== JSON.stringify(existing.data)) payload.data = nextData;
+    } catch (error) {
+      return { ok: false, reason: "validation", message: messageOf(error) };
     }
 
     // Nada para atualizar: no-op, devolve o registro atual.
@@ -195,6 +283,43 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
       if (!column) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
       return { ok: true, data: column };
+    } catch (error) {
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+  }
+
+  /** Exclui uma coluna sem permitir que sua URL pública seja reutilizada. */
+  async deleteColumn(
+    lookup: LookupValues<Schema.PageColumn>,
+  ): Promise<ServiceResult<Schema.PageColumn>> {
+    try {
+      const existing = await this.db.find(lookup);
+      if (!existing) {
+        return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
+      }
+
+      // O tombstone é gravado antes da exclusão. Se o DELETE falhar, sobra uma
+      // reserva conservadora; o cenário perigoso (link antigo mudar de alvo)
+      // nunca ocorre.
+      if (existing.parent_id) {
+        const page = await db.pages.find({ id: existing.parent_id } as LookupValues<Schema.Page>);
+        if (!page) return { ok: false, reason: "not_found", message: "Página não encontrada" };
+        const tombstones = appendDeletedColumnKeys(page.data, existing);
+        const reserved = await updatePageJsonPaths(existing.parent_id, [
+          {
+            path: [FILTER_KEY_REGISTRY_DATA_KEY, "columns"],
+            value: tombstones,
+          },
+        ]);
+        if (!reserved) {
+          return { ok: false, reason: "server_error", message: "Erro no servidor" };
+        }
+      }
+
+      const deleted = await this.db.delete(lookup);
+      if (!deleted) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      return { ok: true, data: existing };
     } catch (error) {
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
@@ -222,17 +347,47 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     if (isNumberFormat(existing?.format)) data.format = existing.format;
     if (isCurrencyCode(existing?.currency)) data.currency = existing.currency;
     if (isTextMask(existing?.mask)) data.mask = existing.mask;
+    const publicKey = sanitizePublicKeyMetadata(existing?.publicKey);
+    if (publicKey) data.publicKey = publicKey;
+    const existingOptionTombstones = sanitizeReservedOptionKeys(existing?.reservedOptionKeys);
+    if (existingOptionTombstones.length > 0) {
+      data.reservedOptionKeys = existingOptionTombstones;
+    }
 
     // 2) aplica o payload, chave a chave. Convenção:
     //    - undefined = não veio → PRESERVA o que estava;
     //    - null      = LIMPA aquela config (ex.: "nenhuma máscara");
     //    - valor     = valida e grava.
-    if (input.options === null) delete data.options;
-    else if (input.options !== undefined) {
+    if (input.options === null) {
+      const tombstones = optionTombstones(
+        existing?.options ?? [],
+        new Set(),
+        data.reservedOptionKeys,
+      );
+      delete data.options;
+      if (tombstones.length > 0) data.reservedOptionKeys = tombstones;
+    } else if (input.options !== undefined) {
       if (!Array.isArray(input.options)) {
         throw new Error(`Configuração de opções inválida para a coluna "select"`);
       }
-      data.options = input.options.map((option) => this.normalizeOption(option));
+      const retainedIds = new Set(
+        input.options.flatMap((option) => {
+          if (!option || typeof option !== "object") return [];
+          const id = (option as { id?: unknown }).id;
+          return typeof id === "string" ? [id] : [];
+        }),
+      );
+      const tombstones = optionTombstones(
+        existing?.options ?? [],
+        retainedIds,
+        data.reservedOptionKeys,
+      );
+      data.options = this.normalizeOptions(
+        input.options,
+        existing?.options ?? [],
+        new Set(tombstones),
+      );
+      if (tombstones.length > 0) data.reservedOptionKeys = tombstones;
     }
 
     if (input.format === null) delete data.format;
@@ -280,6 +435,15 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
 
     try {
       const base = baseData(existing.type);
+      const publicKey = sanitizePublicKeyMetadata(existing.data?.publicKey);
+      if (publicKey) base.publicKey = publicKey;
+      else base.publicKey = reconcilePublicKeyMetadata(existing.name, "coluna", null);
+      const removedOptionKeys = optionTombstones(
+        existing.data?.options ?? [],
+        new Set(),
+        existing.data?.reservedOptionKeys,
+      );
+      if (removedOptionKeys.length > 0) base.reservedOptionKeys = removedOptionKeys;
       await this.db.update(
         { data: base } as UpdateValues<Schema.PageColumn>,
         lookup,
@@ -344,35 +508,84 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     return touched;
   }
 
-  private normalizeOption(option: unknown): Schema.SelectOption {
-    if (!option || typeof option !== "object") {
-      throw new Error(`Configuração de opções inválida para a coluna "select"`);
+  private normalizeOptions(
+    options: readonly unknown[],
+    existingOptions: readonly Schema.SelectOption[],
+    externallyReserved: ReadonlySet<string> = new Set(),
+  ): Schema.SelectOption[] {
+    const existingById = new Map(existingOptions.map((option) => [option.id, option]));
+    const prepared = options.map((option) => {
+      if (!option || typeof option !== "object") {
+        throw new Error(`Configuração de opções inválida para a coluna "select"`);
+      }
+      const { id, value, color } = option as Partial<Schema.SelectOption>;
+      if (typeof value !== "string") {
+        throw new Error(`Configuração de opções inválida para a coluna "select"`);
+      }
+
+      let optionId: Schema.SelectOption["id"];
+      if (id === undefined || id === null) optionId = ulid() as Schema.SelectOption["id"];
+      else if (typeof id === "string" && ULID_RE.test(id)) optionId = id as Schema.SelectOption["id"];
+      else throw new Error(`Configuração de opções inválida para a coluna "select"`);
+
+      if (color !== undefined && !isColorOption(color)) {
+        throw new Error(`Configuração de opções inválida para a coluna "select"`);
+      }
+      return {
+        id: optionId,
+        value,
+        ...(color !== undefined && { color }),
+        existing: existingById.get(optionId),
+      };
+    });
+
+    // Sufixo visual somente para options novas. Labels legados/renames ficam
+    // intactos e apenas suas public keys sao diferenciadas.
+    const labels = prepared
+      .filter((option) => option.existing)
+      .map((option) => option.value);
+    for (const option of prepared) {
+      if (!option.existing) option.value = allocateDuplicateLabel(option.value, labels);
+      labels.push(option.value);
     }
 
-    const { id, value, color } = option as Partial<Schema.SelectOption>;
-
-    if (typeof value !== "string") {
-      throw new Error(`Configuração de opções inválida para a coluna "select"`);
+    const normalized: Schema.SelectOption[] = [];
+    for (const option of prepared) {
+      const others = [
+        ...normalized.map((candidate) => ({
+          id: candidate.id,
+          label: candidate.value,
+          publicKey: candidate.publicKey,
+        })),
+        ...prepared
+          .filter((candidate) => candidate.id !== option.id && !normalized.some((item) => item.id === candidate.id))
+          .map((candidate) => ({
+            id: candidate.id,
+            label: candidate.value,
+            publicKey: candidate.existing?.publicKey,
+          })),
+      ];
+      const metadata = reconcilePublicKeyMetadata(
+        option.value,
+        "opcao",
+        option.existing?.publicKey,
+        new Set([...collectReservedPublicKeys(others, "opcao"), ...externallyReserved]),
+        {
+          forceRename:
+            !!option.existing &&
+            normalizePublicKey(option.existing.value, "opcao") !==
+              normalizePublicKey(option.value, "opcao"),
+        },
+      );
+      normalized.push({
+        id: option.id,
+        value: option.value,
+        ...(option.color !== undefined && { color: option.color }),
+        publicKey: metadata,
+      });
     }
 
-    // id: o payload normalmente não traz -> gera no backend; aceita se vier ULID válido.
-    let optionId: string;
-    if (id === undefined || id === null) {
-      optionId = ulid();
-    } else if (typeof id === "string" && ULID_RE.test(id)) {
-      optionId = id;
-    } else {
-      throw new Error(`Configuração de opções inválida para a coluna "select"`);
-    }
-
-    // color é opcional: se não vier, a option fica sem cor (sem default).
-    if (color === undefined) {
-      return { id: optionId as Schema.SelectOption["id"], value };
-    }
-    if (!isColorOption(color)) {
-      throw new Error(`Configuração de opções inválida para a coluna "select"`);
-    }
-    return { id: optionId as Schema.SelectOption["id"], value, color };
+    return normalized;
   }
 }
 

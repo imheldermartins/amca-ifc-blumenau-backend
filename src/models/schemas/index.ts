@@ -58,11 +58,23 @@ export namespace Schema {
   ] as const;
   export type ColorOptions = (typeof COLOR_OPTIONS)[number];
 
+  /**
+   * Identidade legivel usada somente na fronteira publica (URL). O id ULID
+   * continua sendo a identidade canonica persistida nos filtros. `aliases`
+   * mantem links antigos validos depois de um rename.
+   */
+  export interface PublicKeyMetadata {
+    key: string;
+    aliases: string[];
+  }
+
   // Uma opção de coluna `select`, persistida em page_columns.data.options.
   export interface SelectOption {
     id: NonEmptyString;    // ULID (gerado no backend)
     value: string;
     color?: ColorOptions;  // opcional: option pode não ter cor (sem default)
+    /** Ausente apenas em dados legados; reconcile/create sempre materializam. */
+    publicKey?: PublicKeyMetadata;
   }
 
   // Formato de exibição de uma coluna `numeric` (só armazenado; parse é posterior).
@@ -94,6 +106,10 @@ export namespace Schema {
     format?: NumberFormat;
     currency?: CurrencyCode;
     mask?: TextMask;
+    /** Ausente apenas em dados legados; reconcile/create sempre materializam. */
+    publicKey?: PublicKeyMetadata;
+    /** Tombstones internos: impedem que links de options excluídas mudem de alvo. */
+    reservedOptionKeys?: string[];
   }
 
   export interface PageColumn extends EntityBase {
@@ -149,5 +165,32 @@ export namespace Schema {
     validate(rawValue: unknown, column: PageColumn): T;
     encode(value: T): string;
     decode(data: string): T;
+  }
+
+  // --- FILTERS V2 (persistidos dentro de pages.data[viewId].filters) ---
+  export type ViewFilterCondition =
+    | 'equals'
+    | 'contains'
+    | 'greaterThan'
+    | 'lessThan'
+    | 'between';
+
+  export interface ViewFilterClause {
+    /** `page_title` e a unica identidade sintetica; as demais sao ULIDs. */
+    columnId: string;
+    condition: ViewFilterCondition;
+    /** Select guarda ids de options; os demais tipos guardam valores crus. */
+    values: string[];
+  }
+
+  export interface ViewFiltersV2 {
+    version: 2;
+    /** Sempre carimbado pelo servidor em writes; legado reconciliado pode ser null. */
+    updatedAt: string | null;
+    clauses: ViewFilterClause[];
+    /** ULIDs de coluna (ou `page_title`) em ordem de prioridade. */
+    groupBy: string[];
+    /** Pares desconhecidos preservados em ordem, inclusive chaves repetidas. */
+    passthrough: [string, string][];
   }
 }

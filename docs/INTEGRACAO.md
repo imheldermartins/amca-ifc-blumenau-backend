@@ -61,14 +61,28 @@ personalização das **views** daquela base, indexada pelo ULID da view:
 
 ```jsonc
 {
-  "01KXVVKQ5DC06250MCYVHMJP1V": {        // ULID da view = identidade da tab
+  "01KXVVKQ5DC06250MCYVHMJP1V": {        // ULID da view = identidade canônica
     "view": "table",                      // table | board | calendar
     "name": "Docentes",                   // rótulo da tab
-    "filters": "",                        // string opaca ("group=<colId>", "order=updated_at")
+    "urlKey": { "key": "docentes", "aliases": [] },
+    "filters": {
+      "version": 2,
+      "updatedAt": "2026-09-01T12:00:00.000Z",
+      "clauses": [
+        {
+          "columnId": "01KXDN4B3X8J9NXGSTMK8PRFMF",
+          "condition": "contains",
+          "values": ["Ana"]
+        }
+      ],
+      "groupBy": ["01KXDN4B3X8J9NXGSTMK8PRFMF"],
+      "passthrough": []
+    },
     "title": {                            // projeção mestra de pages.title
       "key": "title",                    // identidade canônica e imutável
       "column_name": "Docente",          // rótulo desta view
-      "mask": "cpf"                      // opcional; apresentação por view
+      "mask": "cpf",                     // opcional; apresentação por view
+      "publicKey": { "key": "docente", "aliases": [] }
     },
     "orderedHeaderCols": [                // ordem das colunas; ids de page_columns
       "page_title",                       // + a coluna sintética de título
@@ -86,16 +100,17 @@ personalização das **views** daquela base, indexada pelo ULID da view:
 
 ### Por que "snapshot"
 
-Cada entrada é o **retrato completo** da personalização daquela view, não um
-conjunto de campos remendáveis. Duas consequências que definem o padrão:
+Cada entrada continua sendo o **retrato completo** da personalização daquela
+view quando lida. A escrita normal, porém, não reenvia mais `pages.data`
+inteiro:
 
-1. **Gravar substitui o objeto inteiro da view** — não existe patch de campo.
-2. **`PUT /pages/:id` substitui `data` INTEIRO.** Não há rota por view. Salvar
-   uma view exige mandar **todas** as outras junto: ler o `data` atual, alterar
-   a entrada desejada, devolver o conjunto completo (read-modify-write). Mandar
-   só a view editada **apaga as demais**.
-
-O item 2 é a principal armadilha do padrão e o motivo de ele ter nome próprio.
+1. `PATCH /pages/:id/views/:viewId` altera somente os campos permitidos da
+   view (ordem, largura, nome, título e apresentação).
+2. `PUT /pages/:id/views/:viewId/filters` substitui filtros e agrupamentos como
+   um único documento atômico e carimba `filters.updatedAt` no servidor.
+3. `PUT /pages/:id` ainda substitui `data` inteiro e fica restrito à criação
+   inicial da view fallback; usá-lo para uma personalização comum pode apagar
+   ou reverter trabalho concorrente.
 
 ### Por que assim (decisões deliberadas)
 
@@ -107,8 +122,7 @@ sem join e sem consulta extra — chave → objeto, pronto para uso.
 de ids; a posição É a ordem. A alternativa — um `order` inteiro/float por coluna
 — exigiria reindexar ou rebalancear frações a cada movimentação, e degrada
 justamente onde há muitos elementos já chaveados por id. Reordenar aqui é
-produzir um array novo, e o custo de escrita já é o do snapshot inteiro de
-qualquer forma.
+produzir um array novo; o patch por view grava essa lista como uma unidade.
 
 **Por que não em `page_edges`.** As arestas são por LINHA (parent → child); a
 personalização é por VIEW. Guardar configuração de view na aresta multiplicaria
@@ -148,7 +162,39 @@ efeito do snapshot — é do backend — e está registrado em
 - **Leitura é tolerante:** `parseViewSettings` descarta em silêncio qualquer
   entrada de `data` que não tenha cara de view. `data` é campo livre — o app
   pode guardar outras coisas ali, e elas não devem virar tab quebrada.
-- **`filters` é string opaca** para o backend: ele nunca a interpreta.
+- **`filters` é sempre `ViewFiltersV2` em memória e na escrita nova.** O backend
+  valida ids de coluna/option, condição e acesso; remove referências que
+  desapareceram antes do write e nunca aceita `updatedAt` do cliente. Filtros
+  diferentes combinam com AND, valores de select dentro da mesma cláusula com
+  OR e `groupBy` preserva a prioridade. Regras por tipo continuam registradas
+  em `mappedFilters`, sem `switch` espalhado na UI.
+- **Identidade persistida e URL têm fronteiras diferentes.** O snapshot guarda
+  ULIDs de view, coluna e option. A URL nunca os expõe: usa public keys
+  normalizadas e legíveis (`NFKD`, sem acentos, lowercase, `_`) e aliases:
+
+  ```text
+  ?view=docentes&fv=2&group=area_de_atuacao&f.nome.contains=Ana&f.area_de_atuacao.equals=computacao
+  ```
+
+  `group` pode repetir e sua ordem é a prioridade; cláusulas repetidas usam
+  `f1`, `f2`, ...; valores múltiplos repetem a mesma key. `fv=2` sem critérios
+  significa limpar explicitamente. Parâmetros fora do namespace são
+  preservados. Alias antigo é aceito e canonicalizado com navegação `replace`;
+  key desconhecida/ambígua nunca aponta silenciosamente para a primeira
+  entidade.
+- `urlKey` identifica a view; `page_columns.data.publicKey` identifica coluna
+  real; cada option mantém sua `publicKey`; a coluna sintética usa
+  `title.publicKey`. Renomear promove a key anterior para `aliases`. Keys e
+  aliases são reservados no escopo para que link antigo nunca seja reciclado.
+- Strings v1 e metadata ausente continuam legíveis. O parser as promove em
+  memória e agenda uma única chamada idempotente a
+  `POST /pages/:id/filter-keys/reconcile`, que repara keys/aliases, converte o
+  documento e poda referências mortas numa transação rqlite. Isso usa somente
+  os JSON existentes: **não há migration de tabela**.
+- A URL explícita continua soberana. Se divergir do padrão persistido, a modal
+  pergunta se deve substituí-lo; “Não” preserva o banco. Alterações locais
+  atualizam o namespace da URL numa única navegação e persistem filtros/grupos
+  juntos.
 
 ### Estado da implementação
 
@@ -157,22 +203,26 @@ efeito do snapshot — é do backend — e está registrado em
 | Formato | ✅ definido e estável |
 | Leitura (backend → UI) | ✅ `parseViewSettings` / `parseDatabase` em `src/lib/databaseParser.ts` |
 | Fallback sem view salva | ✅ `createFallbackViewSettings` (uma tab `table` com todas as colunas) |
-| **Escrita (UI → backend)** | ✅ `usePageDatabase` → `PageWriteService.saveViewSnapshot` → `PUT /pages/:id` |
-| Rota dedicada por view | ❌ não existe; hoje só o `PUT /pages/:id` genérico |
+| **Escrita de personalização (UI → backend)** | ✅ `PATCH /pages/:id/views/:viewId` |
+| **Filtros e agrupamentos** | ✅ `PUT /pages/:id/views/:viewId/filters` (atômico, timestamp server-side) |
+| **Upgrade legado/public keys** | ✅ `POST /pages/:id/filter-keys/reconcile` (idempotente, sem migration) |
 
 O seed cria páginas com `data: {}`. A leitura monta uma view fallback estável;
 na primeira personalização, o app a materializa com ULID real e grava o
-snapshot completo pelo `PUT /pages/:id`.
+snapshot completo uma única vez. Depois disso, usa as rotas atômicas por view.
 
 ### Persistência e concorrência
 
 - **`FALLBACK_VIEW_ID`** (`01KXVZ0000FALLBACKTABLE001`) é sentinela de cliente e
   nunca é persistida. A primeira alteração de ordem/largura materializa a view
   com ULID real, troca a chave no estado otimista e só então envia o snapshot.
-- **Concorrência:** dois clientes salvando views da mesma página se sobrescrevem
-  (o último `PUT` vence, e leva o `data` inteiro). Dentro de uma sessão, os PUTs
-  de snapshot são serializados e cada um parte do `settingsRef` já atualizado;
-  concorrência entre clientes ainda segue last-write-wins.
+- **Concorrência da view:** o patch atualiza somente caminhos JSON da view e
+  preserva as demais. Assim, uma largura não sobrescreve filtros que chegaram
+  concorrentemente pelo endpoint dedicado.
+- **Coalescência de filtros:** estado local é imediato; a persistência usa
+  debounce trailing de 250 ms por view, no máximo uma request em voo e uma
+  versão final pendente. Estados intermediários são substituídos. Trocar de
+  página/view força flush; falha antiga nunca reverte uma edição mais nova.
 
 ---
 
@@ -189,6 +239,7 @@ usam o **cookie** de refresh — ver o quadro de auth abaixo.
 | `GET /api/auth/me` | o usuário do token (sustenta o guard) | `AuthService.restore` |
 | `GET /api/workspaces/:id/page_root` | resolve o **ponto de entrada** (GET-or-create) | `getEntryPage` |
 | `GET /api/pages/:id` | a página; `data` traz o **snapshot** | `getPage` → `settings` |
+| `GET /api/pages/:id/collaborators` | vínculos `{ id, name, email }` | `PageShell` / configurações da página |
 | `GET /api/pages/parent/:id/columns` | definição das colunas | `getColumns` → `headerCols` |
 | `GET /api/pages/:id/page` | filhas + valores (as linhas) | `getChildren` → `rows` |
 | `PUT /api/pages/parent/:id/columns/:cid` | config da coluna (name/type/options/**format/currency/mask**) | menu de coluna |
@@ -266,12 +317,12 @@ Roteamento dos fatos duráveis:
 | `pages.title` como linha | parent → `row-updated` |
 | `pages.title` como página aberta | própria página → `page-updated` |
 | definição completa de coluna real | página dona → `column-updated` |
-| snapshot completo (`pages.data`) | própria página → `view-updated` |
+| patch de view, filtros/grupos ou reconcile de `pages.data` | própria página → `view-updated` |
 | linha criada/excluída | parent → `row-created` / `row-deleted` |
 | coluna criada/excluída | página dona → `column-created` / `column-deleted` |
 
 `column-resizing` é efêmero, específico por `viewId` e não ecoa ao autor. O
-resize final chega no snapshot durável. Owner e collaborator têm a mesma
+resize final usa PATCH da view e chega no snapshot durável. Owner e collaborator têm a mesma
 audiência; estranho recebe `page-database-denied`. O autor recebe o próprio eco
 durável para selar o relógio do servidor.
 
