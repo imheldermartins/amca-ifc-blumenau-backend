@@ -1,6 +1,7 @@
 import pageAccessController from "@/controllers/page-access-controller";
 import type {
   CellUpdatedPayload,
+  ColumnCreatedPayload,
   ColumnPayload,
   ColumnUpdatedPayload,
   PageUpdatedPayload,
@@ -28,7 +29,7 @@ export interface PageEditEmitter {
   emitViewUpdated(payload: ViewUpdatedPayload): void;
   emitRowCreated(payload: RowPayload): void;
   emitRowDeleted(payload: RowPayload): void;
-  emitColumnCreated(payload: ColumnPayload): void;
+  emitColumnCreated(payload: ColumnCreatedPayload): void;
   emitColumnDeleted(payload: ColumnPayload): void;
 }
 
@@ -65,6 +66,11 @@ export interface ColumnChangedInput extends PublishMetadataInput {
   /** Pagina dona da coluna. */
   pageId: string;
   columnId: string;
+}
+
+export interface ColumnCreatedInput extends ColumnChangedInput {
+  /** Definicao devolvida pelo commit da rota. */
+  column: unknown;
 }
 
 export interface ColumnResetInput extends ColumnUpdatedInput {
@@ -159,9 +165,15 @@ export class PageRealtimePublisher {
     this.emitRowChange("row-deleted", input, (payload) => this.emitter.emitRowDeleted(payload));
   }
 
-  async columnCreated(input: ColumnChangedInput): Promise<void> {
-    this.emitColumnChange("column-created", input, (payload) =>
-      this.emitter.emitColumnCreated(payload),
+  async columnCreated(input: ColumnCreatedInput): Promise<void> {
+    const metadata = this.metadata(input);
+    this.safeEmit("column-created", input.pageId, () =>
+      this.emitter.emitColumnCreated(
+        this.factory.create(
+          { pageId: input.pageId, columnId: input.columnId, column: input.column },
+          metadata,
+        ),
+      ),
     );
   }
 
@@ -213,7 +225,7 @@ export class PageRealtimePublisher {
   }
 
   private emitColumnChange(
-    event: "column-created" | "column-deleted",
+    event: "column-deleted",
     input: ColumnChangedInput,
     emit: (payload: ColumnPayload) => void,
   ): void {

@@ -162,7 +162,12 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
     doubles.column.createColumn.mockResolvedValueOnce({ ok: true, data: column });
     expect((await request(`/pages/parent/${PAGE_ID}/columns`, "POST", { name: "Nova" })).status)
       .toBe(201);
-    expect(doubles.publisher.columnCreated).toHaveBeenCalledOnce();
+    expect(doubles.publisher.columnCreated).toHaveBeenCalledWith({
+      pageId: PAGE_ID,
+      columnId: COLUMN_ID,
+      column,
+      originUserId: USER_ID,
+    });
 
     doubles.column.deleteColumn.mockResolvedValueOnce({ ok: true, data: { id: COLUMN_ID } });
     expect((await request(`/pages/parent/${PAGE_ID}/columns/${COLUMN_ID}`, "DELETE")).status)

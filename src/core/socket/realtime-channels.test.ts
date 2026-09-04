@@ -189,7 +189,11 @@ describe("channels realtime v1", () => {
     const base = { pageId: PAGE_ID, updatedAt: UPDATED_AT, originUserId: OWNER_ID };
     pageEdit.emitCellUpdated({ ...base, rowId: ROW_ID, columnId: COLUMN_ID, value: false });
     pageEdit.emitPageUpdated({ ...base, title: "Nova pagina" });
-    pageEdit.emitColumnCreated({ ...base, columnId: COLUMN_ID });
+    pageEdit.emitColumnCreated({
+      ...base,
+      columnId: COLUMN_ID,
+      column: { id: COLUMN_ID, name: "Nova", type: "text", data: {} },
+    });
     pageEdit.emitColumnDeleted({ ...base, columnId: COLUMN_ID });
     pageEdit.emitRowDeleted({ ...base, rowId: ROW_ID });
 

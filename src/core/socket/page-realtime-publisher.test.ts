@@ -170,7 +170,8 @@ describe("PageRealtimePublisher", () => {
     const base = { pageId: PAGE_ID, originUserId: USER_ID };
     await realtime.rowCreated({ ...base, rowId: ROW_ID });
     await realtime.rowDeleted({ ...base, rowId: ROW_ID });
-    await realtime.columnCreated({ ...base, columnId: COLUMN_ID });
+    const column = { id: COLUMN_ID, name: "Nova", type: "text", data: {} };
+    await realtime.columnCreated({ ...base, columnId: COLUMN_ID, column });
     await realtime.columnDeleted({ ...base, columnId: COLUMN_ID });
 
     const metadata = { updatedAt: UPDATED_AT, originUserId: USER_ID };
@@ -187,6 +188,7 @@ describe("PageRealtimePublisher", () => {
     expect(edits.emitColumnCreated).toHaveBeenCalledWith({
       pageId: PAGE_ID,
       columnId: COLUMN_ID,
+      column,
       ...metadata,
     });
     expect(edits.emitColumnDeleted).toHaveBeenCalledWith({

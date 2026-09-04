@@ -82,6 +82,8 @@ describe("public keys", () => {
 
   it("adiciona sufixo visual somente para entidade nova", () => {
     expect(allocateDuplicateLabel("Status", ["Status", "Status (2)"])).toBe("Status (3)");
+    expect(allocateDuplicateLabel("Status", ["Status"], 1)).toBe("Status (1)");
+    expect(allocateDuplicateLabel("Status", ["Status", "Status (1)"], 1)).toBe("Status (2)");
     expect(allocateDuplicateLabel("Outro", ["Status"])).toBe("Outro");
   });
 

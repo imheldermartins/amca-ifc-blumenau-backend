@@ -164,6 +164,7 @@ export function reconcilePublicKeyScope(
 export function allocateDuplicateLabel(
   requested: string,
   existingLabels: readonly (string | null | undefined)[],
+  firstSuffix = 2,
 ): string {
   const trimmed = requested.trim();
   if (!trimmed) return requested;
@@ -175,7 +176,7 @@ export function allocateDuplicateLabel(
   );
   if (!taken.has(trimmed.toLocaleLowerCase("pt-BR"))) return requested;
 
-  let suffix = 2;
+  let suffix = firstSuffix;
   while (taken.has(`${trimmed} (${suffix})`.toLocaleLowerCase("pt-BR"))) suffix += 1;
   return `${trimmed} (${suffix})`;
 }

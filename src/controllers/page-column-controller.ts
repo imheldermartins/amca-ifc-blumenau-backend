@@ -147,7 +147,7 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
 
     try {
       if (typeof name === "string") {
-        name = allocateDuplicateLabel(name, siblings.map((column) => column.name));
+        name = allocateDuplicateLabel(name, siblings.map((column) => column.name), 1);
       }
 
       // Parte da base do tipo e mescla o que vier no payload (whitelist).

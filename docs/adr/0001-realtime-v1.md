@@ -118,8 +118,9 @@ o próprio eco: ele confirma o estado otimista e sela o relógio do servidor.
 | `pages.title` | própria página → `page-updated` | atualiza o chrome de `PageShell` |
 | definição de coluna real | página dona → `column-updated` | substitui o header inteiro |
 | patch de view, filtros/grupos ou reconcile de `pages.data` | própria página → `view-updated` | substitui o snapshot recebido; filtros remotos ficam pendentes até “Atualizar” |
-| criação/exclusão de linha | parent → `row-created/deleted` | agenda resync estrutural |
-| criação/exclusão de coluna | página dona → `column-created/deleted` | agenda resync estrutural |
+| criação/exclusão de linha | parent → `row-created/deleted` | merge incremental idempotente |
+| criação de coluna | página dona → `column-created` com definição completa | merge incremental do header, sem values nem refetch |
+| exclusão de coluna | página dona → `column-deleted` | agenda resync estrutural em background |
 | resize em andamento | página → `column-resizing` | preview por `viewId`, sem eco |
 | resize final | PATCH atômico da view → `view-updated` | snapshot remove o preview |
 

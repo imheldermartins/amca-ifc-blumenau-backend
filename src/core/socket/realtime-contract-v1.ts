@@ -63,6 +63,12 @@ export interface ColumnUpdatedPayload extends RealtimePayload {
   column: unknown;
 }
 
+export interface ColumnCreatedPayload extends RealtimePayload {
+  columnId: string;
+  /** Coluna persistida completa para insercao incremental sem refetch. */
+  column: unknown;
+}
+
 export interface ViewUpdatedPayload extends RealtimePayload {
   /** `pages.data` inteiro; snapshots sao substituidos, nao remendados. */
   data: unknown;
@@ -89,7 +95,7 @@ export interface RealtimeServerToClientEvents {
   "view-updated": (payload: ViewUpdatedPayload) => void;
   "row-created": (payload: RowPayload) => void;
   "row-deleted": (payload: RowPayload) => void;
-  "column-created": (payload: ColumnPayload) => void;
+  "column-created": (payload: ColumnCreatedPayload) => void;
   "column-deleted": (payload: ColumnPayload) => void;
 }
 

@@ -1252,6 +1252,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     await pageRealtimePublisher.columnCreated({
       pageId: req.params.id as string,
       columnId: result.data.id,
+      column: result.data,
       originUserId: req.userId as string,
     });
 

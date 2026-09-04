@@ -319,7 +319,8 @@ Roteamento dos fatos duráveis:
 | definição completa de coluna real | página dona → `column-updated` |
 | patch de view, filtros/grupos ou reconcile de `pages.data` | própria página → `view-updated` |
 | linha criada/excluída | parent → `row-created` / `row-deleted` |
-| coluna criada/excluída | página dona → `column-created` / `column-deleted` |
+| coluna criada (definição completa) | página dona → `column-created` |
+| coluna excluída | página dona → `column-deleted` |
 
 `column-resizing` é efêmero, específico por `viewId` e não ecoa ao autor. O
 resize final usa PATCH da view e chega no snapshot durável. Owner e collaborator têm a mesma
@@ -327,9 +328,10 @@ audiência; estranho recebe `page-database-denied`. O autor recebe o próprio ec
 durável para selar o relógio do servidor.
 
 No frontend, `PageRealtimeChannel` concentra join/leave/listeners e
-`usePageDatabase` continua sendo o estado canônico `ParsedDatabase`. Eventos
-estruturais e ACKs disparam resync coalescido. Reconexão sempre exige novo join
-e refetch somente depois de `joined-page-database`.
+`usePageDatabase` continua sendo o estado canônico `ParsedDatabase`. Criação de
+linha/coluna entra por merge incremental idempotente; exclusão de coluna e ACKs
+disparam resync coalescido. Reconexão sempre exige novo join e refetch somente
+depois de `joined-page-database`.
 
 Nenhum nome do protocolo depende de table, board ou calendar. Valor, título da
 linha e metadata de coluna real são globais; nome/máscara da coluna sintética,

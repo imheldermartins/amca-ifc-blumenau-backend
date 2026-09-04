@@ -78,15 +78,15 @@ describe("PageColumnController: public keys", () => {
     expect(result).toMatchObject({
       ok: true,
       data: {
-        name: "Área (2)",
-        data: { publicKey: { key: "area_2", aliases: [] } },
+        name: "Área (1)",
+        data: { publicKey: { key: "area_1", aliases: [] } },
       },
     });
     expect(db.columns.create).toHaveBeenCalledWith({
       parent_id: PAGE_ID,
-      name: "Área (2)",
+      name: "Área (1)",
       type: "text",
-      data: { publicKey: { key: "area_2", aliases: [] } },
+      data: { publicKey: { key: "area_1", aliases: [] } },
     });
   });
 

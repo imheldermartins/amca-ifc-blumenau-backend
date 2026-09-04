@@ -1,5 +1,6 @@
 import type {
   CellUpdatedPayload,
+  ColumnCreatedPayload,
   ColumnPayload,
   ColumnUpdatedPayload,
   PageUpdatedPayload,
@@ -75,7 +76,7 @@ export class PageEditChannel implements RealtimeChannel {
     this.emit("row-deleted", payload);
   }
 
-  emitColumnCreated(payload: ColumnPayload): void {
+  emitColumnCreated(payload: ColumnCreatedPayload): void {
     this.emit("column-created", payload);
   }
 
