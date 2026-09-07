@@ -41,6 +41,7 @@ const NOW = "2026-09-01T12:34:56.789Z";
 const entityDates = {
   created_at: new Date("2026-08-01T00:00:00.000Z"),
   updated_at: new Date("2026-08-02T00:00:00.000Z"),
+  deleted_at: null,
 };
 
 function page(data: Record<string, unknown>): Schema.Page {
@@ -181,6 +182,28 @@ describe("PageViewController", () => {
     expect(result.ok && result.data.data[OTHER_VIEW_ID]).toEqual(otherView);
     expect(result.ok && (result.data.view.filters as unknown)).toEqual(filters);
   });
+
+  it.each(["grid", "board", "calendar", "timeline", "graph"])(
+    "aceita o tipo de view %s no patch atômico",
+    async (view) => {
+      const current = page({
+        [VIEW_ID]: { view: "table", name: "Principal" },
+      });
+      const persisted = page({
+        [VIEW_ID]: { view, name: "Principal" },
+      });
+      mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
+
+      const result = await pageViewController.patchView(PAGE_ID, VIEW_ID, { view });
+
+      expect(result).toMatchObject({ ok: true, data: { changed: true } });
+      expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledWith(
+        PAGE_ID,
+        [{ path: [VIEW_ID, "view"], value: view }],
+        VIEW_ID,
+      );
+    },
+  );
 
   it("não deixa o patch genérico sobrescrever filters", async () => {
     const result = await pageViewController.patchView(PAGE_ID, VIEW_ID, {

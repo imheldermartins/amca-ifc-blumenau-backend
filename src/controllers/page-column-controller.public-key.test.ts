@@ -37,6 +37,7 @@ const NEW_OPTION_ID = "01KXVZ00000000000000000005";
 const dates = {
   created_at: new Date("2026-08-01T00:00:00.000Z"),
   updated_at: new Date("2026-08-02T00:00:00.000Z"),
+  deleted_at: null,
 };
 
 function column(overrides: Partial<Schema.PageColumn> = {}): Schema.PageColumn {

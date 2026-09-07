@@ -59,7 +59,7 @@ export function buildUpdatePageJsonPathsStatement(
   const pairs = patches.flatMap((patch) => [jsonPath(patch.path), JSON.stringify(patch.value)]);
   const setters = patches.map(() => "?, json(?)").join(", ");
   const values: unknown[] = [...pairs, pageId];
-  let where = "WHERE id = ?";
+  let where = "WHERE id = ? AND deleted_at IS NULL";
   if (requiredViewId !== undefined) {
     where += " AND json_type(data, ?) = 'object'";
     values.push(jsonPath([requiredViewId]));
@@ -140,7 +140,7 @@ export async function commitFilterKeyReconcile(input: {
     if (!ULID_RE.test(column.id)) throw new Error("Invalid column id");
     writes.push([
       "UPDATE page_columns SET data = json(?), updated_at = CURRENT_TIMESTAMP " +
-        "WHERE id = ? AND parent_id = ?",
+      "WHERE id = ? AND parent_id = ? AND deleted_at IS NULL",
       JSON.stringify(column.data),
       column.id,
       input.pageId,
@@ -149,10 +149,13 @@ export async function commitFilterKeyReconcile(input: {
 
   if (writes.length === 0) return true;
   const guards: RqliteStatement[] = [
-    existenceGuard("SELECT 1 FROM pages WHERE id = ?", [input.pageId]),
+    existenceGuard(
+      "SELECT 1 FROM pages WHERE id = ? AND deleted_at IS NULL",
+      [input.pageId],
+    ),
     ...input.columns.map((column) =>
       existenceGuard(
-        "SELECT 1 FROM page_columns WHERE id = ? AND parent_id = ?",
+        "SELECT 1 FROM page_columns WHERE id = ? AND parent_id = ? AND deleted_at IS NULL",
         [column.id, input.pageId],
       ),
     ),

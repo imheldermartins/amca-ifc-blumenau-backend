@@ -1,4 +1,4 @@
-import type { EntityBase } from "@/models/schemas/entity-base";
+import type { EntityBase, SoftDeletableEntity } from "@/models/schemas/entity-base";
 
 export namespace Schema {
   export interface User extends EntityBase {
@@ -26,7 +26,7 @@ export namespace Schema {
   export interface Workspaces extends Workspace {}
 
   // --- 3. PAGES ---
-  export interface Page extends EntityBase {
+  export interface Page extends EntityBase, SoftDeletableEntity {
     title: string | null;
     data: Record<string, unknown>;
     owner_id: NonEmptyString; // ID do usuário dono (ULID)
@@ -112,7 +112,7 @@ export namespace Schema {
     reservedOptionKeys?: string[];
   }
 
-  export interface PageColumn extends EntityBase {
+  export interface PageColumn extends EntityBase, SoftDeletableEntity {
     name: string | null;
     type: ColumnType;
     data: PageColumnData;

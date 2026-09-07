@@ -130,7 +130,7 @@ class PageController implements IBaseController<Schema.Page> {
     try {
       if (!/^[0-9A-HJKMNP-TV-Z]{26}$/i.test(parentId)) throw new Error("Invalid parent page id");
 
-      const query =
+      const text =
         `SELECT p.id AS page_id, p.title AS page_title, ` +
         `json_group_object(pc.id, json_object(` +
         `'row_id', pcv.id, 'row_data', pcv.data, ` +
@@ -139,12 +139,16 @@ class PageController implements IBaseController<Schema.Page> {
         `FROM pages p ` +
         `INNER JOIN page_edges ph ON ph.child_id = p.id ` +
         `LEFT JOIN page_columns_values pcv ON p.id = pcv.page_id ` +
-        `LEFT JOIN page_columns pc ON pcv.page_column_id = pc.id ` +
-        `WHERE ph.parent_id = '${parentId}' ` +
+        `AND EXISTS (` +
+        `SELECT 1 FROM page_columns active_pc ` +
+        `WHERE active_pc.id = pcv.page_column_id AND active_pc.deleted_at IS NULL` +
+        `) ` +
+        `LEFT JOIN page_columns pc ON pcv.page_column_id = pc.id AND pc.deleted_at IS NULL ` +
+        `WHERE ph.parent_id = ? AND p.deleted_at IS NULL ` +
         `GROUP BY p.id, p.title`;
 
       const rows = await db.sqlRaw<{ page_id: string; page_title: string | null; page_columns: string }>(
-        query,
+        { text, values: [parentId] },
         "query",
       );
 
@@ -175,11 +179,14 @@ class PageController implements IBaseController<Schema.Page> {
         `WITH RECURSIVE ancestors(id, parent_id, depth) AS (` +
         `SELECT pe.child_id, pe.parent_id, 0 ` +
         `FROM page_edges pe ` +
+        `JOIN pages child ON child.id = pe.child_id AND child.deleted_at IS NULL ` +
+        `JOIN pages parent ON parent.id = pe.parent_id AND parent.deleted_at IS NULL ` +
         `WHERE pe.child_id = ? ` +
         `UNION ALL ` +
         `SELECT pe.child_id, pe.parent_id, a.depth + 1 ` +
         `FROM page_edges pe ` +
-        `JOIN ancestors a ON pe.child_id = a.parent_id` +
+        `JOIN ancestors a ON pe.child_id = a.parent_id ` +
+        `JOIN pages parent ON parent.id = pe.parent_id AND parent.deleted_at IS NULL` +
         `) SELECT * FROM ancestors ORDER BY depth DESC`;
 
       const crumbs = await db.sqlRaw<{

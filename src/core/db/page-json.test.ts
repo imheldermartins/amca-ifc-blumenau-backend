@@ -49,7 +49,9 @@ describe("page JSON updates", () => {
 
   it("preserva campos da mesma view e todas as outras views em patches sucessivos", () => {
     const sqlite = new DatabaseSync(":memory:");
-    sqlite.exec("CREATE TABLE pages (id TEXT PRIMARY KEY, data TEXT, updated_at TEXT)");
+    sqlite.exec(
+      "CREATE TABLE pages (id TEXT PRIMARY KEY, data TEXT, updated_at TEXT, deleted_at TEXT)",
+    );
     const original = {
       [VIEW_ID]: {
         view: "table",

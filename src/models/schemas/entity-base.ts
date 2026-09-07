@@ -9,5 +9,9 @@ export interface EntityBase {
   id: NonEmptyString;
   created_at: Date;
   updated_at: Date;
-  // deleted_at?: Date; // Campo opcional para soft delete, caso seja necessário no futuro
 };
+
+/** Entidade cuja remoção é um tombstone temporal, e não um DELETE físico. */
+export interface SoftDeletableEntity {
+  deleted_at: Date | null;
+}

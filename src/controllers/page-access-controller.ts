@@ -36,11 +36,14 @@ class PageAccessController {
     try {
       const text =
         `WITH RECURSIVE branch(id) AS (` +
-        `SELECT ? ` +
+        `SELECT p.id FROM pages p WHERE p.id = ? AND p.deleted_at IS NULL ` +
         `UNION ` +
-        `SELECT pe.parent_id FROM page_edges pe JOIN branch b ON pe.child_id = b.id` +
+        `SELECT pe.parent_id FROM page_edges pe ` +
+        `JOIN branch b ON pe.child_id = b.id ` +
+        `JOIN pages parent ON parent.id = pe.parent_id AND parent.deleted_at IS NULL` +
         `) ` +
-        `SELECT 1 AS ok FROM pages p JOIN branch b ON p.id = b.id WHERE p.owner_id = ? ` +
+        `SELECT 1 AS ok FROM pages p JOIN branch b ON p.id = b.id ` +
+        `WHERE p.owner_id = ? AND p.deleted_at IS NULL ` +
         `UNION ALL ` +
         `SELECT 1 AS ok FROM page_collaborators pc JOIN branch b ON pc.page_id = b.id WHERE pc.user_id = ? ` +
         `LIMIT 1`;
@@ -92,7 +95,7 @@ class PageAccessController {
         `FROM page_collaborators pc ` +
         `JOIN pages p ON p.id = pc.page_id ` +
         `JOIN users u ON u.id = p.owner_id ` +
-        `WHERE pc.user_id = ? AND p.owner_id <> ? ` +
+        `WHERE pc.user_id = ? AND p.owner_id <> ? AND p.deleted_at IS NULL ` +
         `ORDER BY p.title`;
 
       return await db.sqlRaw<SharedPage>({ text, values: [userId, userId] }, "query");

@@ -289,7 +289,7 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     }
   }
 
-  /** Exclui uma coluna sem permitir que sua URL pública seja reutilizada. */
+  /** Envia uma coluna à lixeira sem permitir que sua URL pública seja reutilizada. */
   async deleteColumn(
     lookup: LookupValues<Schema.PageColumn>,
   ): Promise<ServiceResult<Schema.PageColumn>> {
@@ -299,7 +299,7 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
 
-      // O tombstone é gravado antes da exclusão. Se o DELETE falhar, sobra uma
+      // A reserva de public key é gravada antes do soft delete. Se ele falhar, sobra uma
       // reserva conservadora; o cenário perigoso (link antigo mudar de alvo)
       // nunca ocorre.
       if (existing.parent_id) {

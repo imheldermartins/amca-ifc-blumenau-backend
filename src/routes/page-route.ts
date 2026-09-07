@@ -872,6 +872,10 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *           schema:
  *             type: object
  *             description: Aceita view, name, title, orderedHeaderCols, orderedRows e columnWidths.
+ *             properties:
+ *               view:
+ *                 type: string
+ *                 enum: [table, grid, board, calendar, timeline, graph]
  *     responses:
  *       200:
  *         description: View atualizada
@@ -1035,8 +1039,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
   protected override async delete(req: Request, res: Response): Promise<Response> {
     const rowId = req.params.id as string;
-    // A aresta pode desaparecer com a exclusão; capture o destino antes, mas
-    // publique somente depois do controller confirmar o commit.
+    // Capture a sala antes do soft delete; publique somente após o commit.
     const parentId = await pageAccessController.getParentId(rowId);
     const deleted = await this.controller.delete(
       { id: rowId, owner_id: req.userId } as LookupValues<Schema.Page>,
@@ -1336,7 +1339,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     return res.status(StatusCode.OK).json(column);
   }
 
-  // DELETE /pages/parent/:id/columns/:column_id
+  // DELETE /pages/parent/:id/columns/:column_id -- soft delete (`deleted_at`).
   private async deleteColumn(req: Request, res: Response): Promise<Response> {
     const result = await pageColumnController.deleteColumn(
       { id: req.params.column_id, parent_id: req.params.id } as LookupValues<Schema.PageColumn>,

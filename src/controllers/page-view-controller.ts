@@ -27,7 +27,7 @@ import {
 } from "@/services/view-filters-v2";
 
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
-const VIEW_KINDS = new Set(["table", "board", "calendar"]);
+const VIEW_KINDS = new Set(["table", "grid", "board", "calendar", "timeline", "graph"]);
 const TITLE_MASKS = new Set<Schema.TextMask>(["cpf", "cep", "phone-br", "date"]);
 const VIEW_PATCH_KEYS = new Set([
   "view",

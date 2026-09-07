@@ -48,6 +48,7 @@ describe("PageColumnController: resultado autoritativo do reset", () => {
       id: COLUMN_ID,
       created_at: new Date("2026-08-15T19:00:00.000Z"),
       updated_at: new Date("2026-08-15T20:00:00.000Z"),
+      deleted_at: null,
       parent_id: PAGE_ID,
       name: "Coluna",
       type,

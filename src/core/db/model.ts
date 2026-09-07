@@ -1,16 +1,28 @@
 import { SQLBuilder } from "@db/sql-builder";
 import sql from "@/core/db/shared";
 import { ulid } from "ulid";
+import {
+  HardDeleteSolution,
+  type DeleteSolution,
+} from "@db/soft-delete-solution";
+
+export interface ModelOptions<T> {
+  jsonColumns?: (keyof T)[];
+  /** Estratégia de exclusão/escopo. Ausente mantém o DELETE físico legado. */
+  deleteSolution?: DeleteSolution<T>;
+}
 
 export class Model<T> {
   private sql: SQLBuilder<T>;
   // Colunas JSON: gravadas como texto (ver SQLBuilder.toSetValue) e
   // desserializadas de volta para objeto na leitura (ver deserialize).
   private jsonColumns: (keyof T)[];
+  private deleteSolution: DeleteSolution<T>;
 
-  public constructor(tableName: string, options?: { jsonColumns?: (keyof T)[] }) {
+  public constructor(tableName: string, options?: ModelOptions<T>) {
     this.sql = new SQLBuilder(tableName);
     this.jsonColumns = options?.jsonColumns ?? [];
+    this.deleteSolution = options?.deleteSolution ?? new HardDeleteSolution<T>();
   }
 
   /**
@@ -57,7 +69,7 @@ export class Model<T> {
   }
 
   public async find(lookup: LookupValues<T>): Promise<T | null> {
-    const stmt = this.sql.read({ ...lookup, limit: 1 });
+    const stmt = this.sql.read({ ...this.deleteSolution.scopeLookup(lookup), limit: 1 });
 
     const [row] = await sql<T>(stmt) as T[];
 
@@ -65,7 +77,7 @@ export class Model<T> {
   }
 
   public async findAll(lookup?: LookupsConfig<T>): Promise<T[] | null> {
-    const stmt = this.sql.read(lookup);
+    const stmt = this.sql.read(this.deleteSolution.scopeRead(lookup));
 
     const rows = await sql<T>(stmt) as T[];
 
@@ -73,7 +85,7 @@ export class Model<T> {
   }
 
   public async update(values: UpdateValues<T>, lookup: LookupValues<T>): Promise<boolean> {
-    const stmt = this.sql.update(values, lookup);
+    const stmt = this.sql.update(values, this.deleteSolution.scopeLookup(lookup));
 
     const result = await sql(stmt);
 
@@ -81,7 +93,8 @@ export class Model<T> {
   }
 
   public async delete(lookup: LookupValues<T>): Promise<boolean> {
-    const stmt = this.sql.delete(lookup);
+    const scopedLookup = this.deleteSolution.scopeLookup(lookup);
+    const stmt = this.deleteSolution.statement(this.sql, scopedLookup);
 
     const result = await sql(stmt);
 

@@ -19,7 +19,7 @@ type RqliteStatement = string | unknown[];
  * fora de `CreateValues`/`UpdateValues`: passar um deles à mão seria
  * contradizer a automação, não configurá-la.
  */
-type AutoManagedFields = 'id' | 'created_at' | 'updated_at';
+type AutoManagedFields = 'id' | 'created_at' | 'updated_at' | 'deleted_at';
 
 type CreateValues<T> = Omit<T, AutoManagedFields>;
 

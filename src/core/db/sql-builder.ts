@@ -62,8 +62,12 @@ export class SQLBuilder<T> {
     const values: unknown[] = [];
     for (const [key, value] of entries) {
       this.assertIdentifier(key);
-      parts.push(`${key} ${this.conditionOperator(value)} ?`);
-      values.push(this.toParamValue(value));
+      if (value === null || value === undefined) {
+        parts.push(`${key} IS NULL`);
+      } else {
+        parts.push(`${key} ${this.conditionOperator(value)} ?`);
+        values.push(this.toParamValue(value));
+      }
     }
 
     this.sql?.where(parts.join(` ${joiner} `), ...values);
@@ -98,7 +102,8 @@ export class SQLBuilder<T> {
       // Filtros diretos (Partial<T>): cada `key = ?` é ANDado (uma call por chave).
       for (const [key, value] of Object.entries(direct)) {
         this.assertIdentifier(key);
-        this.sql.where(`${key} = ?`, this.toParamValue(value));
+        if (value === null || value === undefined) this.sql.where(`${key} IS NULL`);
+        else this.sql.where(`${key} = ?`, this.toParamValue(value));
       }
 
       // where.and / where.or: cada um vira um grupo parametrizado único.
@@ -142,7 +147,8 @@ export class SQLBuilder<T> {
 
     lookupEntries.forEach(([key, value]) => {
       this.assertIdentifier(key);
-      this.sql?.where(`${key} = ?`, this.toParamValue(value));
+      if (value === null || value === undefined) this.sql?.where(`${key} IS NULL`);
+      else this.sql?.where(`${key} = ?`, this.toParamValue(value));
     });
 
     return this.toStatement();
@@ -156,7 +162,35 @@ export class SQLBuilder<T> {
 
     entries.forEach(([key, value]) => {
       this.assertIdentifier(key);
-      this.sql?.where(`${key} = ?`, this.toParamValue(value));
+      if (value === null || value === undefined) this.sql?.where(`${key} IS NULL`);
+      else this.sql?.where(`${key} = ?`, this.toParamValue(value));
+    });
+
+    return this.toStatement();
+  }
+
+  /**
+   * Exclusão lógica com relógio do próprio banco. O lookup já chega escopado
+   * pela `SoftDeleteSolution` com `deleted_at IS NULL`, então repetir a ação
+   * não recarimba o registro nem produz um falso segundo commit.
+   */
+  public softDelete(
+    lookup: LookupValues<T>,
+    deletedAtColumn: Extract<keyof T, string>,
+  ): SqlStatement {
+    this.assertIdentifier(deletedAtColumn);
+    this.sql = squel.update().table(this.tableName);
+
+    const entries = Object.entries(lookup ?? {});
+    if (entries.length === 0) this.sqlError("Missing lookup. Soft delete requires at least one criterion.");
+
+    this.sql.set(deletedAtColumn, squel.rstr("CURRENT_TIMESTAMP"));
+    this.sql.set("updated_at", squel.rstr("CURRENT_TIMESTAMP"));
+
+    entries.forEach(([key, value]) => {
+      this.assertIdentifier(key);
+      if (value === null || value === undefined) this.sql?.where(`${key} IS NULL`);
+      else this.sql?.where(`${key} = ?`, this.toParamValue(value));
     });
 
     return this.toStatement();

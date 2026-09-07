@@ -62,7 +62,7 @@ personalização das **views** daquela base, indexada pelo ULID da view:
 ```jsonc
 {
   "01KXVVKQ5DC06250MCYVHMJP1V": {        // ULID da view = identidade canônica
-    "view": "table",                      // table | board | calendar
+    "view": "table",                      // table | grid | board | calendar | timeline | graph
     "name": "Docentes",                   // rótulo da tab
     "urlKey": { "key": "docentes", "aliases": [] },
     "filters": {
@@ -291,6 +291,13 @@ chamada com outro id.
 A workspace resolve **só o ponto de entrada** (`workspaces.id == pages.id` da
 página de entrada). "Root" é convenção falada, não estado da página nem coluna.
 
+`pages` e `page_columns` usam `deleted_at` nullable como tombstone. O
+`SoftDeleteSolution` do `Model` troca o `DELETE` físico por timestamp do banco e
+escopa leituras/updates para `deleted_at IS NULL`; arestas, valores e public keys
+permanecem preservados para uma futura restauração. As rotas de exclusão
+continuam sendo `DELETE`, mas publicam realtime somente depois do soft delete
+confirmado pelo rqlite.
+
 ### Realtime v1 (contrato cross-repo)
 
 A escrita é exclusivamente HTTP. Depois que o controller/rqlite confirma, a
@@ -329,9 +336,10 @@ durável para selar o relógio do servidor.
 
 No frontend, `PageRealtimeChannel` concentra join/leave/listeners e
 `usePageDatabase` continua sendo o estado canônico `ParsedDatabase`. Criação de
-linha/coluna entra por merge incremental idempotente; exclusão de coluna e ACKs
-disparam resync coalescido. Reconexão sempre exige novo join e refetch somente
-depois de `joined-page-database`.
+linha/coluna e exclusão de linha/coluna entram por merge incremental idempotente,
+sem desmontar nem piscar a base. ACKs que exigem snapshot continuam usando
+resync coalescido. Reconexão sempre exige novo join e refetch somente depois de
+`joined-page-database`.
 
 Nenhum nome do protocolo depende de table, board ou calendar. Valor, título da
 linha e metadata de coluna real são globais; nome/máscara da coluna sintética,
