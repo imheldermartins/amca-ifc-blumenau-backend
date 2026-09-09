@@ -2,7 +2,10 @@ import { Router, type Request, type Response } from "express";
 import authController from "@/controllers/auth-controller";
 import middleware from "@core/auth/middleware";
 import { StatusCode } from "@core/http/status-code";
-import { authRateLimit } from "@core/http/rate-limit.config";
+import {
+  authRateLimit,
+  workspaceKeyPreviewRateLimit,
+} from "@core/http/rate-limit.config";
 import { requireClientHeader } from "@core/http/csrf-guard";
 import {
   REFRESH_COOKIE_NAME,
@@ -10,6 +13,7 @@ import {
   refreshCookieOptions,
 } from "@core/auth/cookie.config";
 import type { TokenPair } from "@core/auth/jwt-service";
+import type { RegisterResult } from "@/controllers/auth-controller";
 
 /**
  * Rotas de autenticação.
@@ -26,7 +30,7 @@ import type { TokenPair } from "@core/auth/jwt-service";
  */
 const router = Router();
 
-// O limite agressivo (anti-brute-force de SENHA) fica SÓ em login/register —
+// O limite agressivo (anti-brute-force de SENHA) fica só em login e cadastros —
 // as rotas que recebem credencial e podem ser marteladas para adivinhá-la.
 // Aplicado por-rota (abaixo), não no router todo.
 //
@@ -42,11 +46,34 @@ function issueSession(res: Response, tokens: TokenPair): { accessToken: string }
   return { accessToken: tokens.accessToken };
 }
 
+function sendRegistration(res: Response, result: RegisterResult): Response {
+  if (result.ok) {
+    const { accessToken } = issueSession(res, result.tokens);
+    return res.status(StatusCode.CREATED).json({
+      user: result.user,
+      accessToken,
+      workspace: result.workspace,
+    });
+  }
+
+  if (result.reason === "email_taken") {
+    return res.status(StatusCode.CONFLICT).json({ message: "email já cadastrado" });
+  }
+  if (result.reason === "invalid_key") {
+    return res.status(StatusCode.BAD_REQUEST).json({ message: "Chave de workspace inválida" });
+  }
+  if (result.reason === "validation") {
+    return res.status(StatusCode.BAD_REQUEST).json({ message: "Dados de cadastro inválidos" });
+  }
+  return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
+}
+
 /**
  * @openapi
- * /auth/register:
+ * /auth/workspace-key/preview:
  *   post:
- *     summary: Cria uma conta, devolve o access token e grava o refresh em cookie
+ *     summary: Valida uma chave pública de criação e retorna seu autocomplete
+ *     description: Responde sempre 200 e sem cache; falhas não revelam existência, estado ou expiração.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -54,19 +81,86 @@ function issueSession(res: Response, tokens: TokenPair): { accessToken: string }
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, password]
+ *             required: [key]
+ *             properties:
+ *               key: { type: string }
+ *     responses:
+ *       200:
+ *         description: "Resposta uniforme: valid=false ou valid=true com name e email"
+ *       429:
+ *         description: Muitas tentativas
+ */
+router.post("/workspace-key/preview", workspaceKeyPreviewRateLimit, async (req: Request, res: Response) => {
+  const preview = await authController.previewWorkspaceKey(req.body?.key);
+  res.set("Cache-Control", "no-store");
+  return res.status(StatusCode.OK).json(preview);
+});
+
+/**
+ * @openapi
+ * /auth/register/workspace:
+ *   post:
+ *     summary: Cria conta e primeira workspace em uma única transação
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [key, name, email, password, workspaceName]
+ *             properties:
+ *               key: { type: string }
+ *               name: { type: string }
+ *               email: { type: string }
+ *               password: { type: string, minLength: 6, description: Máximo de 72 bytes UTF-8 }
+ *               workspaceName: { type: string, maxLength: 120 }
+ *     responses:
+ *       201:
+ *         description: Conta, workspace, membership superadmin e sessão criadas
+ *       400:
+ *         description: Dados ou chave inválidos
+ *       409:
+ *         description: E-mail já cadastrado
+ */
+router.post("/register/workspace", authRateLimit, async (req: Request, res: Response) => {
+  const { key, name, email, password, workspaceName } = req.body ?? {};
+  const result = await authController.registerWithWorkspace({
+    key,
+    name,
+    email,
+    password,
+    workspaceName,
+  });
+  return sendRegistration(res, result);
+});
+
+/**
+ * @openapi
+ * /auth/register:
+ *   post:
+ *     summary: Cria uma conta com workspace privada e inicia a sessão
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, email, password]
  *             properties:
  *               name:
  *                 type: string
- *                 nullable: true
+ *                 maxLength: 120
  *               email:
  *                 type: string
  *               password:
  *                 type: string
  *                 minLength: 6
+ *                 description: Máximo de 72 bytes UTF-8
  *     responses:
  *       201:
- *         description: Conta criada. O refresh token vai no cookie HttpOnly, não no corpo.
+ *         description: Conta e workspace privada criadas. O refresh vai no cookie HttpOnly.
  *         headers:
  *           Set-Cookie:
  *             description: "Refresh token (HttpOnly; SameSite=Lax; Path=/; Secure em prod)"
@@ -81,6 +175,8 @@ function issueSession(res: Response, tokens: TokenPair): { accessToken: string }
  *                   $ref: '#/components/schemas/User'
  *                 accessToken:
  *                   type: string
+ *                 workspace:
+ *                   $ref: '#/components/schemas/WorkspaceSummary'
  *       400:
  *         description: email e password são obrigatórios (password >= 6)
  *       409:
@@ -89,24 +185,15 @@ function issueSession(res: Response, tokens: TokenPair): { accessToken: string }
 router.post("/register", authRateLimit, async (req: Request, res: Response) => {
   const { name, email, password } = req.body ?? {};
 
-  if (!email || !password) {
-    return res.status(StatusCode.BAD_REQUEST).json({ message: "email e senha são obrigatórios" });
+  if (!name || !email || !password) {
+    return res.status(StatusCode.BAD_REQUEST).json({ message: "nome, email e senha são obrigatórios" });
   }
   if (typeof password !== "string" || password.length < 6) {
     return res.status(StatusCode.BAD_REQUEST).json({ message: "a senha deve ter no mínimo 6 caracteres" });
   }
 
   const result = await authController.register({ name, email, password });
-
-  if (!result.ok) {
-    if (result.reason === "email_taken") {
-      return res.status(StatusCode.CONFLICT).json({ message: "email já cadastrado" });
-    }
-    return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
-  }
-
-  const { accessToken } = issueSession(res, result.tokens);
-  return res.status(StatusCode.CREATED).json({ user: result.user, accessToken });
+  return sendRegistration(res, result);
 });
 
 /**

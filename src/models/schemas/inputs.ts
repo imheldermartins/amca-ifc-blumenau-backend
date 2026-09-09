@@ -17,8 +17,17 @@ export namespace Input {
   export type PageRootQuery = Partial<Pick<Schema.Page, "title">>;
 
   // --- Workspaces ---
-  export type CreateWorkspace = Partial<Pick<Schema.Workspace, "name" | "data">>;
-  export type UpdateWorkspace = CreateWorkspace;
+  export type CreateWorkspace = { name?: string; key?: string; organizationId?: string };
+  export type JoinWorkspace = { key?: string };
+  export type ValidateWorkspaceKey = {
+    key?: string;
+    purpose?: Schema.WorkspaceKeyPurpose;
+  };
+  export type UpdateWorkspace = Partial<Pick<Schema.Workspace, "name" | "icon">>;
+  export type UpdateWorkspaceMemberRole = { role?: Schema.WorkspaceRole };
+
+  // --- Organizations ---
+  export type CreateOrganization = { name?: string; workspaceId?: string };
 
   // --- Users (criação é só via /auth/register; aqui é o update administrativo) ---
   export type UpdateUser = Partial<Pick<Schema.User, "name" | "email">>;

@@ -22,8 +22,55 @@ export namespace Schema {
   export interface Workspace extends EntityBase {
     name: string | null;
     data: Record<string, unknown>;
+    organization_id: NonEmptyString | null;
+    icon: string;
+    created_by_user_id: NonEmptyString | null;
   }
   export interface Workspaces extends Workspace {}
+
+  export interface Organization extends EntityBase {
+    name: string;
+    data: Record<string, unknown>;
+  }
+
+  export interface OrganizationMember extends EntityBase {
+    organization_id: NonEmptyString;
+    user_id: NonEmptyString;
+    role: WorkspaceRole;
+  }
+
+  export const WORKSPACE_ROLES = ['superadmin', 'member'] as const;
+  export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+
+  export interface WorkspaceMember extends EntityBase {
+    workspace_id: NonEmptyString;
+    user_id: NonEmptyString;
+    role: WorkspaceRole;
+    page_root_id: NonEmptyString;
+  }
+
+  export const WORKSPACE_KEY_PURPOSES = ['create', 'join'] as const;
+  export type WorkspaceKeyPurpose = (typeof WORKSPACE_KEY_PURPOSES)[number];
+
+  export interface WorkspaceAccessKey extends EntityBase {
+    key_hash: string;
+    key_hint: string;
+    algorithm_version: string;
+    issued_to_name: string;
+    issued_to_email: string;
+    purpose: WorkspaceKeyPurpose;
+    expires_at: string;
+    consumed_at: string | null;
+    consumed_by_user_id: NonEmptyString | null;
+    consumed_as_name: string | null;
+    consumed_as_email: string | null;
+    revoked_at: string | null;
+  }
+
+  export interface WorkspaceAccessKeyLink extends EntityBase {
+    access_key_id: NonEmptyString;
+    workspace_id: NonEmptyString;
+  }
 
   // --- 3. PAGES ---
   export interface Page extends EntityBase, SoftDeletableEntity {

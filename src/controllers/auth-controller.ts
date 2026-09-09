@@ -1,14 +1,36 @@
 import bcrypt from "bcryptjs";
+import { ulid } from "ulid";
 import { Model } from "@/core/db/model";
 import type { Schema } from "@/models/schemas/index";
 import jwtService, { type TokenPair } from "@core/auth/jwt-service";
+import authOnboardingStore from "@db/auth-onboarding-store";
+import workspaceStore, {
+  type WorkspaceKeyRecord,
+  type WorkspaceSummary,
+} from "@db/workspace-store";
+import {
+  WORKSPACE_KEY_ALGORITHM,
+  hashWorkspaceKey,
+  isWorkspaceKey,
+  normalizeWorkspaceEmail,
+} from "@/services/workspace-key";
 
 const SALT_ROUNDS = 10;
+const MAX_NAME_LENGTH = 120;
+const MAX_WORKSPACE_NAME_LENGTH = 120;
+const MAX_PASSWORD_BYTES = 72;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_WORKSPACE_ICON = "lucide:boxes";
 
 export interface RegisterInput {
   email: string;
   password: string;
-  name?: string | null;
+  name: string;
+}
+
+export interface WorkspaceRegisterInput extends RegisterInput {
+  key: string;
+  workspaceName: string;
 }
 
 export interface LoginInput {
@@ -17,8 +39,12 @@ export interface LoginInput {
 }
 
 export type RegisterResult =
-  | { ok: true; user: Schema.User; tokens: TokenPair }
-  | { ok: false; reason: "email_taken" | "failed" };
+  | { ok: true; user: Schema.User; workspace: WorkspaceSummary; tokens: TokenPair }
+  | { ok: false; reason: "validation" | "invalid_key" | "email_taken" | "failed" };
+
+export type WorkspaceKeyPreview =
+  | { valid: true; name: string; email: string }
+  | { valid: false };
 
 /**
  * Login devolve o usuário JUNTO do par de tokens. Antes vinha só o par, e o
@@ -40,32 +66,69 @@ export type LoginResult = { user: Schema.User; tokens: TokenPair };
 class AuthController {
   private readonly users = new Model<Schema.UserCredentials>("users");
 
-  public async register({ email, password, name = null }: RegisterInput): Promise<RegisterResult> {
+  public async register(input: RegisterInput): Promise<RegisterResult> {
+    const values = this.cleanRegistration(input);
+    if (!values) return { ok: false, reason: "validation" };
+
     try {
-      const existing = await this.users.find({ email } as LookupValues<Schema.UserCredentials>);
+      const existing = await authOnboardingStore.findUserByCanonicalEmail(values.email);
       if (existing) return { ok: false, reason: "email_taken" };
 
-      const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
-
-      const created = await this.users.create(
-        { name, email, password_hash } as CreateValues<Schema.UserCredentials>,
-      );
-      if (!created) return { ok: false, reason: "failed" };
-
-      const tokens = jwtService.issueTokenPair(
-        { sub: created.id },
-        created.token_version ?? 0,
-      );
-      return { ok: true, user: this.sanitize(created), tokens };
+      const firstName = values.name.split(/\s+/)[0]!;
+      return await this.provisionRegistration(values, {
+        workspaceName: `Area de Trabalho do ${firstName}`,
+      });
     } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      if (await this.emailExists(values.email)) return { ok: false, reason: "email_taken" };
+      this.log(error);
+      return { ok: false, reason: "failed" };
+    }
+  }
+
+  /**
+   * Preview público para o multiform. Posse do segredo de 192 bits autoriza a
+   * leitura do destinatário; qualquer falha conserva a mesma resposta para não
+   * revelar estado, expiração, finalidade ou existência de registros.
+   */
+  public async previewWorkspaceKey(key: unknown): Promise<WorkspaceKeyPreview> {
+    try {
+      const record = await this.resolvePublicCreateKey(key);
+      return record
+        ? { valid: true, name: record.issued_to_name, email: record.issued_to_email }
+        : { valid: false };
+    } catch (error) {
+      this.log(error);
+      return { valid: false };
+    }
+  }
+
+  public async registerWithWorkspace(input: WorkspaceRegisterInput): Promise<RegisterResult> {
+    const values = this.cleanRegistration(input);
+    const workspaceName = this.cleanWorkspaceName(input.workspaceName);
+    if (!values || !workspaceName) return { ok: false, reason: "validation" };
+
+    try {
+      // A chave vem antes da consulta de e-mail: sem uma credencial válida, a
+      // rota não vira um oráculo de contas já cadastradas.
+      const key = await this.resolvePublicCreateKey(input.key);
+      if (!key) return { ok: false, reason: "invalid_key" };
+
+      const existing = await authOnboardingStore.findUserByCanonicalEmail(values.email);
+      if (existing) return { ok: false, reason: "email_taken" };
+
+      return await this.provisionRegistration(values, { workspaceName, key });
+    } catch (error) {
+      if (await this.emailExists(values.email)) return { ok: false, reason: "email_taken" };
+      this.log(error);
       return { ok: false, reason: "failed" };
     }
   }
 
   public async login({ email, password }: LoginInput): Promise<LoginResult | null> {
     try {
-      const user = await this.users.find({ email } as LookupValues<Schema.UserCredentials>);
+      if (typeof email !== "string" || typeof password !== "string") return null;
+      const normalizedEmail = normalizeWorkspaceEmail(email);
+      const user = await authOnboardingStore.findUserByCanonicalEmail(normalizedEmail);
 
       // Sem usuário ou sem hash (ex: criado via POST /users só com email) -> não loga.
       if (!user?.password_hash) return null;
@@ -171,6 +234,93 @@ class AuthController {
   private sanitize(user: Schema.UserCredentials): Schema.User {
     const { password_hash, token_version, ...safe } = user;
     return safe;
+  }
+
+  private cleanRegistration(input: RegisterInput): RegisterInput | null {
+    if (typeof input.name !== "string" || typeof input.email !== "string") return null;
+    if (
+      typeof input.password !== "string"
+      || input.password.length < 6
+      || Buffer.byteLength(input.password, "utf8") > MAX_PASSWORD_BYTES
+    ) return null;
+
+    const name = input.name.trim().replace(/\s+/g, " ");
+    const email = normalizeWorkspaceEmail(input.email);
+    if (!name || name.length > MAX_NAME_LENGTH) return null;
+    if (!email || email.length > 254 || !EMAIL_PATTERN.test(email)) return null;
+    return { name, email, password: input.password };
+  }
+
+  private cleanWorkspaceName(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const clean = value.trim().replace(/\s+/g, " ");
+    return clean && clean.length <= MAX_WORKSPACE_NAME_LENGTH ? clean : null;
+  }
+
+  private async resolvePublicCreateKey(key: unknown): Promise<WorkspaceKeyRecord | null> {
+    if (!isWorkspaceKey(key)) return null;
+    const record = await workspaceStore.getAccessKey(hashWorkspaceKey(key));
+    if (!record || record.algorithm_version !== WORKSPACE_KEY_ALGORITHM) return null;
+    if (record.purpose !== "create" || record.workspace_id) return null;
+    if (record.consumed_at || record.revoked_at) return null;
+    const expiresAt = Date.parse(record.expires_at);
+    return Number.isFinite(expiresAt) && expiresAt > Date.now() ? record : null;
+  }
+
+  private async provisionRegistration(
+    values: RegisterInput,
+    options: { workspaceName: string; key?: WorkspaceKeyRecord },
+  ): Promise<RegisterResult> {
+    const userId = ulid();
+    const workspaceId = ulid();
+    const passwordHash = await bcrypt.hash(values.password, SALT_ROUNDS);
+    const provision = {
+      userId,
+      userName: values.name,
+      userEmail: values.email,
+      passwordHash,
+      workspaceId,
+      workspaceName: options.workspaceName,
+      workspaceIcon: DEFAULT_WORKSPACE_ICON,
+      membershipId: ulid(),
+    };
+    const committed = options.key
+      ? await authOnboardingStore.createWorkspaceWithKey({
+          ...provision,
+          keyId: options.key.id,
+          keyHash: options.key.key_hash,
+          keyAlgorithm: WORKSPACE_KEY_ALGORITHM,
+          keyLinkId: ulid(),
+        })
+      : await authOnboardingStore.createPrivateWorkspace(provision);
+    if (!committed) {
+      return { ok: false, reason: options.key ? "invalid_key" : "failed" };
+    }
+
+    const [created, workspace] = await Promise.all([
+      this.users.find({ id: userId } as LookupValues<Schema.UserCredentials>),
+      workspaceStore.getForUser(workspaceId, userId),
+    ]);
+    if (!created || !workspace) return { ok: false, reason: "failed" };
+
+    return {
+      ok: true,
+      user: this.sanitize(created),
+      workspace,
+      tokens: jwtService.issueTokenPair({ sub: created.id }, created.token_version ?? 0),
+    };
+  }
+
+  private async emailExists(email: string): Promise<boolean> {
+    try {
+      return !!await authOnboardingStore.findUserByCanonicalEmail(email);
+    } catch {
+      return false;
+    }
+  }
+
+  private log(error: unknown): void {
+    if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
   }
 }
 

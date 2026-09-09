@@ -3,17 +3,20 @@ import { StatusCode } from "@core/http/status-code";
 
 /**
  * Limites de requisições por IP, para segurar rajadas/brute-force sem
- * derrubar o servidor. Dois níveis:
+ * derrubar o servidor. Três níveis:
  *
  *  - globalRateLimit: todas as rotas HTTP. Generoso — só corta abuso
  *    (RATE_LIMIT_MAX req por RATE_LIMIT_WINDOW_MS; default 300/min).
- *  - authRateLimit: SÓ /auth/login e /auth/register (aplicado por-rota no
- *    auth-router, não no router todo). Agressivo — poucas tentativas por
+ *  - authRateLimit: login e cadastros que recebem senha (aplicado por-rota
+ *    no auth-router, não no router todo). Agressivo — poucas tentativas por
  *    janela para frear adivinhação de SENHA (AUTH_RATE_LIMIT_MAX por
  *    AUTH_RATE_LIMIT_WINDOW_MS; default 20/15min). refresh/logout/me NÃO
  *    entram aqui: não adivinham senha, e o refresh é a checagem de sessão do
  *    boot — sob o agressivo, o próprio app estourava o limite e travava o
  *    login.
+ *  - workspaceKeyPreviewRateLimit: orçamento separado para o preview público
+ *    de uma chave. Assim uma rajada no autocomplete não bloqueia login e
+ *    cadastro de todos atrás do mesmo NAT.
  *
  * Atrás do nginx (prod), TRUST_PROXY=1 é obrigatório (ver http-server.ts):
  * sem ele o IP visto aqui seria o do proxy, e o limite valeria para TODOS
@@ -45,4 +48,10 @@ export const authRateLimit = rateLimit({
   windowMs: envInt("AUTH_RATE_LIMIT_WINDOW_MS", 15 * 60_000),
   limit: envInt("AUTH_RATE_LIMIT_MAX", 20),
   ...tooManyRequests("Muitas tentativas de autenticação — aguarde antes de tentar de novo"),
+});
+
+export const workspaceKeyPreviewRateLimit = rateLimit({
+  windowMs: envInt("WORKSPACE_KEY_PREVIEW_RATE_LIMIT_WINDOW_MS", 15 * 60_000),
+  limit: envInt("WORKSPACE_KEY_PREVIEW_RATE_LIMIT_MAX", 30),
+  ...tooManyRequests("Muitas tentativas de chave — aguarde antes de tentar de novo"),
 });

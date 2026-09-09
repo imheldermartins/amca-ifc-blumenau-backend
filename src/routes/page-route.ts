@@ -696,6 +696,21 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *       404:
  *         description: Página ou algum dos usuários não encontrado
  *
+ * /pages/{id}/collaborator-candidates:
+ *   get:
+ *     summary: Busca usuários da workspace atual que podem entrar na página
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *       - { in: query, name: q, schema: { type: string } }
+ *     responses:
+ *       200:
+ *         description: Usuários da workspace, sem owner e vínculos já existentes
+ *       404:
+ *         description: Página sem workspace associada
+ *
  * /pages/{id}/collaborators/{collaboratorId}:
  *   get:
  *     summary: Detalha o vínculo (page_collaborators) de um colaborador na página
@@ -932,6 +947,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     // Colaboradores (page_collaborators): acesso N:N à página. Adição em lote; leitura e
     // remoção unitárias por :collaboratorId (= user_id).
     this.router.get("/:id/collaborators", middleware.handle, requirePageAccess(), this.listCollaborators.bind(this));
+    this.router.get("/:id/collaborator-candidates", middleware.handle, requirePageAccess(), this.listCollaboratorCandidates.bind(this));
     this.router.get("/:id/collaborators/:collaboratorId", middleware.handle, requirePageAccess(), this.getCollaborator.bind(this));
     this.router.post("/:id/collaborators", middleware.handle, requirePageAccess(), this.addCollaborators.bind(this));
     this.router.delete("/:id/collaborators/:collaboratorId", middleware.handle, requirePageAccess(), this.removeCollaborator.bind(this));
@@ -1152,6 +1168,17 @@ class PageRouter extends BaseRouter<Schema.Page> {
     }
 
     return res.status(StatusCode.NO_CONTENT).send();
+  }
+
+  private async listCollaboratorCandidates(req: Request, res: Response): Promise<Response> {
+    const result = await pageCollaboratorController.listCandidates(
+      req.params.id as string,
+      req.query.q,
+    );
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+    return res.status(StatusCode.OK).json(result.data);
   }
 
   private async updateViewFilters(req: Request, res: Response): Promise<Response> {

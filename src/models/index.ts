@@ -6,6 +6,11 @@ import { pageEdges } from "@models/page-edge-model";
 import { pageColumns } from "@models/page-column-model";
 import { pageColumnValues } from "@models/page-column-value-model";
 import { pageCollaborators } from "@models/page-collaborator-model";
+import { organizations } from "@models/organization-model";
+import { organizationMembers } from "@models/organization-member-model";
+import { workspaceMembers } from "@models/workspace-member-model";
+import { workspaceAccessKeys } from "@models/workspace-access-key-model";
+import { workspaceAccessKeyLinks } from "@models/workspace-access-key-link-model";
 
 export default {
     users,
@@ -15,5 +20,10 @@ export default {
     pageColumns,
     pageColumnValues,
     pageCollaborators,
+    organizations,
+    organizationMembers,
+    workspaceMembers,
+    workspaceAccessKeys,
+    workspaceAccessKeyLinks,
     sqlRaw: Model.sqlRaw,
 };

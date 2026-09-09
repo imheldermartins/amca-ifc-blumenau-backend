@@ -4,9 +4,9 @@ Contrato entre os dois repositórios e status de cada peça. Documento **canôni
 do que está acordado — quando o código e este arquivo divergirem, o código ganha
 e este arquivo é o que precisa ser corrigido.
 
-> **Status: 2026-08-30.** Leitura, escrita e realtime v1 funcionam ponta a
-> ponta. O protocolo é modular, orientado à página e agnóstico ao renderer;
-> contrato e decisão canônica estão em
+> **Status: 2026-09-08.** Leitura, escrita, workspaces selecionáveis e realtime
+> v1 funcionam ponta a ponta. O protocolo é modular, orientado à página e
+> agnóstico ao renderer; contrato e decisão canônica estão em
 > [ADR 0001](adr/0001-realtime-v1.md).
 
 ---
@@ -233,17 +233,133 @@ usam o **cookie** de refresh — ver o quadro de auth abaixo.
 
 | Rota | Papel no fluxo | Consumidor |
 |---|---|---|
-| `POST /api/auth/login` `/register` | `{ user, accessToken }` + cookie de refresh | `AuthService` |
+| `POST /api/auth/login` | `{ user, accessToken }` + cookie de refresh | `AuthService` |
+| `POST /api/auth/register` | cria conta + workspace privada; `{ user, workspace, accessToken }` | `SignUpPage` |
+| `POST /api/auth/workspace-key/preview` | valida chave `create` pública e devolve nome/e-mail para autocomplete, sem consumir | `WorkspaceSignUpPage` |
+| `POST /api/auth/register/workspace` | cria conta + primeira workspace com chave em uma transação | `WorkspaceSignUpPage` |
 | `POST /api/auth/refresh` | novo access token (cookie → cookie) | `ApiService` |
 | `POST /api/auth/logout` | revoga a sessão, limpa o cookie | `AuthService.signOut` |
 | `GET /api/auth/me` | o usuário do token (sustenta o guard) | `AuthService.restore` |
-| `GET /api/workspaces/:id/page_root` | resolve o **ponto de entrada** (GET-or-create) | `getEntryPage` |
+| `GET /api/workspaces` | lista workspaces + role + `pageRootId` do usuário | `WorkspaceSelectorPage` |
+| `POST /api/workspaces/access-keys/validate` | valida chave/identidade/finalidade sem consumir | `WorkspaceAccessPage` |
+| `POST /api/workspaces` | cria workspace com `{ name, key, organizationId? }`; criador vira `superadmin` | `WorkspaceAccessPage` |
+| `POST /api/workspaces/join` | consome `{ key }`, cria membership `member` e root própria | `WorkspaceAccessPage` |
+| `GET /api/organizations` | lista organizações + role + quantidade de workspaces do usuário | `OrganizationManagement` em `/workspaces` |
+| `POST /api/organizations` | cria organização e vincula sua primeira workspace individual | `OrganizationManagement` |
+| `PUT /api/organizations/:id/workspaces/:workspaceId` | vincula outra workspace; exige `superadmin` dos dois lados | `OrganizationManagement` |
+| `GET /api/organizations/:id/workspaces/:workspaceId/users?q=` | busca todos os usuários; prefixo antes de ocorrência; devolve roles atuais | `OrganizationManagement` |
+| `POST /api/organizations/:id/workspaces/:workspaceId/users/:userId` | adiciona como `member` da organização e da workspace e cria sua root | `OrganizationManagement` |
+| `GET /api/workspaces/:id` | lê workspace somente para member/superadmin | `WorkspaceSettingsLayout` |
+| `PUT /api/workspaces/:id` | altera `{ name, icon }` somente como `superadmin` | `WorkspaceGeneralSettingsPage` |
+| `GET /api/workspaces/:id/page_root` | resolve o ponto de entrada da membership; não cria | `getEntryPage` |
+| `GET /api/workspaces/:id/members` | lista usuários e roles somente como `superadmin` | `WorkspaceMembersPage` |
+| `PUT /api/workspaces/:id/members/:userId/role` | troca `superadmin`/`member` | `WorkspaceMembersPage` |
 | `GET /api/pages/:id` | a página; `data` traz o **snapshot** | `getPage` → `settings` |
 | `GET /api/pages/:id/collaborators` | vínculos `{ id, name, email }` | `PageShell` / configurações da página |
+| `GET /api/pages/:id/collaborator-candidates?q=` | candidatos limitados à workspace dona da árvore | configurações da página |
+| `POST /api/pages/:id/collaborators` | adiciona em lote, recusando usuários fora da workspace atual | configurações da página |
 | `GET /api/pages/parent/:id/columns` | definição das colunas | `getColumns` → `headerCols` |
 | `GET /api/pages/:id/page` | filhas + valores (as linhas) | `getChildren` → `rows` |
 | `PUT /api/pages/parent/:id/columns/:cid` | config da coluna (name/type/options/**format/currency/mask**) | menu de coluna |
 | `POST /api/pages/parent/:id/columns/:cid/reset` | "reset de tipos" (zera o `data`, reseta células divergentes) | `onColumnReset` |
+
+Rotas de configuração de workspace usam duas camadas da mesma matriz CASL. A
+UI redireciona role insuficiente para `/$lang/access-denied`, e a API continua
+sendo autoritativa: responde **403** com o envelope exato
+`{ "message": "Acesso não permitido" }`. Usuário sem membership recebe 404,
+evitando confirmar a existência de uma workspace privada.
+
+### Modelo de workspaces, memberships e chaves
+
+`organizations` é a entidade opcional de agrupamento, em relação 1:N com
+`workspaces`; `workspaces.organization_id = NULL` representa
+uma área individual. `organization_members` controla quem administra o
+agrupamento. A criação recebe uma primeira workspace individual em que o usuário
+já é `superadmin`; o criador vira `superadmin` da organização. Workspaces
+adicionais recebem `organizationId` na criação ou são vinculadas explicitamente
+por alguém que seja `superadmin` da organização e da workspace. Uma segunda
+workspace criada pelo mesmo usuário não pode permanecer individual. O seed IFC
+vincula suas várias áreas à mesma organização.
+O ícone da workspace é um id global estável `cuida:<nome>` ou
+`lucide:<nome>`; o prefixo identifica a biblioteca e não faz parte do rótulo
+mostrado pelo picker. Frontend e API usam as mesmas versões dos catálogos e a
+API rejeita nomes que não existam neles, não apenas prefixos inválidos.
+
+`workspace_members` materializa o acesso com unicidade por
+`(workspace_id, user_id)` e guarda:
+
+- `role`: `superadmin` ou `member`;
+- `page_root_id`: página inicial específica daquele usuário;
+- timestamps do vínculo.
+
+O criador preserva a compatibilidade histórica:
+`workspace_members.page_root_id == workspaces.id == pages.id`, com a página
+pertencendo ao criador. Cada usuário admitido depois recebe uma nova página com
+ULID próprio e `pages.owner_id` igual ao member. Assim, todos compartilham a
+workspace e suas configurações, mas `GET /workspaces/:id/page_root` devolve a
+root ligada à membership autenticada sem colisão de PK e sem mutação em GET.
+
+A matriz é simples: `member` pode ler `Workspace` e `WorkspaceRoot`;
+`superadmin` acrescenta `manage` sobre `WorkspaceSettings` e
+`WorkspaceMembers`. Um `member` não alcança a rota de roles e, portanto, não
+pode promover a si mesmo. A troca de role não pode eliminar o último
+superadmin; a proteção está no mesmo `UPDATE` condicional que altera a role.
+
+A aba **Organização** de `/$lang/workspaces` escolhe explicitamente
+`{ organização, workspace atual }`. Somente quem é `superadmin` nos dois
+escopos pode buscar e admitir usuários. A pesquisa usa `LIKE` parametrizado,
+escapa `%`, `_` e `\`, lista correspondências de nome/e-mail que começam pelo
+texto antes das que apenas o contêm e nunca expõe `password_hash`. A admissão
+cria `organization_members.role = member`, `workspace_members.role = member` e
+a `page_root_id` própria do usuário. O picker de ícones mistura Cuida e Lucide
+em uma lista alfabética; o prefixo da biblioteca continua apenas no valor
+persistido, não na interface.
+
+`workspace_access_keys` é a base auditável da credencial. O segredo tem prefixo
+e versão (`cubs_ws_v1_...`), 192 bits aleatórios e aparece uma única vez no
+terminal; no banco ficam somente SHA-256, hint, `algorithm_version`
+(`sha256-v1`), nome/e-mail do destinatário, finalidade (`create` ou `join`),
+expiração de 7 dias, consumo e revogação. `issued_to_name`/`issued_to_email`
+permanecem imutáveis; no consumo, `consumed_as_name`/`consumed_as_email` e
+`consumed_by_user_id` registram a identidade efetivamente criada ou usada.
+Cada chave só pode ser consumida uma vez. Chaves `join` apontam para a workspace exclusivamente pela tabela
+`workspace_access_key_links`; chaves `create` não têm vínculo prévio.
+
+Há dois consumos de chave `create`. Para um usuário já autenticado, a validação
+continua exigindo que nome/e-mail normalizados correspondam ao destinatário.
+Para um usuário novo, `POST /auth/workspace-key/preview` responde sempre 200
+com `{ valid: false }` ou `{ valid: true, name, email }`, usa rate limit próprio
+e `Cache-Control: no-store`. O multiform pode corrigir os dados; o submit
+revalida a chave e cria usuário, workspace individual (`organization_id =
+NULL`), root, membership `superadmin`, vínculo e consumo numa única transação.
+Uma conta já existente responde 409 e nunca recebe a workspace pela posse da
+chave.
+
+Emissão em desenvolvimento:
+
+```bash
+npm run workspace:key:create -- --name "Nome" --email usuario@exemplo.com --purpose create
+npm run workspace:key:create -- --name "Nome" --email usuario@exemplo.com --purpose join --workspace <ULID>
+```
+
+Para produção, troque o script por `workspace:key:create:prod`. Sem flags, o
+comando pergunta interativamente as credenciais, finalidade e workspace quando
+necessário.
+
+O cadastro comum não usa chave: ele cria, na mesma transação do usuário, uma
+workspace privada chamada `Area de Trabalho do <primeiro nome>`, com root de
+mesmo id e membership `superadmin`, e entra diretamente nela. A landing também
+oferece `/$lang/create-workspaces`, multiform público chave → conta → workspace;
+a chave permanece só em memória e nunca vai para URL ou `localStorage`.
+
+No frontend, o login segue para `/$lang/workspaces`. A seleção centralizada
+lista somente workspaces autorizadas e contém também a aba de Organização;
+`/$lang/workspaces/new?tab=create|join`
+abriga os formulários RHF; configurações full-screen são rotas filhas
+`/$lang/workspaces/$workspaceId/settings/general` e `/members`. A opção de abrir
+direto persiste via `clientStorage` como `{ userId, workspaceId }`: é escopada
+pela conta, só vale se o id ainda vier de `GET /workspaces` e é ignorada quando
+`?choose=true` exige seleção explícita.
 
 ### Config de coluna (`page_columns.data`) e troca de tipo
 
@@ -288,8 +404,9 @@ são as linhas — o mesmo id é filha num nível e parent no seguinte. Por isso
 as rotas acima aceitam o id de qualquer página, e descer para uma filha é a mesma
 chamada com outro id.
 
-A workspace resolve **só o ponto de entrada** (`workspaces.id == pages.id` da
-página de entrada). "Root" é convenção falada, não estado da página nem coluna.
+A workspace resolve **só o ponto de entrada da membership**. O criador mantém
+`workspaces.id == pages.id`; membros posteriores usam o `page_root_id` ULID
+próprio. "Root" é convenção falada, não estado da página nem coluna.
 
 `pages` e `page_columns` usam `deleted_at` nullable como tombstone. O
 `SoftDeleteSolution` do `Model` troca o `DELETE` físico por timestamp do banco e
@@ -345,6 +462,9 @@ Nenhum nome do protocolo depende de table, board ou calendar. Valor, título da
 linha e metadata de coluna real são globais; nome/máscara da coluna sintética,
 ordens, filtros e larguras continuam dentro do snapshot por view.
 
+Criação/entrada em workspace, alteração de nome/ícone e troca de role não fazem
+parte do realtime v1: são operações HTTP e não publicam eventos Socket.IO.
+
 ---
 
 ## 4. Status por peça
@@ -357,7 +477,9 @@ ordens, filtros e larguras continuam dentro do snapshot por view.
 | Snapshot: formato + leitura | ✅ |
 | Snapshot: escrita pelo app | ✅ (ordem de linhas/colunas e largura) |
 | Edição de colunas/valores pela UI | ✅ HTTP otimista + eco pós-commit |
-| Workspace selecionável | ❌ `FIXED_WORKSPACE_ID` fixo no `DatabaseService` |
+| Workspace selecionável + preferência por usuário | ✅ listagem real; sem mock/default fixo |
+| Criação/entrada por chave auditável | ✅ validação de identidade + consumo single-use |
+| Roles e configurações de workspace | ✅ CASL no frontend e na API; painel só `superadmin` |
 | Realtime v1 (socket.io) | ✅ modular, contrato gerado, resync e smoke multi-cliente |
 | Permissões / `page_users` | 📋 só brainstorm (NEXT_STEPS) |
 
@@ -365,7 +487,8 @@ ordens, filtros e larguras continuam dentro do snapshot por view.
 
 ## 5. Armadilhas conhecidas
 
-Coisas que já custaram tempo de depuração. Todas reproduzidas em 2026-07-19.
+Coisas que já custaram tempo de depuração; itens resolvidos continuam aqui para
+que o contrato antigo não seja reintroduzido.
 
 ### 5.1 Token sobrevive ao usuário → 404 enganoso
 
@@ -375,8 +498,8 @@ de um `npm run seed` que recria a tabela `users`, o token guardado no browser
 aponta para um id fantasma e **continua passando pela autenticação**.
 
 O sintoma é confuso: `GET /workspaces/:id/page_root` responde **404
-"Workspace não encontrado"** e o console do backend mostra
-`[SQLERROR] [UNIQUE constraint failed: pages.id]`.
+"Workspace não encontrado"** porque não existe membership para o id fantasma.
+O fluxo atual não tenta mais criar root durante esse GET.
 
 **Sintoma diagnóstico:** a mesma URL funciona no Insomnia (token novo) e falha no
 browser (token velho). Se a resposta muda com o token, o problema é de sessão —
@@ -387,28 +510,17 @@ não de rota nem de proxy. Um 404 de proxy nunca chega no SQL.
 porque o cookie válido restaura o mesmo token fantasma; o logout REVOGA. Se
 precisar forçar pela mão, apague o cookie `cubs_rt` no devtools e recarregue.)
 
-### 5.2 `page_root` só existe para UM dono por workspace
+### 5.2 Colisão antiga de `page_root` resolvida por membership
 
-`getOrCreatePageRoot` busca por `(id, owner_id)` mas cria com `pages.id` = id da
-workspace, que é PK. Para o dono, as duas coisas coincidem. Para um segundo
-usuário, a busca falha e o `INSERT` colide na PK → erro → `null` → 404.
+O problema antigo foi resolvido por `workspace_members.page_root_id`. A raiz do
+criador ainda usa o id da workspace; cada segundo usuário recebe um ULID de
+página diferente, com `owner_id` próprio. `page_root` agora é leitura do vínculo
+e nunca tenta inserir uma página durante um GET.
 
-O comportamento está documentado no próprio
-[workspaces-controller.ts](../src/controllers/workspaces-controller.ts), e é
-consequência direta de `workspaces.id == pages.id`. **Ainda não decidido** se a
-workspace deve ser compartilhada (tirar `owner_id` do lookup) ou por usuário
-(quebrar a igualdade de ids, com migration). Ligado a `page_users`.
+### 5.3 Role escondida na UI não é autorização
 
-### 5.3 Autorização inconsistente entre rotas
-
-Com o token de um usuário que não é dono da página:
-
-| Rota | Resposta | Escopo |
-|---|---|---|
-| `GET /pages/:id` | 404 | filtra por `owner_id` |
-| `GET /pages/:id/page` | 200 | **não filtra** |
-| `GET /pages/parent/:id/columns` | 200 | **não filtra** |
-
-Dataset e colunas são legíveis por qualquer autenticado; a página em si é
-privada. Qualquer mudança no §5.2 precisa alinhar isso junto, senão o app recebe
-a página e quebra na chamada seguinte.
+O frontend usa a mesma matriz CASL para não renderizar o painel e encaminhar
+`member` para a tela de acesso negado. Isso é somente comportamento de UI. As
+rotas `PUT /workspaces/:id`, `GET /workspaces/:id/members` e
+`PUT /workspaces/:id/members/:userId/role` repetem a checagem no backend e
+retornam o mesmo 403 `{ message }`; nunca confie só na ausência de um link.

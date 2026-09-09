@@ -1,129 +1,343 @@
+import { ulid } from "ulid";
 import db from "@models/index";
-import type { Model } from "@/core/db/model";
+import workspaceStore, {
+  type WorkspaceKeyRecord,
+  type WorkspaceMemberSummary,
+  type WorkspaceSummary,
+} from "@db/workspace-store";
+import organizationStore from "@db/organization-store";
 import type { Schema } from "@/models/schemas/index";
+import {
+  WORKSPACE_KEY_ALGORITHM,
+  hashWorkspaceKey,
+  isWorkspaceKey,
+  normalizeWorkspaceEmail,
+  normalizeWorkspaceName,
+} from "@/services/workspace-key";
+import { isWorkspaceIcon } from "@/services/workspace-icon";
 
-class WorkspacesController implements IBaseController<Schema.Workspace> {
-  private db: Model<Schema.Workspace> = db.workspaces;
+const MAX_WORKSPACE_NAME = 120;
 
-  async all(lookup?: LookupsConfig<Schema.Workspace>) {
+type MutationReason =
+  | "validation"
+  | "invalid_key"
+  | "forbidden"
+  | "conflict"
+  | "not_found"
+  | "server_error";
+export type WorkspaceMutationResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: MutationReason; message: string };
+
+interface ValidatedKey {
+  record: WorkspaceKeyRecord;
+  user: Schema.User;
+  email: string;
+  name: string;
+}
+
+export interface WorkspaceKeyValidation {
+  valid: boolean;
+  purpose?: Schema.WorkspaceKeyPurpose;
+  role?: Schema.WorkspaceRole;
+  workspace?: { id: string; name: string | null };
+}
+
+function cleanWorkspaceName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const clean = value.trim().replace(/\s+/g, " ");
+  return clean.length > 0 && clean.length <= MAX_WORKSPACE_NAME ? clean : null;
+}
+
+class WorkspacesController {
+  async listForUser(userId: string): Promise<WorkspaceSummary[] | null> {
     try {
-      const workspaces = await this.db.findAll(lookup);
-
-      if (!workspaces) throw new Error("No workspaces found");
-
-      return workspaces;
+      return await workspaceStore.listForUser(userId);
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(`[${error.cause}] ${error.message}`);
-      }
+      this.log(error);
       return null;
     }
   }
 
-  async get(lookup: LookupValues<Schema.Workspace>) {
+  async getForUser(workspaceId: string, userId: string): Promise<WorkspaceSummary | null> {
     try {
-      const workspace = await this.db.find(lookup);
-
-      if (!workspace) throw new Error("Workspace not found");
-
-      return workspace;
+      return await workspaceStore.getForUser(workspaceId, userId);
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(`[${error.cause}] ${error.message}`);
-      }
+      this.log(error);
       return null;
     }
   }
 
-  async create(data: CreateValues<Schema.Workspace>) {
+  async validateAccessKey(
+    key: unknown,
+    userId: string,
+    purpose?: Schema.WorkspaceKeyPurpose,
+  ): Promise<WorkspaceKeyValidation> {
     try {
-      const created = await this.db.create(data);
+      const validated = await this.resolveKey(key, userId, purpose);
+      if (!validated) return { valid: false };
 
-      if (!created) throw new Error("Failed to create workspace");
-
-      return created;
+      const { record } = validated;
+      return {
+        valid: true,
+        purpose: record.purpose,
+        role: record.purpose === "create" ? "superadmin" : "member",
+        ...(record.workspace_id && {
+          workspace: { id: record.workspace_id, name: record.workspace_name },
+        }),
+      };
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(`[${error.cause}] ${error.message}`);
-      }
-      return null;
+      this.log(error);
+      return { valid: false };
     }
   }
 
-  async update(lookup: LookupValues<Schema.Workspace>, data: UpdateValues<Schema.Workspace>) {
+  async createWithKey(
+    userId: string,
+    input: { name?: unknown; key?: unknown; organizationId?: unknown },
+  ): Promise<WorkspaceMutationResult<WorkspaceSummary>> {
+    const name = cleanWorkspaceName(input.name);
+    if (!name) {
+      return { ok: false, reason: "validation", message: "Nome da workspace inválido" };
+    }
+
+    const organizationId = input.organizationId === undefined || input.organizationId === null
+      || input.organizationId === ""
+      ? null
+      : typeof input.organizationId === "string"
+        && /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(input.organizationId)
+        ? input.organizationId
+        : undefined;
+    if (organizationId === undefined) {
+      return { ok: false, reason: "validation", message: "Organização inválida" };
+    }
+
     try {
-      const updated = await this.db.update(data, lookup);
-
-      if (!updated) throw new Error("Failed to update workspace");
-
-      const workspace = await this.db.find(lookup);
-
-      return workspace ?? null;
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`[${error.cause}] ${error.message}`);
+      const validated = await this.resolveKey(input.key, userId, "create");
+      if (!validated) {
+        return { ok: false, reason: "invalid_key", message: "Chave de workspace inválida" };
       }
-      return null;
+
+      if (organizationId) {
+        const membership = await organizationStore.getMembership(organizationId, userId);
+        if (!membership || membership.role !== "superadmin") {
+          return { ok: false, reason: "forbidden", message: "Acesso não permitido" };
+        }
+      } else if (await workspaceStore.hasCreatedWorkspace(userId)) {
+        return {
+          ok: false,
+          reason: "conflict",
+          message: "Workspaces adicionais precisam pertencer a uma organização",
+        };
+      }
+
+      const workspaceId = ulid();
+      const committed = await workspaceStore.createWithKey({
+        workspaceId,
+        workspaceName: name,
+        workspaceIcon: "lucide:boxes",
+        organizationId,
+        ownerId: userId,
+        rootTitle: name,
+        membershipId: ulid(),
+        keyId: validated.record.id,
+        keyHash: validated.record.key_hash,
+        keyLinkId: ulid(),
+        issuedEmail: validated.email,
+        issuedName: validated.name,
+      });
+      if (!committed) {
+        return { ok: false, reason: "conflict", message: "Chave já utilizada ou expirada" };
+      }
+
+      const workspace = await workspaceStore.getForUser(workspaceId, userId);
+      return workspace
+        ? { ok: true, data: workspace }
+        : { ok: false, reason: "server_error", message: "Erro no servidor" };
+    } catch (error) {
+      this.log(error);
+      return { ok: false, reason: "conflict", message: "Não foi possível criar a workspace" };
     }
   }
 
-  async delete(lookup: LookupValues<Schema.Workspace>) {
+  async joinWithKey(
+    userId: string,
+    key: unknown,
+  ): Promise<WorkspaceMutationResult<WorkspaceSummary>> {
     try {
-      const deleted = await this.db.delete(lookup);
-
-      if (!deleted) throw new Error("Failed to delete workspace");
-
-      return deleted;
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`[${error.cause}] ${error.message}`);
+      const validated = await this.resolveKey(key, userId, "join");
+      const workspaceId = validated?.record.workspace_id;
+      if (!validated || !workspaceId) {
+        return { ok: false, reason: "invalid_key", message: "Chave de workspace inválida" };
       }
-      return false;
+
+      if (await workspaceStore.getMembership(workspaceId, userId)) {
+        return { ok: false, reason: "conflict", message: "Usuário já pertence à workspace" };
+      }
+
+      const rootId = ulid();
+      const firstName = validated.user.name?.trim().split(/\s+/)[0];
+      const committed = await workspaceStore.joinWithKey({
+        workspaceId,
+        ownerId: userId,
+        pageRootId: rootId,
+        rootTitle: firstName ? `${firstName} base de dados` : "Base de dados",
+        membershipId: ulid(),
+        keyId: validated.record.id,
+        keyHash: validated.record.key_hash,
+        issuedEmail: validated.email,
+        issuedName: validated.name,
+      });
+      if (!committed) {
+        return { ok: false, reason: "conflict", message: "Chave já utilizada ou expirada" };
+      }
+
+      const workspace = await workspaceStore.getForUser(workspaceId, userId);
+      return workspace
+        ? { ok: true, data: workspace }
+        : { ok: false, reason: "server_error", message: "Erro no servidor" };
+    } catch (error) {
+      this.log(error);
+      return { ok: false, reason: "conflict", message: "Não foi possível entrar na workspace" };
     }
   }
 
-  // --- Fluxo adicional: page_root do usuário nesta workspace ---
+  async updateSettings(
+    workspaceId: string,
+    userId: string,
+    input: { name?: unknown; icon?: unknown },
+  ): Promise<WorkspaceMutationResult<WorkspaceSummary>> {
+    const payload: UpdateValues<Schema.Workspace> = {};
+    if (input.name !== undefined) {
+      const name = cleanWorkspaceName(input.name);
+      if (!name) return { ok: false, reason: "validation", message: "Nome da workspace inválido" };
+      payload.name = name;
+    }
+    if (input.icon !== undefined) {
+      if (!isWorkspaceIcon(input.icon)) {
+        return { ok: false, reason: "validation", message: "Ícone da workspace inválido" };
+      }
+      payload.icon = input.icon;
+    }
+    if (Object.keys(payload).length === 0) {
+      return { ok: false, reason: "validation", message: "Nenhuma alteração informada" };
+    }
 
-  /**
-   * GET-or-create da page_root: a bi-relação (1 page_root por usuário/workspace)
-   * é garantida pelo PRÓPRIO id da página -- `pages.id == workspaceId` -- somado
-   * ao `owner_id`. Lookup: `WHERE id = :workspaceId AND owner_id = :ownerId`.
-   * Se não existir, cria com esse id e título padrão derivado do 1º nome do user.
-   *
-   * Obs.: como `pages.id` é PK e recebe o id da workspace, há no máximo UMA
-   * page_root por workspace; um segundo dono na mesma workspace colide na PK.
-   */
-  async getOrCreatePageRoot(workspaceId: string, ownerId: string, title?: string | null) {
     try {
-      const workspace = await this.db.find({ id: workspaceId } as LookupValues<Schema.Workspace>);
-      if (!workspace) throw new Error("Workspace not found");
-
-      const existing = await db.pages.find(
-        { id: workspaceId, owner_id: ownerId } as LookupValues<Schema.Page>,
+      const updated = await db.workspaces.update(
+        payload,
+        { id: workspaceId } as LookupValues<Schema.Workspace>,
       );
-      if (existing) return existing;
-
-      const user = await db.users.find({ id: ownerId } as LookupValues<Schema.User>);
-      const firstName = user?.name?.trim().split(/\s+/)[0];
-      const rootTitle = title ?? (firstName ? `${firstName} base de dados` : "Base de dados");
-
-      const created = await db.pages.create({
-        id: workspaceId,
-        title: rootTitle,
-        owner_id: ownerId,
-        data: {},
-      } as unknown as CreateValues<Schema.Page>);
-      if (!created) throw new Error("Failed to create page root");
-
-      return created;
+      if (!updated) return { ok: false, reason: "not_found", message: "Workspace não encontrada" };
+      const workspace = await workspaceStore.getForUser(workspaceId, userId);
+      return workspace
+        ? { ok: true, data: workspace }
+        : { ok: false, reason: "not_found", message: "Workspace não encontrada" };
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(`[${error.cause}] ${error.message}`);
-      }
+      this.log(error);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+  }
+
+  async listMembers(workspaceId: string): Promise<WorkspaceMemberSummary[] | null> {
+    try {
+      return await workspaceStore.listMembers(workspaceId);
+    } catch (error) {
+      this.log(error);
       return null;
     }
+  }
+
+  async updateMemberRole(
+    workspaceId: string,
+    actorUserId: string,
+    userId: string,
+    role: unknown,
+  ): Promise<WorkspaceMutationResult<WorkspaceMemberSummary[]>> {
+    if (role !== "superadmin" && role !== "member") {
+      return { ok: false, reason: "validation", message: "Role inválida" };
+    }
+
+    try {
+      const [actor, target] = await Promise.all([
+        workspaceStore.getMembership(workspaceId, actorUserId),
+        workspaceStore.getMembership(workspaceId, userId),
+      ]);
+      if (!actor) return { ok: false, reason: "not_found", message: "Workspace não encontrada" };
+      if (actor.role !== "superadmin") {
+        return { ok: false, reason: "forbidden", message: "Acesso não permitido" };
+      }
+      if (!target) return { ok: false, reason: "not_found", message: "Membro não encontrado" };
+      if (target.role !== role) {
+        const updated = await workspaceStore.updateMemberRole(
+          workspaceId,
+          actorUserId,
+          userId,
+          role,
+        );
+        if (!updated) {
+          if (target.role === "superadmin" && role === "member") {
+            return {
+              ok: false,
+              reason: "conflict",
+              message: "A workspace precisa manter ao menos um superadmin",
+            };
+          }
+          return { ok: false, reason: "not_found", message: "Membro não encontrado" };
+        }
+      }
+
+      return { ok: true, data: await workspaceStore.listMembers(workspaceId) };
+    } catch (error) {
+      this.log(error);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+  }
+
+  async getPageRoot(workspaceId: string, userId: string): Promise<Schema.Page | null> {
+    try {
+      const membership = await workspaceStore.getMembership(workspaceId, userId);
+      if (!membership) return null;
+      return db.pages.find({
+        id: membership.page_root_id,
+        owner_id: userId,
+      } as LookupValues<Schema.Page>);
+    } catch (error) {
+      this.log(error);
+      return null;
+    }
+  }
+
+  private async resolveKey(
+    key: unknown,
+    userId: string,
+    purpose?: Schema.WorkspaceKeyPurpose,
+  ): Promise<ValidatedKey | null> {
+    if (!isWorkspaceKey(key)) return null;
+
+    const [record, user] = await Promise.all([
+      workspaceStore.getAccessKey(hashWorkspaceKey(key)),
+      db.users.find({ id: userId } as LookupValues<Schema.User>),
+    ]);
+    if (!record || record.algorithm_version !== WORKSPACE_KEY_ALGORITHM || !user?.name) return null;
+    if (record.consumed_at || record.revoked_at || Date.parse(record.expires_at) <= Date.now()) {
+      return null;
+    }
+    if (purpose && record.purpose !== purpose) return null;
+    if (record.purpose === "create" && record.workspace_id) return null;
+    if (record.purpose === "join" && !record.workspace_id) return null;
+
+    const email = normalizeWorkspaceEmail(user.email);
+    const name = normalizeWorkspaceName(user.name);
+    if (normalizeWorkspaceEmail(record.issued_to_email) !== email) return null;
+    if (normalizeWorkspaceName(record.issued_to_name) !== name) return null;
+
+    return { record, user, email, name };
+  }
+
+  private log(error: unknown): void {
+    if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
   }
 }
 
-// Singleton: as rotas importam direto, sem conhecer req/res.
 export default new WorkspacesController();

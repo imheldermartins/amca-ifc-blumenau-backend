@@ -1,152 +1,178 @@
-import type { Request, Response } from "express";
-import workspacesController from "@/controllers/workspaces-controller";
+import { Router, type Request, type Response } from "express";
+import workspacesController, {
+  type WorkspaceMutationResult,
+} from "@/controllers/workspaces-controller";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
-import { BaseRouter } from "@routes/base-router";
 import middleware from "@/core/auth/middleware";
+import { requireWorkspaceAbility } from "@/core/auth/workspace-access-middleware";
 import { StatusCode } from "@core/http/status-code";
+
+const router = Router();
 
 /**
  * @openapi
  * components:
  *   schemas:
- *     Workspace:
+ *     WorkspaceSummary:
  *       type: object
+ *       required: [id, name, icon, role, pageRootId]
  *       properties:
- *         id:
- *           type: string
- *           readOnly: true
- *         name:
- *           type: string
- *           nullable: true
- *         data:
- *           type: object
- *
+ *         id: { type: string }
+ *         name: { type: string }
+ *         icon: { type: string, example: "lucide:boxes" }
+ *         role: { type: string, enum: [superadmin, member] }
+ *         pageRootId: { type: string }
+ *         organizationId: { type: string, nullable: true }
+ *         organizationName: { type: string, nullable: true }
  * /workspaces:
  *   get:
- *     summary: Lista workspaces
+ *     summary: Lista somente as workspaces do usuário autenticado
  *     tags: [Workspaces]
- *     security:
- *       - bearerAuth: []
+ *     security: [{ bearerAuth: [] }]
  *     responses:
- *       200:
- *         description: Lista de workspaces
+ *       200: { description: Workspaces e memberships do usuário }
  *   post:
- *     summary: Cria uma workspace (id ULID é gerado pelo servidor)
+ *     summary: Cria workspace consumindo uma chave create single-use
+ *     description: A primeira pode ser individual; as adicionais exigem organizationId e superadmin da organização.
  *     tags: [Workspaces]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *                 nullable: true
- *               data:
- *                 type: object
+ *     security: [{ bearerAuth: [] }]
  *     responses:
- *       201:
- *         description: Workspace criada
- *
- * /workspaces/{id}/page_root:
+ *       201: { description: Workspace, root e membership superadmin criadas }
+ *       400: { description: Nome ou chave inválidos }
+ *       409: { description: Chave já usada ou expirada }
+ * /workspaces/join:
+ *   post:
+ *     summary: Entra em uma workspace e cria a page-root própria do member
+ *     tags: [Workspaces]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Membership member e page-root própria criadas }
+ * /workspaces/{id}/members:
  *   get:
- *     summary: Retorna (ou cria, se ainda não existir) a page_root do usuário autenticado nesta workspace
- *     description: >
- *       GET-or-create. A page_root é a página cujo `id` é igual ao id da workspace
- *       e cujo `owner_id` é o usuário do token. Se ainda não existir, é criada com
- *       um título padrão derivado do primeiro nome do usuário (ou do `title` enviado).
+ *     summary: Lista membros (somente superadmin)
  *     tags: [Workspaces]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
  *     responses:
- *       200:
- *         description: page_root encontrada ou recém-criada
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Page'
- *       401:
- *         description: Token de acesso ausente ou inválido
- *       404:
- *         description: Workspace não encontrada
+ *       200: { description: Membros da workspace }
+ *       403: { description: Acesso não permitido }
  */
-class WorkspaceRouter extends BaseRouter<Schema.Workspace> {
-  protected readonly resourceName = "Workspace";
 
-  constructor() {
-    super(workspacesController, {
-      all: [middleware.handle],
-      get: [middleware.handle],
-      create: [middleware.handle],
-      update: [middleware.handle],
-      delete: [middleware.handle],
-    });
+router.use(middleware.handle);
 
-    // GET-or-create da page_root do usuário autenticado nesta workspace.
-    this.router.get("/:id/page_root", middleware.handle, this.getPageRoot.bind(this));
-  }
+function sendMutation<T>(
+  res: Response,
+  result: WorkspaceMutationResult<T>,
+  successStatus: number,
+): Response {
+  if (result.ok) return res.status(successStatus).json(result.data);
 
-  // --- CRUD base com whitelist de payload (id ULID é gerado pelo servidor) ---
-
-  protected override async create(req: Request, res: Response): Promise<Response> {
-    const { name, data } = (req.body ?? {}) as Input.CreateWorkspace;
-
-    const payload = {
-      ...(name !== undefined && { name }),
-      ...(data !== undefined && { data }),
-    } as unknown as CreateValues<Schema.Workspace>;
-
-    const item = await this.controller.create(payload);
-
-    if (!item) {
-      return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
-    }
-
-    return res.status(StatusCode.CREATED).json(item);
-  }
-
-  protected override async update(req: Request, res: Response): Promise<Response> {
-    const { name, data } = (req.body ?? {}) as Input.UpdateWorkspace;
-
-    const payload = {
-      ...(name !== undefined && { name }),
-      ...(data !== undefined && { data }),
-    } as UpdateValues<Schema.Workspace>;
-
-    const item = await this.controller.update(
-      { id: req.params.id } as unknown as LookupValues<Schema.Workspace>,
-      payload,
-    );
-
-    if (!item) {
-      return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado ou falha ao atualizar` });
-    }
-
-    return res.status(StatusCode.OK).json(item);
-  }
-
-  // GET /workspaces/:id/page_root
-  private async getPageRoot(req: Request, res: Response): Promise<Response> {
-    const { title } = (req.body ?? {}) as Input.PageRootQuery;
-
-    const root = await workspacesController.getOrCreatePageRoot(req.params.id as string, req.userId!, title);
-
-    if (!root) {
-      return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado` });
-    }
-
-    return res.status(StatusCode.OK).json(root);
-  }
+  const status = result.reason === "conflict"
+    ? StatusCode.CONFLICT
+    : result.reason === "forbidden"
+      ? StatusCode.FORBIDDEN
+      : result.reason === "not_found"
+        ? StatusCode.NOT_FOUND
+        : result.reason === "server_error"
+          ? StatusCode.INTERNAL_SERVER_ERROR
+          : StatusCode.BAD_REQUEST;
+  return res.status(status).json({ message: result.message });
 }
 
-export default new WorkspaceRouter().router;
+router.get("/", async (req: Request, res: Response) => {
+  const workspaces = await workspacesController.listForUser(req.userId!);
+  if (!workspaces) {
+    return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
+  }
+  return res.status(StatusCode.OK).json(workspaces);
+});
+
+router.post("/access-keys/validate", async (req: Request, res: Response) => {
+  const { key, purpose } = (req.body ?? {}) as Input.ValidateWorkspaceKey;
+  if (purpose !== undefined && purpose !== "create" && purpose !== "join") {
+    return res.status(StatusCode.BAD_REQUEST).json({ message: "Finalidade inválida" });
+  }
+  const validation = await workspacesController.validateAccessKey(key, req.userId!, purpose);
+  return res.status(StatusCode.OK).json(validation);
+});
+
+router.post("/join", async (req: Request, res: Response) => {
+  const { key } = (req.body ?? {}) as Input.JoinWorkspace;
+  const result = await workspacesController.joinWithKey(req.userId!, key);
+  return sendMutation(res, result, StatusCode.CREATED);
+});
+
+router.post("/", async (req: Request, res: Response) => {
+  const { name, key, organizationId } = (req.body ?? {}) as Input.CreateWorkspace;
+  const result = await workspacesController.createWithKey(
+    req.userId!,
+    { name, key, organizationId },
+  );
+  return sendMutation(res, result, StatusCode.CREATED);
+});
+
+router.get(
+  "/:id/page_root",
+  requireWorkspaceAbility("read", "WorkspaceRoot"),
+  async (req: Request, res: Response) => {
+    const root = await workspacesController.getPageRoot(req.params.id as string, req.userId!);
+    if (!root) {
+      return res.status(StatusCode.NOT_FOUND).json({ message: '"Workspace" não encontrado' });
+    }
+    return res.status(StatusCode.OK).json(root);
+  },
+);
+
+router.get(
+  "/:id/members",
+  requireWorkspaceAbility("manage", "WorkspaceMembers"),
+  async (req: Request, res: Response) => {
+    const members = await workspacesController.listMembers(req.params.id as string);
+    if (!members) {
+      return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
+    }
+    return res.status(StatusCode.OK).json(members);
+  },
+);
+
+router.put(
+  "/:id/members/:userId/role",
+  requireWorkspaceAbility("manage", "WorkspaceMembers"),
+  async (req: Request, res: Response) => {
+    const { role } = (req.body ?? {}) as Input.UpdateWorkspaceMemberRole;
+    const result = await workspacesController.updateMemberRole(
+      req.params.id as string,
+      req.userId!,
+      req.params.userId as string,
+      role,
+    );
+    return sendMutation(res, result, StatusCode.OK);
+  },
+);
+
+router.get(
+  "/:id",
+  requireWorkspaceAbility("read", "Workspace"),
+  async (req: Request, res: Response) => {
+    const workspace = await workspacesController.getForUser(req.params.id as string, req.userId!);
+    if (!workspace) {
+      return res.status(StatusCode.NOT_FOUND).json({ message: '"Workspace" não encontrado' });
+    }
+    return res.status(StatusCode.OK).json(workspace);
+  },
+);
+
+router.put(
+  "/:id",
+  requireWorkspaceAbility("manage", "WorkspaceSettings"),
+  async (req: Request, res: Response) => {
+    const { name, icon } = (req.body ?? {}) as Input.UpdateWorkspace;
+    const result = await workspacesController.updateSettings(
+      req.params.id as string,
+      req.userId!,
+      { name, icon },
+    );
+    return sendMutation(res, result, StatusCode.OK);
+  },
+);
+
+export default router;

@@ -13,9 +13,12 @@
     "migrate": "tsx --env-file=.env.development src/core/scripts/migrate.ts",
     "migrate:prod": "tsx --env-file=.env.production src/core/scripts/migrate.ts",
     "seed": "tsx --env-file=.env.development --env-file=.env.seed src/core/scripts/seed.ts",
+    "workspace:key:create": "tsx --env-file=.env.development src/core/scripts/create-workspace-key.ts",
+    "workspace:key:create:prod": "tsx --env-file=.env.production src/core/scripts/create-workspace-key.ts",
     "realtime:contract:sync": "tsx src/core/scripts/realtime-contract.ts sync",
     "realtime:contract:check": "tsx src/core/scripts/realtime-contract.ts check",
     "test": "vitest run",
+    "test:workspace-flow": "tsx --env-file=.env.development src/core/scripts/workspace-flow-test.ts",
     "test:sql-injection": "tsx --env-file=.env.development src/core/scripts/sql-injection-test.ts"
   },
   "keywords": [],
@@ -39,6 +42,9 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@casl/ability": "7.0.1",
+    "@iconify-json/cuida": "1.2.5",
+    "@iconify-json/lucide": "1.2.130",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "express-rate-limit": "^8.5.2",

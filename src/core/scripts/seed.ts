@@ -108,17 +108,74 @@ async function ensureUser(
   return track(created, `user ${email}`);
 }
 
-/** Workspace + page_root (id da root == id da workspace, premissa do projeto). */
+async function ensureOrganization(name: string): Promise<Schema.Organization> {
+  const existing = await db.organizations.find({ name } as LookupValues<Schema.Organization>);
+  if (existing) {
+    stats.skipped += 1;
+    return existing;
+  }
+
+  return track(
+    await db.organizations.create({ name, data: {} } as CreateValues<Schema.Organization>),
+    `organização ${name}`,
+  );
+}
+
+async function ensureOrganizationSuperadmin(
+  organizationId: string,
+  userId: string,
+): Promise<void> {
+  const existing = await db.organizationMembers.find({
+    organization_id: organizationId,
+    user_id: userId,
+  } as LookupValues<Schema.OrganizationMember>);
+  if (existing) {
+    stats.skipped += 1;
+    return;
+  }
+
+  track(
+    await db.organizationMembers.create({
+      organization_id: organizationId,
+      user_id: userId,
+      role: "superadmin",
+    } as unknown as CreateValues<Schema.OrganizationMember>),
+    `membership superadmin ${userId} em organização ${organizationId}`,
+  );
+}
+
+/** Workspace + page_root do superadmin (a root inicial preserva id == workspace). */
 async function ensureWorkspaceWithRoot(
   name: string,
   ownerId: string,
+  organizationId: string,
 ): Promise<{ workspace: Schema.Workspace; root: Schema.Page }> {
   let workspace = await db.workspaces.find({ name } as LookupValues<Schema.Workspace>);
   if (workspace) {
     stats.skipped += 1;
+    if (
+      workspace.organization_id !== organizationId
+      || workspace.created_by_user_id !== ownerId
+      || workspace.icon !== "lucide:graduation-cap"
+    ) {
+      await db.workspaces.update({
+        organization_id: organizationId as NonEmptyString,
+        created_by_user_id: ownerId as NonEmptyString,
+        icon: "lucide:graduation-cap",
+      }, { id: workspace.id } as LookupValues<Schema.Workspace>);
+      workspace = (await db.workspaces.find(
+        { id: workspace.id } as LookupValues<Schema.Workspace>,
+      )) ?? workspace;
+    }
   } else {
     workspace = track(
-      await db.workspaces.create({ name, data: {} } as unknown as CreateValues<Schema.Workspace>),
+      await db.workspaces.create({
+        name,
+        data: {},
+        organization_id: organizationId,
+        created_by_user_id: ownerId,
+        icon: "lucide:graduation-cap",
+      } as unknown as CreateValues<Schema.Workspace>),
       `workspace ${name}`,
     );
   }
@@ -135,6 +192,24 @@ async function ensureWorkspaceWithRoot(
         data: {},
       } as unknown as CreateValues<Schema.Page>),
       `page_root ${name}`,
+    );
+  }
+
+  const membership = await db.workspaceMembers.find({
+    workspace_id: workspace.id,
+    user_id: ownerId,
+  } as LookupValues<Schema.WorkspaceMember>);
+  if (membership) {
+    stats.skipped += 1;
+  } else {
+    track(
+      await db.workspaceMembers.create({
+        workspace_id: workspace.id,
+        user_id: ownerId,
+        role: "superadmin",
+        page_root_id: root.id,
+      } as unknown as CreateValues<Schema.WorkspaceMember>),
+      `membership superadmin ${ownerId} em ${workspace.id}`,
     );
   }
 
@@ -274,8 +349,9 @@ async function main(): Promise<void> {
   const passwordHash = await bcrypt.hash(password, 10);
 
   // Dono das páginas seed: conta administrativa FICTÍCIA (domínio .local).
-  // Sem apóstrofo no nome: o SQLBuilder atual não escapa "'" (bug conhecido).
   const admin = await ensureUser("Coordenação Cubs", "admin@cubs.local", passwordHash);
+  const ifc = await ensureOrganization("Instituto Federal Catarinense");
+  await ensureOrganizationSuperadmin(ifc.id, admin.id);
 
   // Colaboradores da coordenação: usuários extras (login com a senha do
   // .env.seed) que ganham ACESSO às páginas do admin via page_collaborators --
@@ -308,7 +384,7 @@ async function main(): Promise<void> {
   ];
 
   for (const campus of campi) {
-    const { root } = await ensureWorkspaceWithRoot(campus.workspaceName, admin.id);
+    const { root } = await ensureWorkspaceWithRoot(campus.workspaceName, admin.id, ifc.id);
     adminRoots.push(root.id);
 
     const emailColumn = await ensureColumn(root.id, "E-mail", "text");
@@ -332,7 +408,7 @@ async function main(): Promise<void> {
 
   // 3. Turmas (alunos por turma — sem dados pessoais de alunos, que não são
   //    públicos como os contatos institucionais dos docentes).
-  const { root: turmasRoot } = await ensureWorkspaceWithRoot("IFC — Turmas", admin.id);
+  const { root: turmasRoot } = await ensureWorkspaceWithRoot("IFC — Turmas", admin.id, ifc.id);
   adminRoots.push(turmasRoot.id);
   const cursoColumn = await ensureColumn(turmasRoot.id, "Curso", "text");
   const campusColumn = await ensureColumn(turmasRoot.id, "Campus", "select", {
@@ -357,7 +433,7 @@ async function main(): Promise<void> {
   }
 
   // 4. Fábrica de Software: projetos como linhas.
-  const { root: fabricaRoot } = await ensureWorkspaceWithRoot("Fábrica de Software", admin.id);
+  const { root: fabricaRoot } = await ensureWorkspaceWithRoot("Fábrica de Software", admin.id, ifc.id);
   adminRoots.push(fabricaRoot.id);
   const statusColumn = await ensureColumn(fabricaRoot.id, "Status", "select", {
     options: [
