@@ -18,6 +18,7 @@
     "realtime:contract:sync": "tsx src/core/scripts/realtime-contract.ts sync",
     "realtime:contract:check": "tsx src/core/scripts/realtime-contract.ts check",
     "test": "vitest run",
+    "test:rqlite-config": "sh docker/rqlite/entrypoint.test.sh",
     "test:workspace-flow": "tsx --env-file=.env.development src/core/scripts/workspace-flow-test.ts",
     "test:sql-injection": "tsx --env-file=.env.development src/core/scripts/sql-injection-test.ts"
   },

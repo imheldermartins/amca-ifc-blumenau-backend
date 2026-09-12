@@ -1,0 +1,12 @@
+[
+  {
+    "username": "cluster-node",
+    "password": "TROQUE_POR_UM_SEGREDO_LONGO",
+    "perms": ["join", "join-read-only", "status", "ready"]
+  },
+  {
+    "username": "backend",
+    "password": "TROQUE_POR_OUTRO_SEGREDO_LONGO",
+    "perms": ["query", "execute", "status", "ready"]
+  }
+]

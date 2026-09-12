@@ -1,5 +1,5 @@
 import sendRequest from "@/utils/sendRequest";
-import { RAFT_URL } from "@/constants/raft_url";
+import { RAFT_URL, RQLITE_AUTHORIZATION } from "@/constants/raft_url";
 
 const WORKSPACE_DB_API_URL = RAFT_URL;
 
@@ -81,6 +81,7 @@ export async function rqlite<T>(
     "post",
     `${WORKSPACE_DB_API_URL}/db/${endpoint}?pretty&associative${transaction}`,
     [...sqlQueries],
+    RQLITE_AUTHORIZATION ? { Authorization: RQLITE_AUTHORIZATION } : undefined,
   );
 
   return parseRqliteResults(response?.results);

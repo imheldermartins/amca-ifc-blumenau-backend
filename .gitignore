@@ -8,6 +8,10 @@ dist/
 
 # Envs reais de produção dos containers (os .example ficam no git)
 docker/*.prod.env
+docker/rqlite.node.env
+docker/rqlite/security/*
+!docker/rqlite/security/README.md
+!docker/rqlite/security/*.example.json
 
 # Orientações e handoffs de agentes — essenciais localmente, não no repositório
 .agents/
