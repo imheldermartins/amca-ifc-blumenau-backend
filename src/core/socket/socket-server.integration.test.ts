@@ -44,7 +44,7 @@ let publisher: PageRealtimePublisher;
 const clients: TestClient[] = [];
 
 beforeAll(async () => {
-  pageEdit = new PageEditChannel();
+  pageEdit = new PageEditChannel((io,event,payload) => (io.to("page-database:"+payload.pageId) as unknown as {emit:(event:string,payload:unknown)=>void}).emit(event,payload));
   const access = {
     canAccessPage: async (userId: string, pageId: string) =>
       (pageId === PAGE_ID && (userId === OWNER_ID || userId === COLLABORATOR_ID)) ||
@@ -53,7 +53,7 @@ beforeAll(async () => {
   const registry = new RealtimeChannelRegistry([
     new SystemChannel(() => new Date(UPDATED_AT)),
     new PageRoomChannel(access),
-    new PageInteractionChannel(),
+    new PageInteractionChannel(async()=>true),
     pageEdit,
   ]);
   const usersByToken = new Map([

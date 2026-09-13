@@ -1,7 +1,9 @@
+import { ulid } from "ulid";
 import db from "@models/index";
 import type { Schema } from "@/models/schemas/index";
 import {
   commitFilterKeyReconcile,
+  insertPageViewJson,
   updatePageJsonPaths,
   updatePageViewFiltersJson,
   type PageJsonPathUpdate,
@@ -47,6 +49,12 @@ export interface PageViewPatchResult {
   changed: boolean;
 }
 
+export interface PageViewCreateResult {
+  viewId: string;
+  view: JsonRecord;
+  data: JsonRecord;
+}
+
 export interface FilterWriteResult {
   viewId: string;
   filters: Schema.ViewFiltersV2;
@@ -72,7 +80,7 @@ export interface FilterKeyReconcileResult {
 }
 
 export type PageViewFailure =
-  | { ok: false; reason: "not_found" | "validation" | "server_error"; message: string };
+  | { ok: false; reason: "not_found" | "validation" | "conflict" | "server_error"; message: string };
 export type PageViewResult<T> = { ok: true; data: T } | PageViewFailure;
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -81,6 +89,22 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function isView(value: unknown): value is JsonRecord {
   return isRecord(value) && typeof value.view === "string" && VIEW_KINDS.has(value.view);
+}
+
+function isActiveView(value: unknown): value is JsonRecord {
+  return isView(value) && value.deletedAt == null;
+}
+
+function viewKeyEntities(data: JsonRecord, exceptId?: string) {
+  return Object.entries(data)
+    .filter((entry): entry is [string, JsonRecord] => entry[0] !== exceptId && isView(entry[1]))
+    .map(([id, view]) => ({
+      id,
+      label: typeof view.name === "string" ? view.name : "",
+      ...(sanitizePublicKeyMetadata(view.urlKey) && {
+        publicKey: sanitizePublicKeyMetadata(view.urlKey),
+      }),
+    }));
 }
 
 function same(left: unknown, right: unknown): boolean {
@@ -153,6 +177,130 @@ class PageViewController {
     return { page, columns };
   }
 
+  async createView(pageId: string, raw: unknown, queryType?: unknown): Promise<PageViewResult<PageViewCreateResult>> {
+    if (!isRecord(raw) || Object.keys(raw).some((key) => !["type", "view", "name", "title"].includes(key))) {
+      return { ok: false, reason: "validation", message: "View inválida" };
+    }
+    const requestedTypes = [raw.type, raw.view, queryType].filter((value) => value !== undefined);
+    const kind = requestedTypes[0] ?? "table";
+    if (
+      typeof kind !== "string" || !VIEW_KINDS.has(kind) ||
+      requestedTypes.some((value) => value !== kind)
+    ) {
+      return { ok: false, reason: "validation", message: "Tipo de view inválido" };
+    }
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!name || name.length > 120) {
+      return { ok: false, reason: "validation", message: "Nome de view inválido" };
+    }
+
+    try {
+      const context = await this.context(pageId);
+      if (!context) return { ok: false, reason: "not_found", message: "Página não encontrada" };
+      const currentData = pageData(context.page);
+      const otherViews = viewKeyEntities(currentData);
+      const title = raw.title === undefined
+        ? { key: "title" as const, column_name: "Título" }
+        : parseTitle(raw.title);
+      const realColumns = context.columns.map((column) => ({
+        id: String(column.id),
+        label: column.name,
+        ...(sanitizePublicKeyMetadata(column.data?.publicKey) && {
+          publicKey: sanitizePublicKeyMetadata(column.data?.publicKey),
+        }),
+      }));
+      const reservedTitleKeys = collectReservedPublicKeys(realColumns, "coluna");
+      readDeletedColumnKeys(currentData).forEach((key) => reservedTitleKeys.add(key));
+      const viewId = ulid();
+      const view: JsonRecord = {
+        view: kind,
+        name,
+        urlKey: reconcilePublicKeyMetadata(
+          name,
+          "view",
+          undefined,
+          collectReservedPublicKeys(otherViews, "view"),
+        ),
+        filters: { version: 2, updatedAt: null, clauses: [], groupBy: [], passthrough: [] },
+        title: {
+          ...title,
+          publicKey: reconcilePublicKeyMetadata(title.column_name, "coluna", undefined, reservedTitleKeys),
+        },
+        orderedHeaderCols: [],
+      };
+      const inserted = await insertPageViewJson(pageId, viewId, view);
+      if (!inserted) return { ok: false, reason: "conflict", message: "Não foi possível criar a view" };
+      const page = await db.pages.find({ id: pageId } as LookupValues<Schema.Page>);
+      if (!page) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      const data = pageData(page);
+      const persisted = data[viewId];
+      if (!isRecord(persisted)) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      return { ok: true, data: { viewId, view: persisted, data } };
+    } catch (error) {
+      if (error instanceof ViewFiltersValidationError) {
+        return { ok: false, reason: "validation", message: error.message };
+      }
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+  }
+
+  async duplicateView(pageId: string, sourceViewId: string): Promise<PageViewResult<PageViewCreateResult>> {
+    if (!ULID_RE.test(sourceViewId)) {
+      return { ok: false, reason: "validation", message: "View inválida" };
+    }
+    try {
+      const context = await this.context(pageId);
+      if (!context) return { ok: false, reason: "not_found", message: "Página não encontrada" };
+      const currentData = pageData(context.page);
+      const source = currentData[sourceViewId];
+      if (!isActiveView(source)) {
+        return { ok: false, reason: "not_found", message: "View não encontrada" };
+      }
+      const sourceName = typeof source.name === "string" && source.name.trim() ? source.name.trim() : "View";
+      const suffix = " (cópia)";
+      const name = `${sourceName.slice(0, 120 - suffix.length)}${suffix}`;
+      const viewId = ulid();
+      const view: JsonRecord = {
+        ...source,
+        name,
+        urlKey: reconcilePublicKeyMetadata(name, "view", undefined, collectReservedPublicKeys(viewKeyEntities(currentData), "view")),
+      };
+      const inserted = await insertPageViewJson(pageId, viewId, view, sourceViewId);
+      if (!inserted) return { ok: false, reason: "conflict", message: "Não foi possível duplicar a view" };
+      const page = await db.pages.find({ id: pageId } as LookupValues<Schema.Page>);
+      if (!page) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      const data = pageData(page);
+      const persisted = data[viewId];
+      if (!isRecord(persisted)) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      return { ok: true, data: { viewId, view: persisted, data } };
+    } catch (error) {
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+  }
+
+  async deleteView(pageId: string, viewId: string): Promise<PageViewResult<{ viewId: string; data: JsonRecord }>> {
+    if (!ULID_RE.test(viewId)) {
+      return { ok: false, reason: "validation", message: "View inválida" };
+    }
+    try {
+      const context = await this.context(pageId);
+      if (!context) return { ok: false, reason: "not_found", message: "Página não encontrada" };
+      if (!isActiveView(pageData(context.page)[viewId])) {
+        return { ok: false, reason: "not_found", message: "View não encontrada" };
+      }
+      const updated = await updatePageJsonPaths(pageId, [{ path: [viewId, "deletedAt"], value: new Date().toISOString() }], viewId);
+      if (!updated) return { ok: false, reason: "not_found", message: "View não encontrada" };
+      const page = await db.pages.find({ id: pageId } as LookupValues<Schema.Page>);
+      if (!page) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      return { ok: true, data: { viewId, data: pageData(page) } };
+    } catch (error) {
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+  }
+
   async updateFilters(
     pageId: string,
     viewId: string,
@@ -166,7 +314,7 @@ class PageViewController {
       const context = await this.context(pageId);
       if (!context) return { ok: false, reason: "not_found", message: "Página não encontrada" };
       const currentData = pageData(context.page);
-      if (!isView(currentData[viewId])) {
+      if (!isActiveView(currentData[viewId])) {
         return { ok: false, reason: "not_found", message: "View não encontrada" };
       }
 
@@ -208,7 +356,7 @@ class PageViewController {
       if (!context) return { ok: false, reason: "not_found", message: "Página não encontrada" };
       const currentData = pageData(context.page);
       const current = currentData[viewId];
-      if (!isView(current)) {
+      if (!isActiveView(current)) {
         return { ok: false, reason: "not_found", message: "View não encontrada" };
       }
 
@@ -227,26 +375,16 @@ class PageViewController {
         set("view", raw.view);
       }
       if (raw.name !== undefined) {
-        if (typeof raw.name !== "string") throw new ViewFiltersValidationError("Nome inválido");
-        set("name", raw.name);
-        const otherViews = Object.entries(currentData)
-          .filter(
-            (entry): entry is [string, JsonRecord] =>
-              entry[0] !== viewId && isView(entry[1]),
-          )
-          .map(([id, view]) => ({
-            id,
-            label: typeof view.name === "string" ? view.name : "",
-            ...(sanitizePublicKeyMetadata(view.urlKey) && {
-              publicKey: sanitizePublicKeyMetadata(view.urlKey),
-            }),
-          }));
+        if (typeof raw.name !== "string" || !raw.name.trim() || raw.name.trim().length > 120) throw new ViewFiltersValidationError("Nome inválido");
+        const name = raw.name.trim();
+        set("name", name);
+        const otherViews = viewKeyEntities(currentData, viewId);
         const urlKey = reconcilePublicKeyMetadata(
-          raw.name,
+          name,
           "view",
           current.urlKey,
           collectReservedPublicKeys(otherViews, "view"),
-          { forceRename: raw.name !== current.name },
+          { forceRename: name !== current.name },
         );
         set("urlKey", urlKey);
       }
@@ -307,7 +445,7 @@ class PageViewController {
       if (!context) return { ok: false, reason: "not_found", message: "Página não encontrada" };
       const currentData = pageData(context.page);
       const views = Object.entries(currentData).filter(
-        (entry): entry is [string, JsonRecord] => ULID_RE.test(entry[0]) && isView(entry[1]),
+        (entry): entry is [string, JsonRecord] => ULID_RE.test(entry[0]) && isActiveView(entry[1]),
       );
 
       const viewKeys = reconcilePublicKeyScope(
@@ -319,6 +457,7 @@ class PageViewController {
           }),
         })),
         "view",
+        collectReservedPublicKeys(viewKeyEntities(currentData).filter((entry) => !views.some(([id]) => id === entry.id)), "view"),
       );
 
       const columnKeys = reconcilePublicKeyScope(

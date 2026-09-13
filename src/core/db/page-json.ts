@@ -61,8 +61,8 @@ export function buildUpdatePageJsonPathsStatement(
   const values: unknown[] = [...pairs, pageId];
   let where = "WHERE id = ? AND deleted_at IS NULL";
   if (requiredViewId !== undefined) {
-    where += " AND json_type(data, ?) = 'object'";
-    values.push(jsonPath([requiredViewId]));
+    where += " AND json_type(data, ?) = 'object' AND json_extract(data, ?) IS NULL";
+    values.push(jsonPath([requiredViewId]), jsonPath([requiredViewId, "deletedAt"]));
   }
 
   return {
@@ -117,6 +117,38 @@ export async function updatePageJsonPaths(
     "execute",
   );
   return updated === true;
+}
+
+/** Insere uma view sem substituir o snapshot nem sobrescrever um id existente. */
+export function buildInsertPageViewStatement(
+  pageId: string,
+  viewId: string,
+  view: Record<string, unknown>,
+  sourceViewId?: string,
+): SqlStatement {
+  if (!ULID_RE.test(pageId) || !ULID_RE.test(viewId) || (sourceViewId !== undefined && !ULID_RE.test(sourceViewId))) {
+    throw new Error("Invalid page or view id");
+  }
+  const path = jsonPath([viewId]);
+  return {
+    text:
+      "UPDATE pages SET data = json_insert(CASE WHEN json_valid(data) THEN data ELSE '{}' END, ?, json(?)), " +
+      "updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL " +
+      "AND json_type(CASE WHEN json_valid(data) THEN data ELSE '{}' END, ?) IS NULL" +
+      (sourceViewId ? " AND json_type(data, ?) = 'object' AND json_extract(data, ?) IS NULL" : ""),
+    values: [path, JSON.stringify(view), pageId, path,
+      ...(sourceViewId ? [jsonPath([sourceViewId]), jsonPath([sourceViewId, "deletedAt"])] : [])],
+  };
+}
+
+export async function insertPageViewJson(
+  pageId: string,
+  viewId: string,
+  view: Record<string, unknown>,
+  sourceViewId?: string,
+): Promise<boolean> {
+  const [inserted] = await rqlite([wire(buildInsertPageViewStatement(pageId, viewId, view, sourceViewId))], "execute");
+  return inserted === true;
 }
 
 /**

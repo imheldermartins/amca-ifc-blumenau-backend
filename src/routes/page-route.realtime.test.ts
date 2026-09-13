@@ -41,6 +41,9 @@ const doubles = vi.hoisted(() => ({
     removeCollaborator: vi.fn(),
   },
   view: {
+    createView: vi.fn(),
+    duplicateView: vi.fn(),
+    deleteView: vi.fn(),
     updateFilters: vi.fn(),
     patchView: vi.fn(),
     reconcile: vi.fn(),
@@ -62,6 +65,7 @@ const doubles = vi.hoisted(() => ({
   },
 }));
 
+vi.mock("@db/scoped-access-store", async (load) => ({...await load<object>(),default:{can: (_scope:string,id:string,userId:string) => doubles.access.canAccessPage(userId,id)}}));
 vi.mock("@/controllers/page-controller", () => ({ default: doubles.page }));
 vi.mock("@/controllers/page-column-controller", () => ({ default: doubles.column }));
 vi.mock("@/controllers/page-column-value-controller", () => ({ default: doubles.value }));
@@ -383,6 +387,72 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
     expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
   });
 
+  it("cria view com 201 e publica o snapshot confirmado na sala da página", async () => {
+    const view = { view: "calendar", name: "Calendário", urlKey: { key: "calendario", aliases: [] } };
+    const data = { [VIEW_ID]: view };
+    doubles.view.createView.mockResolvedValueOnce({
+      ok: true,
+      data: { viewId: VIEW_ID, view, data },
+    });
+    const response = await request(`/pages/${PAGE_ID}/views`, "POST", {
+      type: "calendar",
+      name: "Calendário",
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ viewId: VIEW_ID, view });
+    expect(doubles.view.createView).toHaveBeenCalledWith(
+      PAGE_ID, { type: "calendar", name: "Calendário" }, undefined,
+    );
+    expect(doubles.publisher.pageChanged).toHaveBeenCalledWith({
+      pageId: PAGE_ID,
+      data,
+      originUserId: USER_ID,
+    });
+  });
+
+  it("aceita criação sem type e repassa type opcional da query", async () => {
+    const view = { view: "table", name: "Tabela" };
+    doubles.view.createView.mockResolvedValue({
+      ok: true,
+      data: { viewId: VIEW_ID, view, data: { [VIEW_ID]: view } },
+    });
+
+    expect((await request(`/pages/${PAGE_ID}/views`, "POST", { name: "Tabela" })).status).toBe(201);
+    expect(doubles.view.createView).toHaveBeenLastCalledWith(PAGE_ID, { name: "Tabela" }, undefined);
+
+    expect((await request(`/pages/${PAGE_ID}/views?type=board`, "POST", { name: "Quadros" })).status).toBe(201);
+    expect(doubles.view.createView).toHaveBeenLastCalledWith(PAGE_ID, { name: "Quadros" }, "board");
+  });
+
+  it("duplica e exclui views somente após commit, com um broadcast por escrita", async () => {
+    const copied = { view: "board", name: "Quadros (cópia)" };
+    const deleted = { view: "board", name: "Quadros", deletedAt: "2026-09-13T12:00:00.000Z" };
+    doubles.view.duplicateView.mockResolvedValueOnce({ ok: true, data: {
+      viewId: COLUMN_ID, view: copied, data: { [VIEW_ID]: { view: "board" }, [COLUMN_ID]: copied },
+    } });
+    const duplicated = await request(`/pages/${PAGE_ID}/views/${VIEW_ID}/duplicate`, "POST", {});
+    expect(duplicated.status).toBe(201);
+    expect(await duplicated.json()).toEqual({ viewId: COLUMN_ID, view: copied });
+    expect(doubles.view.duplicateView).toHaveBeenCalledWith(PAGE_ID, VIEW_ID);
+    expect(doubles.publisher.pageChanged).toHaveBeenCalledOnce();
+
+    doubles.publisher.pageChanged.mockClear();
+    doubles.view.deleteView.mockResolvedValueOnce({ ok: true, data: {
+      viewId: VIEW_ID, data: { [VIEW_ID]: deleted, [COLUMN_ID]: copied },
+    } });
+    const removed = await request(`/pages/${PAGE_ID}/views/${VIEW_ID}`, "DELETE");
+    expect(removed.status).toBe(204);
+    expect(doubles.view.deleteView).toHaveBeenCalledWith(PAGE_ID, VIEW_ID);
+    expect(doubles.publisher.pageChanged).toHaveBeenCalledWith({
+      pageId: PAGE_ID, data: { [VIEW_ID]: deleted, [COLUMN_ID]: copied }, originUserId: USER_ID,
+    });
+
+    doubles.publisher.pageChanged.mockClear();
+    doubles.view.deleteView.mockResolvedValueOnce({ ok: false, reason: "not_found", message: "View não encontrada" });
+    expect((await request(`/pages/${PAGE_ID}/views/${VIEW_ID}`, "DELETE")).status).toBe(404);
+    expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
+  });
+
   it("não publica patch ou reconcile quando o commit é recusado", async () => {
     doubles.view.patchView.mockResolvedValueOnce({
       ok: false,
@@ -416,7 +486,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
       passthrough: [],
     });
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(403);
     expect(doubles.access.canAccessPage).toHaveBeenCalledWith(USER_ID, PAGE_ID);
     expect(doubles.view.updateFilters).not.toHaveBeenCalled();
     expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import pageAccessController from "@/controllers/page-access-controller";
+import accessStore from '@db/scoped-access-store';
 import { pageIdFromRoom, readPageId, roomForPage } from "@core/socket/page-room";
 import type { RealtimeChannel } from "@core/socket/realtime-channel";
 import type { CubsSocket, CubsSocketServer } from "@core/socket/socket-types";
@@ -21,7 +21,7 @@ export class PageRoomChannel implements RealtimeChannel {
   private io: CubsSocketServer | null = null;
 
   constructor(
-    private readonly access: PageAccessAuthorizer = pageAccessController,
+    private readonly access: PageAccessAuthorizer = {canAccessPage: (userId,pageId) => accessStore.can('page',pageId,userId,'read','subpages')},
     private readonly defer: DeferredTaskScheduler = setImmediate,
   ) {}
 

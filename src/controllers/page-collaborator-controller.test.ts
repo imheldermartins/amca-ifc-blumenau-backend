@@ -29,7 +29,6 @@ vi.mock("@db/workspace-store", () => ({
 import pageCollaboratorController from "./page-collaborator-controller.js";
 
 const PAGE_ID = "01KXDN4B182DJGAKPX0940H54N";
-const OWNER_ID = "01KXDN4AXN6QJBTZTCWP1JWVW4";
 const USER_ID = "01KXDN4B182DJGAKPX0940H54P";
 const WORKSPACE_ID = "01KXDN4B182DJGAKPX0940H54Q";
 
@@ -41,7 +40,7 @@ describe("PageCollaboratorController", () => {
       .mockResolvedValueOnce([{ workspace_id: WORKSPACE_ID }])
       .mockResolvedValueOnce([{ id: USER_ID, name: "Ana", email: "ana@example.com" }]);
 
-    const result = await pageCollaboratorController.listCandidates(PAGE_ID, "Ana");
+    const result = await pageCollaboratorController.listCandidates(PAGE_ID, "ana@example.com");
 
     expect(result).toEqual({
       ok: true,
@@ -50,30 +49,17 @@ describe("PageCollaboratorController", () => {
     const candidateStatement = doubles.sqlRaw.mock.calls[1]![0];
     expect(candidateStatement.text).toContain("FROM workspace_members wm");
     expect(candidateStatement.text).toContain("NOT EXISTS");
-    expect(candidateStatement.text).toContain("LIKE ? ESCAPE");
+    expect(candidateStatement.text).toContain("lower(trim(u.email)) = ?");
     expect(candidateStatement.values).toEqual([
       PAGE_ID,
       WORKSPACE_ID,
-      "%ana%",
-      "%ana%",
-      "ana%",
-      "ana%",
+      "ana@example.com",
     ]);
   });
 
-  it("recusa adicionar à página quem não faz parte da workspace", async () => {
-    doubles.findPage.mockResolvedValueOnce({ id: PAGE_ID, owner_id: OWNER_ID });
-    doubles.sqlRaw.mockResolvedValueOnce([{ workspace_id: WORKSPACE_ID }]);
-    doubles.findUser.mockResolvedValueOnce({ id: USER_ID });
-    doubles.getWorkspaceMembership.mockResolvedValueOnce(null);
 
-    const result = await pageCollaboratorController.addCollaborators(PAGE_ID, [USER_ID]);
-
-    expect(result).toEqual({
-      ok: false,
-      reason: "validation",
-      message: `Usuário "${USER_ID}" não pertence à workspace atual`,
-    });
-    expect(doubles.createLink).not.toHaveBeenCalled();
+  it("não oferece escrita sem autorização e template de role", () => {
+    expect('addCollaborators' in pageCollaboratorController).toBe(false);
+    expect('removeCollaborator' in pageCollaboratorController).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import db from "@models/index";
 import type { Model } from "@/core/db/model";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
+import { SystemRoleFactory } from "@db/system-role-factory";
 
 class PageController implements IBaseController<Schema.Page> {
   private db: Model<Schema.Page> = db.pages;
@@ -41,6 +42,9 @@ class PageController implements IBaseController<Schema.Page> {
       const createdPage = await this.db.create(data);
 
       if (!createdPage) throw new Error("Failed to create page");
+      if (!await SystemRoleFactory.ensureDefault('page', createdPage.id)) {
+        throw new Error("Failed to create default page role");
+      }
 
       return createdPage;
     } catch (error) {
@@ -105,6 +109,9 @@ class PageController implements IBaseController<Schema.Page> {
         data: body.data ?? {},
       } as unknown as CreateValues<Schema.Page>);
       if (!created) throw new Error("Failed to create child page");
+      if (!await SystemRoleFactory.ensureDefault('page', created.id)) {
+        throw new Error("Failed to create default page role");
+      }
 
       const edge = await db.pageEdges.create({
         parent_id: parentId,

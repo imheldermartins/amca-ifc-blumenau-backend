@@ -6,6 +6,7 @@ const rqlite = vi.hoisted(() => vi.fn());
 vi.mock("./shared.js", () => ({ rqlite }));
 
 import {
+  buildInsertPageViewStatement,
   buildUpdatePageJsonPathsStatement,
   buildUpdatePageViewFiltersStatement,
   commitFilterKeyReconcile,
@@ -21,6 +22,28 @@ beforeEach(() => {
 });
 
 describe("page JSON updates", () => {
+  it("insere somente a nova view e conserva alterações concorrentes nas demais", () => {
+    const sqlite = new DatabaseSync(":memory:");
+    sqlite.exec("CREATE TABLE pages (id TEXT PRIMARY KEY, data TEXT, updated_at TEXT, deleted_at TEXT)");
+    sqlite.prepare("INSERT INTO pages (id, data) VALUES (?, ?)").run(PAGE_ID, JSON.stringify({
+      [OTHER_VIEW_ID]: { view: "table", name: "Existente" },
+      unrelated: { keep: true },
+    }));
+    const view = { view: "board", name: "Quadros", orderedHeaderCols: [] };
+    const statement = buildInsertPageViewStatement(PAGE_ID, VIEW_ID, view);
+    expect(statement.text).not.toContain(VIEW_ID);
+    const inserted = sqlite.prepare(statement.text).run(...(statement.values as string[]));
+    expect(inserted.changes).toBe(1);
+    expect(sqlite.prepare(statement.text).run(...(statement.values as string[])).changes).toBe(0);
+    const row = sqlite.prepare("SELECT data FROM pages WHERE id = ?").get(PAGE_ID) as { data: string };
+    expect(JSON.parse(row.data)).toEqual({
+      [OTHER_VIEW_ID]: { view: "table", name: "Existente" },
+      unrelated: { keep: true },
+      [VIEW_ID]: view,
+    });
+    sqlite.close();
+  });
+
   it("parametriza path, documento e ids no patch atomico da view", () => {
     const statement = buildUpdatePageViewFiltersStatement(PAGE_ID, VIEW_ID, {
       version: 2,
@@ -38,7 +61,29 @@ describe("page JSON updates", () => {
       expect.stringContaining('"version":2'),
       PAGE_ID,
       `$.\"${VIEW_ID}\"`,
+      `$.\"${VIEW_ID}\".deletedAt`,
     ]);
+  });
+
+  it("soft delete preserva o snapshot e bloqueia patches e duplicação posteriores", () => {
+    const sqlite = new DatabaseSync(":memory:");
+    sqlite.exec("CREATE TABLE pages (id TEXT PRIMARY KEY, data TEXT, updated_at TEXT, deleted_at TEXT)");
+    const original = {
+      [VIEW_ID]: { view: "table", name: "Original", filters: { version: 2, clauses: [] } },
+      [OTHER_VIEW_ID]: { view: "board", name: "Outra" },
+    };
+    sqlite.prepare("INSERT INTO pages (id, data) VALUES (?, ?)").run(PAGE_ID, JSON.stringify(original));
+    const deletedAt = "2026-09-13T12:00:00.000Z";
+    const deletion = buildUpdatePageJsonPathsStatement(PAGE_ID, [{ path: [VIEW_ID, "deletedAt"], value: deletedAt }], VIEW_ID);
+    expect(sqlite.prepare(deletion.text).run(...(deletion.values as string[])).changes).toBe(1);
+    expect(sqlite.prepare(deletion.text).run(...(deletion.values as string[])).changes).toBe(0);
+    const patch = buildUpdatePageJsonPathsStatement(PAGE_ID, [{ path: [VIEW_ID, "name"], value: "Alterada" }], VIEW_ID);
+    expect(sqlite.prepare(patch.text).run(...(patch.values as string[])).changes).toBe(0);
+    const duplicate = buildInsertPageViewStatement(PAGE_ID, COLUMN_ID, { view: "table", name: "Cópia" }, VIEW_ID);
+    expect(sqlite.prepare(duplicate.text).run(...(duplicate.values as string[])).changes).toBe(0);
+    const row = sqlite.prepare("SELECT data FROM pages WHERE id = ?").get(PAGE_ID) as { data: string };
+    expect(JSON.parse(row.data)).toEqual({ ...original, [VIEW_ID]: { ...original[VIEW_ID], deletedAt } });
+    sqlite.close();
   });
 
   it("recusa ids fora do contrato antes de montar o JSON path", () => {

@@ -12,6 +12,7 @@ import type {
 import type { RealtimeChannel } from "@core/socket/realtime-channel";
 import { roomForPage } from "@core/socket/page-room";
 import type { CubsSocket, CubsSocketServer } from "@core/socket/socket-types";
+import { authorizedPageDelivery, type PageEventDelivery } from './authorized-page-delivery.js';
 
 export type PageEditEventName =
   | "cell-updated"
@@ -41,6 +42,8 @@ export class PageEditChannel implements RealtimeChannel {
   ] as const;
 
   private io: CubsSocketServer | null = null;
+
+  constructor(private readonly deliver: PageEventDelivery = authorizedPageDelivery) {}
 
   attach(io: CubsSocketServer): void {
     this.io = io;
@@ -91,10 +94,7 @@ export class PageEditChannel implements RealtimeChannel {
     if (!this.io) {
       throw new Error("PageEditChannel não foi anexado ao SocketServer");
     }
-    const room = this.io.to(roomForPage(payload.pageId)) as unknown as {
-      emit(event: E, payload: Parameters<ServerToClientEvents[E]>[0]): void;
-    };
-    room.emit(event, payload);
+    this.deliver(this.io, event, payload);
   }
 }
 

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   },
   pageJson: {
     commitFilterKeyReconcile: vi.fn(),
+    insertPageViewJson: vi.fn(),
     updatePageJsonPaths: vi.fn(),
     updatePageViewFiltersJson: vi.fn(),
   },
@@ -25,6 +26,7 @@ vi.mock("@models/index", () => ({
 
 vi.mock("@/core/db/page-json", () => ({
   commitFilterKeyReconcile: mocks.pageJson.commitFilterKeyReconcile,
+  insertPageViewJson: mocks.pageJson.insertPageViewJson,
   updatePageJsonPaths: mocks.pageJson.updatePageJsonPaths,
   updatePageViewFiltersJson: mocks.pageJson.updatePageViewFiltersJson,
 }));
@@ -78,6 +80,128 @@ afterEach(() => {
 });
 
 describe("PageViewController", () => {
+  it.each(["table", "grid", "board", "calendar", "timeline", "graph"])(
+    "cria uma nova view %s sem modificar as outras",
+    async (kind) => {
+      const existing = { view: "table", name: "Principal", urlKey: { key: "principal", aliases: [] } };
+      const current = page({ [OTHER_VIEW_ID]: existing });
+      let persisted = current;
+      mocks.pages.find.mockImplementation(async () => persisted);
+      mocks.pageJson.insertPageViewJson.mockImplementation(async (_pageId, viewId, view) => {
+        persisted = page({ ...current.data, [viewId]: view });
+        return true;
+      });
+
+      const result = await pageViewController.createView(PAGE_ID, {
+        type: kind,
+        name: "Nova view",
+        title: { key: "title", column_name: "Docente" },
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        data: { view: { view: kind, name: "Nova view", orderedHeaderCols: [] } },
+      });
+      expect(mocks.pageJson.insertPageViewJson).toHaveBeenCalledWith(
+        PAGE_ID,
+        expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
+        expect.objectContaining({
+          filters: { version: 2, updatedAt: null, clauses: [], groupBy: [], passthrough: [] },
+          title: expect.objectContaining({ key: "title", column_name: "Docente" }),
+        }),
+      );
+      expect(result.ok && result.data.data[OTHER_VIEW_ID]).toEqual(existing);
+    },
+  );
+
+  it("usa table quando type não é informado", async () => {
+    const current = page({});
+    let persisted = current;
+    mocks.pages.find.mockImplementation(async () => persisted);
+    mocks.pageJson.insertPageViewJson.mockImplementation(async (_pageId, viewId, view) => {
+      persisted = page({ [viewId]: view });
+      return true;
+    });
+
+    const result = await pageViewController.createView(PAGE_ID, { name: "Nova tabela" });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { view: { view: "table", name: "Nova tabela" } },
+    });
+  });
+
+  it("aceita type na query e recusa tipos conflitantes", async () => {
+    const current = page({});
+    let persisted = current;
+    mocks.pages.find.mockImplementation(async () => persisted);
+    mocks.pageJson.insertPageViewJson.mockImplementation(async (_pageId, viewId, view) => {
+      persisted = page({ [viewId]: view });
+      return true;
+    });
+
+    const result = await pageViewController.createView(PAGE_ID, { name: "Quadros" }, "board");
+    expect(result).toMatchObject({ ok: true, data: { view: { view: "board" } } });
+    expect(await pageViewController.createView(PAGE_ID, { name: "Conflito", type: "table", view: "board" }))
+      .toMatchObject({ ok: false, reason: "validation" });
+  });
+
+  it("recusa campos e tipos inválidos antes de consultar a página", async () => {
+    expect(await pageViewController.createView(PAGE_ID, { type: "map", name: "Mapa" }))
+      .toMatchObject({ ok: false, reason: "validation" });
+    expect(await pageViewController.createView(PAGE_ID, { view: "table", name: "", filters: {} }))
+      .toMatchObject({ ok: false, reason: "validation" });
+    expect(mocks.pages.find).not.toHaveBeenCalled();
+  });
+
+  it("duplica filtros, ordem e larguras com id e chave pública próprios", async () => {
+    const source = {
+      view: "board", name: "Quadros", urlKey: { key: "quadros", aliases: [] },
+      filters: { version: 2, updatedAt: NOW, clauses: [], groupBy: ["page_title"], passthrough: [] },
+      title: { key: "title", column_name: "Título", publicKey: { key: "titulo", aliases: [] } },
+      orderedHeaderCols: [COLUMN_ID], columnWidths: { [COLUMN_ID]: 300 }, orderedRows: [OTHER_VIEW_ID],
+    };
+    let persisted = page({ [VIEW_ID]: source });
+    mocks.pages.find.mockImplementation(async () => persisted);
+    mocks.pageJson.insertPageViewJson.mockImplementation(async (_pageId, viewId, view) => {
+      persisted = page({ ...persisted.data, [viewId]: view });
+      return true;
+    });
+    const result = await pageViewController.duplicateView(PAGE_ID, VIEW_ID);
+    expect(result).toMatchObject({ ok: true, data: { view: {
+      view: "board", name: "Quadros (cópia)", filters: source.filters,
+      title: source.title, orderedHeaderCols: [COLUMN_ID], orderedRows: [OTHER_VIEW_ID],
+      columnWidths: { [COLUMN_ID]: 300 },
+    } } });
+    expect(result.ok && result.data.viewId).not.toBe(VIEW_ID);
+    expect(result.ok && (result.data.view.urlKey as { key: string }).key).not.toBe("quadros");
+    expect(mocks.pageJson.insertPageViewJson).toHaveBeenCalledWith(PAGE_ID, expect.any(String), expect.any(Object), VIEW_ID);
+    expect(result.ok && result.data.data[VIEW_ID]).toEqual(source);
+  });
+
+  it("marca a view como excluída sem alterar as outras e recusa novas escritas nela", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(NOW));
+    const source = { view: "table", name: "Tabela", filters: { version: 2, updatedAt: null, clauses: [], groupBy: [], passthrough: [] } };
+    const other = { view: "board", name: "Quadros" };
+    let persisted = page({ [VIEW_ID]: source, [OTHER_VIEW_ID]: other });
+    mocks.pages.find.mockImplementation(async () => persisted);
+    mocks.pageJson.updatePageJsonPaths.mockImplementation(async (_pageId, patches) => {
+      persisted = page({ ...persisted.data, [VIEW_ID]: { ...source, deletedAt: patches[0].value } });
+      return true;
+    });
+    const result = await pageViewController.deleteView(PAGE_ID, VIEW_ID);
+    expect(result).toMatchObject({ ok: true, data: { data: {
+      [VIEW_ID]: { ...source, deletedAt: NOW }, [OTHER_VIEW_ID]: other,
+    } } });
+    expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledWith(PAGE_ID, [{ path: [VIEW_ID, "deletedAt"], value: NOW }], VIEW_ID);
+    expect(await pageViewController.deleteView(PAGE_ID, VIEW_ID)).toMatchObject({ ok: false, reason: "not_found" });
+    expect(await pageViewController.duplicateView(PAGE_ID, VIEW_ID)).toMatchObject({ ok: false, reason: "not_found" });
+    expect(await pageViewController.patchView(PAGE_ID, VIEW_ID, { name: "Novo" })).toMatchObject({ ok: false, reason: "not_found" });
+    expect(await pageViewController.updateFilters(PAGE_ID, VIEW_ID, { version: 2, clauses: [], groupBy: [], passthrough: [] }))
+      .toMatchObject({ ok: false, reason: "not_found" });
+  });
+
   it("carimba filtros no servidor e altera somente o path da view pedida", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));

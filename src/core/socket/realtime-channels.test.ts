@@ -140,8 +140,8 @@ function setup() {
     ),
   };
   const pageRoom = new PageRoomChannel(access, (task) => deferred.push(task));
-  const pageInteraction = new PageInteractionChannel();
-  const pageEdit = new PageEditChannel();
+  const pageInteraction = new PageInteractionChannel(async()=>true);
+  const pageEdit = new PageEditChannel((io,event,payload) => (io.to("page-database:"+payload.pageId) as unknown as {emit:(event:string,payload:unknown)=>void}).emit(event,payload));
   const system = new SystemChannel(() => new Date(UPDATED_AT));
   const registry = new RealtimeChannelRegistry([system, pageRoom, pageInteraction, pageEdit]);
   registry.attach(io as unknown as CubsSocketServer);

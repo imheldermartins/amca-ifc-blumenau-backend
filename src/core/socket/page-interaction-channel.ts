@@ -5,22 +5,26 @@ import type {
 import type { RealtimeChannel } from "@core/socket/realtime-channel";
 import { roomForPage } from "@core/socket/page-room";
 import type { CubsSocket, CubsSocketServer } from "@core/socket/socket-types";
+import access from '@db/scoped-access-store';
 
 export class PageInteractionChannel implements RealtimeChannel {
   readonly id = "page-interaction";
   readonly clientEvents = ["resize-column"] as const;
   readonly serverEvents = ["column-resizing"] as const;
+  constructor(private readonly mayEdit = (pageId: string,userId: string) => access.can('page',pageId,userId,'write','update')) {}
 
   attach(_io: CubsSocketServer): void {}
 
   register(socket: CubsSocket): void {
-    socket.on("resize-column", (payload) => {
+    socket.on("resize-column", async (payload) => {
       const preview = readResizeColumn(payload);
       if (!preview) return;
 
       // O join ja autorizou o socket. Membership em memoria impede publicar
       // frames numa pagina que este socket nao abriu.
       const roomName = roomForPage(preview.pageId);
+      if (!socket.rooms.has(roomName)) return;
+      try { if (!await this.mayEdit(preview.pageId,socket.data.userId)) return; } catch { return; }
       if (!socket.rooms.has(roomName)) return;
 
       const room = socket.to(roomName).volatile as unknown as {

@@ -1,3 +1,6 @@
+import scopedAccess from "@db/scoped-access-store";
+import { requireScopedPermission } from "@core/auth/scoped-access-middleware";
+import roleStore from "@db/role-store";
 import type { Request, Response } from "express";
 import pageController from "@/controllers/page-controller";
 import pageColumnController from "@/controllers/page-column-controller";
@@ -832,6 +835,45 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *             items:
  *               type: string
  *
+ * /pages/{id}/views:
+ *   post:
+ *     summary: Cria uma view sem alterar as views existentes
+ *     description: type é opcional; quando ausente, cria uma view table. O snapshot salvo usa o campo view.
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: type
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [table, grid, board, calendar, timeline, graph]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name: { type: string }
+ *               type:
+ *                 type: string
+ *                 enum: [table, grid, board, calendar, timeline, graph]
+ *               title: { type: object }
+ *     responses:
+ *       201:
+ *         description: View criada
+ *       400:
+ *         description: Tipo, nome ou apresentação inválidos
+ *       404:
+ *         description: Página não encontrada
+ *
  * /pages/{id}/views/{viewId}/filters:
  *   put:
  *     summary: Substitui filtros e agrupamentos de uma view atomicamente
@@ -932,46 +974,47 @@ class PageRouter extends BaseRouter<Schema.Page> {
       all: [middleware.handle],
       get: [middleware.handle, requirePageAccess()],
       create: [middleware.handle],
-      update: [middleware.handle, requirePageAccess()],
-      // DELETE segue exclusivo do DONO (o handler filtra por `owner_id`):
-      // colaborar numa base não é poder apagá-la.
-      delete: [middleware.handle],
+      update: [middleware.handle, requireScopedPermission("page", "write", "update")],
+      delete: [middleware.handle, requireScopedPermission("page", "write", "delete")],
     });
 
     // Rotas adicionais (registradas após o CRUD base do super()). O
     // `requirePageAccess` é o guarda de dono-ou-colaborador (herdado pela árvore).
-    this.router.post("/:id/page", middleware.handle, requirePageAccess(), this.createChild.bind(this));
+    this.router.post("/:id/page", middleware.handle, requireScopedPermission("page", "write", "create"), this.createChild.bind(this));
     this.router.get("/:id/page", middleware.handle, requirePageAccess(), this.getDataset.bind(this));
     this.router.get("/:id/breadcrumb", middleware.handle, requirePageAccess(), this.getBreadcrumb.bind(this));
 
     // Colaboradores (page_collaborators): acesso N:N à página. Adição em lote; leitura e
     // remoção unitárias por :collaboratorId (= user_id).
-    this.router.get("/:id/collaborators", middleware.handle, requirePageAccess(), this.listCollaborators.bind(this));
-    this.router.get("/:id/collaborator-candidates", middleware.handle, requirePageAccess(), this.listCollaboratorCandidates.bind(this));
-    this.router.get("/:id/collaborators/:collaboratorId", middleware.handle, requirePageAccess(), this.getCollaborator.bind(this));
-    this.router.post("/:id/collaborators", middleware.handle, requirePageAccess(), this.addCollaborators.bind(this));
-    this.router.delete("/:id/collaborators/:collaboratorId", middleware.handle, requirePageAccess(), this.removeCollaborator.bind(this));
+    this.router.get("/:id/collaborators", middleware.handle, requireScopedPermission("page", "read", "members"), this.listCollaborators.bind(this));
+    this.router.get("/:id/collaborator-candidates", middleware.handle, requireScopedPermission("page", "write", "add_members"), this.listCollaboratorCandidates.bind(this));
+    this.router.get("/:id/collaborators/:collaboratorId", middleware.handle, requireScopedPermission("page", "read", "members"), this.getCollaborator.bind(this));
+    this.router.post("/:id/collaborators", middleware.handle, requireScopedPermission("page", "write", "add_members"), this.addCollaborators.bind(this));
+    this.router.delete("/:id/collaborators/:collaboratorId", middleware.handle, requireScopedPermission("page", "write", "promote_members"), this.removeCollaborator.bind(this));
 
     // Configuração de view. Filtros têm endpoint semântico próprio; os demais
     // campos usam patch por caminho para nunca reescrever `pages.data` inteiro.
-    this.router.put("/:id/views/:viewId/filters", middleware.handle, requirePageAccess(), this.updateViewFilters.bind(this));
-    this.router.patch("/:id/views/:viewId", middleware.handle, requirePageAccess(), this.patchView.bind(this));
+    this.router.post("/:id/views", middleware.handle, requireScopedPermission("page", "write", "update"), this.createView.bind(this));
+    this.router.post("/:id/views/:viewId/duplicate", middleware.handle, requireScopedPermission("page", "write", "update"), this.duplicateView.bind(this));
+    this.router.put("/:id/views/:viewId/filters", middleware.handle, requireScopedPermission("page", "write", "update"), this.updateViewFilters.bind(this));
+    this.router.patch("/:id/views/:viewId", middleware.handle, requireScopedPermission("page", "write", "update"), this.patchView.bind(this));
+    this.router.delete("/:id/views/:viewId", middleware.handle, requireScopedPermission("page", "write", "update"), this.deleteView.bind(this));
     this.router.post("/:id/filter-keys/reconcile", middleware.handle, requirePageAccess(), this.reconcileFilterKeys.bind(this));
 
     // Colunas da página parent (:id = id da parent). page_columns não tem rota própria.
-    this.router.post("/parent/:id/columns", middleware.handle, requirePageAccess(), this.createColumn.bind(this));
+    this.router.post("/parent/:id/columns", middleware.handle, requireScopedPermission("page", "write", "update"), this.createColumn.bind(this));
     this.router.get("/parent/:id/columns", middleware.handle, requirePageAccess(), this.listColumns.bind(this));
     this.router.get("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.getColumn.bind(this));
-    this.router.put("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.updateColumn.bind(this));
-    this.router.post("/parent/:id/columns/:column_id/reset", middleware.handle, requirePageAccess(), this.resetColumn.bind(this));
-    this.router.delete("/parent/:id/columns/:column_id", middleware.handle, requirePageAccess(), this.deleteColumn.bind(this));
+    this.router.put("/parent/:id/columns/:column_id", middleware.handle, requireScopedPermission("page", "write", "update"), this.updateColumn.bind(this));
+    this.router.post("/parent/:id/columns/:column_id/reset", middleware.handle, requireScopedPermission("page", "write", "update"), this.resetColumn.bind(this));
+    this.router.delete("/parent/:id/columns/:column_id", middleware.handle, requireScopedPermission("page", "write", "update"), this.deleteColumn.bind(this));
 
     // Valor (célula) de uma coluna numa página (:id = page_id da linha, :column_id = coluna).
     // Singular: a célula (página, coluna) tem no máximo UM valor (UNIQUE no banco).
-    this.router.post("/:id/column/:column_id/value", middleware.handle, requirePageAccess(), this.createValue.bind(this));
+    this.router.post("/:id/column/:column_id/value", middleware.handle, requireScopedPermission("page", "write", "update"), this.createValue.bind(this));
     this.router.get("/:id/column/:column_id/value", middleware.handle, requirePageAccess(), this.getValue.bind(this));
-    this.router.put("/:id/column/:column_id/value", middleware.handle, requirePageAccess(), this.updateValue.bind(this));
-    this.router.delete("/:id/column/:column_id/value", middleware.handle, requirePageAccess(), this.deleteValue.bind(this));
+    this.router.put("/:id/column/:column_id/value", middleware.handle, requireScopedPermission("page", "write", "update"), this.updateValue.bind(this));
+    this.router.delete("/:id/column/:column_id/value", middleware.handle, requireScopedPermission("page", "write", "update"), this.deleteValue.bind(this));
   }
 
   /**
@@ -1058,7 +1101,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     // Capture a sala antes do soft delete; publique somente após o commit.
     const parentId = await pageAccessController.getParentId(rowId);
     const deleted = await this.controller.delete(
-      { id: rowId, owner_id: req.userId } as LookupValues<Schema.Page>,
+      { id: rowId } as LookupValues<Schema.Page>,
     );
 
     if (!deleted) {
@@ -1100,13 +1143,15 @@ class PageRouter extends BaseRouter<Schema.Page> {
   }
 
   private async getDataset(req: Request, res: Response): Promise<Response> {
+    if (!await scopedAccess.can("page", req.params.id as string, req.userId!, "read", "subpages")) return res.json([]);
     const dataset = await pageController.getDataset(req.params.id as string);
 
     if (!dataset) {
       return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado` });
     }
 
-    return res.status(StatusCode.OK).json(dataset);
+    const visible = await Promise.all(dataset.map(async row => await scopedAccess.can("page", row.page_id, req.userId!, "read", "view") ? row : null));
+    return res.status(StatusCode.OK).json(visible.filter(Boolean));
   }
 
   // GET /pages/:id/breadcrumb -- trilha de ancestrais (CTE recursivo no controller).
@@ -1145,29 +1190,15 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
   // POST /pages/:id/collaborators -- adiciona em lote { userIds: [<ULID>, ...] }.
   private async addCollaborators(req: Request, res: Response): Promise<Response> {
-    const { userIds } = (req.body ?? {}) as Input.AddPageCollaborators;
-
-    const result = await pageCollaboratorController.addCollaborators(req.params.id as string, userIds);
-
-    if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
-    }
-
-    return res.status(StatusCode.CREATED).json(result.data);
+    return res.status(StatusCode.CONFLICT).json({
+      message: "A entrada exige aceite. Use POST /access/page/:id/invites com e-mail ou link.",
+    });
   }
 
   // DELETE /pages/:id/collaborators/:collaboratorId -- remove um colaborador (collaboratorId = user_id).
   private async removeCollaborator(req: Request, res: Response): Promise<Response> {
-    const result = await pageCollaboratorController.removeCollaborator(
-      req.params.id as string,
-      req.params.collaboratorId as string,
-    );
-
-    if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
-    }
-
-    return res.status(StatusCode.NO_CONTENT).send();
+    const saved = await roleStore.removeMember("page", req.params.id as string, req.userId!, req.params.collaboratorId as string);
+    return saved ? res.status(StatusCode.NO_CONTENT).send() : res.status(StatusCode.FORBIDDEN).json({ message: "Acesso não permitido" });
   }
 
   private async listCollaboratorCandidates(req: Request, res: Response): Promise<Response> {
@@ -1179,6 +1210,48 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
     }
     return res.status(StatusCode.OK).json(result.data);
+  }
+
+  private async createView(req: Request, res: Response): Promise<Response> {
+    const result = await pageViewController.createView(
+      req.params.id as string,
+      req.body,
+      req.query.type,
+    );
+    if (!result.ok) {
+      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    }
+    await pageRealtimePublisher.pageChanged({
+      pageId: req.params.id as string,
+      data: result.data.data,
+      originUserId: req.userId as string,
+    });
+    return res.status(StatusCode.CREATED).json({
+      viewId: result.data.viewId,
+      view: result.data.view,
+    });
+  }
+
+  private async duplicateView(req: Request, res: Response): Promise<Response> {
+    const result = await pageViewController.duplicateView(req.params.id as string, req.params.viewId as string);
+    if (!result.ok) return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    await pageRealtimePublisher.pageChanged({
+      pageId: req.params.id as string,
+      data: result.data.data,
+      originUserId: req.userId as string,
+    });
+    return res.status(StatusCode.CREATED).json({ viewId: result.data.viewId, view: result.data.view });
+  }
+
+  private async deleteView(req: Request, res: Response): Promise<Response> {
+    const result = await pageViewController.deleteView(req.params.id as string, req.params.viewId as string);
+    if (!result.ok) return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    await pageRealtimePublisher.pageChanged({
+      pageId: req.params.id as string,
+      data: result.data.data,
+      originUserId: req.userId as string,
+    });
+    return res.status(StatusCode.NO_CONTENT).send();
   }
 
   private async updateViewFilters(req: Request, res: Response): Promise<Response> {
@@ -1226,6 +1299,11 @@ class PageRouter extends BaseRouter<Schema.Page> {
   }
 
   private async reconcileFilterKeys(req: Request, res: Response): Promise<Response> {
+    if (!await scopedAccess.can("page", req.params.id as string, req.userId!, "write", "update")) {
+      const page = await pageController.get({id: req.params.id} as LookupValues<Schema.Page>);
+      const columns = await pageColumnController.all({ parent_id: req.params.id } as LookupsConfig<Schema.PageColumn>);
+      return res.status(StatusCode.OK).json({pageId:req.params.id,data:page?.data ?? {},columns:columns ?? []});
+    }
     const result = await pageViewController.reconcile(req.params.id as string);
     if (!result.ok) {
       return res.status(reasonToStatus(result.reason)).json({ message: result.message });
