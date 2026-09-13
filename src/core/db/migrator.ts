@@ -67,7 +67,7 @@ export class Migrator {
         [`INSERT INTO ${this.TABLE} (id) VALUES (?)`, migration.id]
       ];
 
-      await rqlite<any>(statements as any[], 'execute');
+      await rqlite<any>(statements as any[], 'execute', { transaction: true });
 
       console.log(`Migration::${migration.id} aplicada com sucesso.`);
     }
@@ -75,6 +75,7 @@ export class Migrator {
     if (error instanceof Error) {
       console.error(`[Migrator] ${error.message}`);
     }
+    throw error;
   }
 }
 }
