@@ -1,0 +1,13 @@
+Olá, {{recipient_name}}!
+
+{{requester_name}} ({{requester_email}}) quer participar de {{scope_name}}.
+Tipo de espaço: {{scope_type}}.
+
+Você recebeu este e-mail porque pode adicionar membros neste espaço.
+Revise a solicitação: {{review_url}}
+
+Entre na sua conta para revisar e definir as permissões.
+Abrir este link não aprova a solicitação.
+A aprovação fica registrada com a identidade de quem a realizou.
+
+Destinatário: {{recipient_email}}

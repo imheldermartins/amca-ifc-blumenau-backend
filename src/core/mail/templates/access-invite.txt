@@ -1,0 +1,8 @@
+Cub's — convite para {{scope_type}}
+
+{{author_name}} convidou você para entrar em {{scope_name}} com a role {{role_name}}.
+
+Revise e aceite o convite:
+{{invite_url}}
+
+Enviado para {{recipient_email}}. {{expiry_text}}

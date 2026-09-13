@@ -1,0 +1,8 @@
+Cub's — valide seu e-mail
+
+Olá, {{recipient_name}}.
+
+Confirme que {{recipient_email}} pertence a você e defina sua senha:
+{{verification_url}}
+
+O link expira em 24 horas. Se um novo link for solicitado, este deixa de funcionar.
