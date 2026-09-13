@@ -4,12 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const USER_ID = "01KXDN4AXN6QJBTZTCWP1JWVW4";
 const WORKSPACE_ID = "01KXDN4B182DJGAKPX0940H54N";
+const ORGANIZATION_ID = "01KXDN4B182DJGAKPX0940H55A";
 
 const controller = vi.hoisted(() => ({
   listForUser: vi.fn(),
-  validateAccessKey: vi.fn(),
-  joinWithKey: vi.fn(),
-  createWithKey: vi.fn(),
+  createInOrganization: vi.fn(),
   getPageRoot: vi.fn(),
   listMembers: vi.fn(),
   updateMemberRole: vi.fn(),
@@ -78,26 +77,21 @@ describe("WorkspaceRouter", () => {
     expect(controller.listForUser).toHaveBeenCalledWith(USER_ID);
   });
 
-  it("cria e entra somente pelos comandos explícitos com chave", async () => {
-    controller.createWithKey.mockResolvedValueOnce({
+  it("cria dentro de uma organização", async () => {
+    controller.createInOrganization.mockResolvedValueOnce({
       ok: true,
       data: { id: WORKSPACE_ID, role: "superadmin" },
     });
-    const created = await request("/workspaces", "POST", { name: "IFC", key: "secret" });
-    expect(created.status).toBe(201);
-    expect(controller.createWithKey).toHaveBeenCalledWith(USER_ID, {
+    const created = await request("/workspaces", "POST", {
       name: "IFC",
-      key: "secret",
-      organizationId: undefined,
+      organizationId: ORGANIZATION_ID,
+    });
+    expect(created.status).toBe(201);
+    expect(controller.createInOrganization).toHaveBeenCalledWith(USER_ID, {
+      name: "IFC",
+      organizationId: ORGANIZATION_ID,
     });
 
-    controller.joinWithKey.mockResolvedValueOnce({
-      ok: true,
-      data: { id: WORKSPACE_ID, role: "member" },
-    });
-    const joined = await request("/workspaces/join", "POST", { key: "join-secret" });
-    expect(joined.status).toBe(201);
-    expect(controller.joinWithKey).toHaveBeenCalledWith(USER_ID, "join-secret");
   });
 
   it("mantém o envelope { message } e status de domínio", async () => {
@@ -119,14 +113,4 @@ describe("WorkspaceRouter", () => {
     });
   });
 
-  it("valida a finalidade antes de consultar a chave", async () => {
-    const response = await request("/workspaces/access-keys/validate", "POST", {
-      key: "secret",
-      purpose: "admin",
-    });
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ message: "Finalidade inválida" });
-    expect(controller.validateAccessKey).not.toHaveBeenCalled();
-  });
 });

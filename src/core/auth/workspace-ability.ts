@@ -1,5 +1,5 @@
 import { Ability, AbilityBuilder } from "@casl/ability";
-import type { Schema } from "@/models/schemas/index";
+import { allows, type ScopeAccess } from "./permissions.js";
 
 export type WorkspaceAction = "read" | "manage";
 export type WorkspaceSubject =
@@ -10,16 +10,18 @@ export type WorkspaceSubject =
 export type WorkspaceAbility = Ability<[WorkspaceAction, WorkspaceSubject]>;
 
 /** Matriz única de autorização do módulo de workspace no backend. */
-export function defineWorkspaceAbility(role: Schema.WorkspaceRole | null): WorkspaceAbility {
+export function defineWorkspaceAbility(access: Pick<ScopeAccess,"permissions"> | string | null): WorkspaceAbility {
   const { can, build } = new AbilityBuilder<WorkspaceAbility>(Ability);
 
-  if (role === "superadmin" || role === "member") {
+  if (typeof access === "object" && allows(access,"read","view")) {
     can("read", "Workspace");
     can("read", "WorkspaceRoot");
   }
 
-  if (role === "superadmin") {
+  if (typeof access === "object" && allows(access,"write","update")) {
     can("manage", "WorkspaceSettings");
+  }
+  if (typeof access === "object" && (allows(access,"read","members") || allows(access,"write","promote_members"))) {
     can("manage", "WorkspaceMembers");
   }
 

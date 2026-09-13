@@ -1,133 +1,52 @@
-import { Router, type Request, type Response } from "express";
-import organizationsController, {
-  type OrganizationMutationResult,
-} from "@controllers/organizations-controller";
-import type { Input } from "@/models/schemas/inputs";
-import middleware from "@/core/auth/middleware";
-import { StatusCode } from "@core/http/status-code";
-
+import { Router, type Response } from 'express';
+import controller, { type OrganizationMutationResult } from '@controllers/organizations-controller';
+import middleware from '@core/auth/middleware';
+import { requireScopedPermission } from '@core/auth/scoped-access-middleware';
+import { StatusCode } from '@core/http/status-code';
 const router = Router();
-
+router.use(middleware.handle);
+function send<T>(res: Response, result: OrganizationMutationResult<T>, status: number) {
+  return result.ok ? res.status(status).json(result.data) : res.status({validation:StatusCode.BAD_REQUEST,forbidden:StatusCode.FORBIDDEN,conflict:StatusCode.CONFLICT,not_found:StatusCode.NOT_FOUND,server_error:StatusCode.INTERNAL_SERVER_ERROR}[result.reason]).json({ message: result.message });
+}
 /**
  * @openapi
- * components:
- *   schemas:
- *     OrganizationSummary:
- *       type: object
- *       required: [id, name, role, workspaceCount]
- *       properties:
- *         id: { type: string }
- *         name: { type: string }
- *         data: { type: object }
- *         role: { type: string, enum: [superadmin, member] }
- *         workspaceCount: { type: integer }
  * /organizations:
  *   get:
- *     summary: Lista as organizações do usuário autenticado
+ *     summary: Organizações acessíveis por propriedade ou role
  *     tags: [Organizations]
  *     security: [{ bearerAuth: [] }]
  *     responses:
- *       200: { description: Organizações e roles do usuário }
+ *       200: { description: Organizações com permissões efetivas }
  *   post:
- *     summary: Cria uma organização vinculando sua primeira workspace individual
+ *     summary: Cria organização para a conta autenticada e validada
  *     tags: [Organizations]
  *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name: { type: string, maxLength: 120 }
  *     responses:
- *       201: { description: Organização criada; criador é superadmin }
- *       403: { description: Usuário não é superadmin da workspace }
- *       409: { description: Workspace já está vinculada }
- * /organizations/{id}/workspaces/{workspaceId}:
- *   put:
- *     summary: Vincula uma workspace individual a uma organização
- *     tags: [Organizations]
- *     security: [{ bearerAuth: [] }]
- *     responses:
- *       200: { description: Workspace vinculada }
- *       403: { description: Exige superadmin da organização e da workspace }
- *       409: { description: Workspace já está vinculada }
- * /organizations/{id}/workspaces/{workspaceId}/users:
- *   get:
- *     summary: Busca usuários para a organização e a workspace
- *     description: Exige superadmin nos dois escopos; ordena correspondências por prefixo antes de ocorrência.
- *     tags: [Organizations]
- *     security: [{ bearerAuth: [] }]
- *     parameters:
- *       - { in: query, name: q, schema: { type: string } }
- *     responses:
- *       200: { description: Usuários com os vínculos atuais }
- *       403: { description: Acesso não permitido }
- * /organizations/{id}/workspaces/{workspaceId}/users/{userId}:
- *   post:
- *     summary: Adiciona um usuário como member da organização e da workspace
- *     tags: [Organizations]
- *     security: [{ bearerAuth: [] }]
- *     responses:
- *       201: { description: Usuário e vínculos criados }
- *       403: { description: Exige superadmin da organização e da workspace }
+ *       201: { description: Organização criada }
+ *       409: { description: Conta não validada ou operação indisponível }
  */
-
-router.use(middleware.handle);
-
-function sendMutation<T>(
-  res: Response,
-  result: OrganizationMutationResult<T>,
-  successStatus: number,
-): Response {
-  if (result.ok) return res.status(successStatus).json(result.data);
-
-  const status = result.reason === "conflict"
-    ? StatusCode.CONFLICT
-    : result.reason === "forbidden"
-      ? StatusCode.FORBIDDEN
-      : result.reason === "not_found"
-        ? StatusCode.NOT_FOUND
-        : result.reason === "server_error"
-          ? StatusCode.INTERNAL_SERVER_ERROR
-          : StatusCode.BAD_REQUEST;
-  return res.status(status).json({ message: result.message });
-}
-
-router.get("/", async (req: Request, res: Response) => {
-  const organizations = await organizationsController.listForUser(req.userId!);
-  if (!organizations) {
-    return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
-  }
-  return res.status(StatusCode.OK).json(organizations);
+router.get('/', async (req, res) => {
+  const list = await controller.listForUser(req.userId!);
+  return list ? res.json(list) : res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: 'Erro no servidor' });
 });
-
-router.post("/", async (req: Request, res: Response) => {
-  const { name, workspaceId } = (req.body ?? {}) as Input.CreateOrganization;
-  const result = await organizationsController.create(req.userId!, { name, workspaceId });
-  return sendMutation(res, result, StatusCode.CREATED);
+router.post('/', async (req, res) => send(res, await controller.create(req.userId!, req.body ?? {}), StatusCode.CREATED));
+router.get('/:id/workspaces', requireScopedPermission('organization', 'read', 'workspaces'), async (req, res) => {
+  const list = await controller.catalog(req.params.id as string, req.userId!);
+  return list ? res.json(list) : res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: 'Erro no servidor' });
 });
-
-router.put("/:id/workspaces/:workspaceId", async (req: Request, res: Response) => {
-  const result = await organizationsController.linkWorkspace(
-    req.params.id as string,
-    req.params.workspaceId as string,
-    req.userId!,
-  );
-  return sendMutation(res, result, StatusCode.OK);
+router.put('/:id/workspaces/:workspaceId', async (req, res) => send(res, await controller.linkWorkspace(req.params.id as string, req.params.workspaceId as string, req.userId!), StatusCode.OK));
+router.get('/:id', requireScopedPermission('organization', 'read', 'view'), async (req, res) => {
+  const organization = await controller.getForUser(req.params.id as string, req.userId!);
+  return organization ? res.json(organization) : res.status(StatusCode.NOT_FOUND).json({ message: 'Organização não encontrada' });
 });
-
-router.get("/:id/workspaces/:workspaceId/users", async (req: Request, res: Response) => {
-  const result = await organizationsController.searchWorkspaceUsers(
-    req.params.id as string,
-    req.params.workspaceId as string,
-    req.userId!,
-    req.query.q,
-  );
-  return sendMutation(res, result, StatusCode.OK);
-});
-
-router.post("/:id/workspaces/:workspaceId/users/:userId", async (req: Request, res: Response) => {
-  const result = await organizationsController.addWorkspaceUser(
-    req.params.id as string,
-    req.params.workspaceId as string,
-    req.userId!,
-    req.params.userId as string,
-  );
-  return sendMutation(res, result, StatusCode.CREATED);
-});
-
+router.put('/:id', requireScopedPermission('organization', 'write', 'update'), async (req, res) => send(res, await controller.update(req.params.id as string, req.userId!, req.body ?? {}), StatusCode.OK));
 export default router;

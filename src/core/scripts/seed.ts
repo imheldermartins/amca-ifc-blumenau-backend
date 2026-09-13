@@ -1,3 +1,4 @@
+import roleStore from "@db/role-store";
 import bcrypt from "bcryptjs";
 import { ulid } from "ulid";
 import db from "@models/index";
@@ -108,7 +109,7 @@ async function ensureUser(
   return track(created, `user ${email}`);
 }
 
-async function ensureOrganization(name: string): Promise<Schema.Organization> {
+async function ensureOrganization(name: string, ownerId: string): Promise<Schema.Organization> {
   const existing = await db.organizations.find({ name } as LookupValues<Schema.Organization>);
   if (existing) {
     stats.skipped += 1;
@@ -116,12 +117,12 @@ async function ensureOrganization(name: string): Promise<Schema.Organization> {
   }
 
   return track(
-    await db.organizations.create({ name, data: {} } as CreateValues<Schema.Organization>),
+    await db.organizations.create({ name, data: {}, owner_id: ownerId } as CreateValues<Schema.Organization>),
     `organização ${name}`,
   );
 }
 
-async function ensureOrganizationSuperadmin(
+async function ensureOrganizationOwner(
   organizationId: string,
   userId: string,
 ): Promise<void> {
@@ -138,13 +139,13 @@ async function ensureOrganizationSuperadmin(
     await db.organizationMembers.create({
       organization_id: organizationId,
       user_id: userId,
-      role: "superadmin",
+      organization_member_role_id: null,
     } as unknown as CreateValues<Schema.OrganizationMember>),
-    `membership superadmin ${userId} em organização ${organizationId}`,
+    `membership owner ${userId} em organização ${organizationId}`,
   );
 }
 
-/** Workspace + page_root do superadmin (a root inicial preserva id == workspace). */
+/** Workspace + page_root do owner (a root inicial preserva id == workspace). */
 async function ensureWorkspaceWithRoot(
   name: string,
   ownerId: string,
@@ -206,10 +207,10 @@ async function ensureWorkspaceWithRoot(
       await db.workspaceMembers.create({
         workspace_id: workspace.id,
         user_id: ownerId,
-        role: "superadmin",
+        workspace_member_role_id: null,
         page_root_id: root.id,
       } as unknown as CreateValues<Schema.WorkspaceMember>),
-      `membership superadmin ${ownerId} em ${workspace.id}`,
+      `membership owner ${ownerId} em ${workspace.id}`,
     );
   }
 
@@ -285,9 +286,13 @@ async function ensureMember(pageId: string, userId: string): Promise<void> {
   }
 
   track(
-    await db.pageCollaborators.create(
-      { page_id: pageId, user_id: userId } as unknown as CreateValues<Schema.PageCollaborator>,
-    ),
+    await (async () => {
+      const page = await db.pages.find({id:pageId} as LookupValues<Schema.Page>);
+      if (!page) return null;
+      const role = await roleStore.save("page",pageId,page.owner_id,{name:"Colaboração",roles:{read:["view","subpages","members"],write:["update","create","edit_subpages"]}});
+      if (!role || !await roleStore.addMember("page",pageId,page.owner_id,userId,role.id)) return null;
+      return db.pageCollaborators.find({page_id:pageId,user_id:userId} as LookupValues<Schema.PageCollaborator>);
+    })(),
     `colaborador ${userId} em ${pageId}`,
   );
 }
@@ -350,8 +355,8 @@ async function main(): Promise<void> {
 
   // Dono das páginas seed: conta administrativa FICTÍCIA (domínio .local).
   const admin = await ensureUser("Coordenação Cubs", "admin@cubs.local", passwordHash);
-  const ifc = await ensureOrganization("Instituto Federal Catarinense");
-  await ensureOrganizationSuperadmin(ifc.id, admin.id);
+  const ifc = await ensureOrganization("Instituto Federal Catarinense", admin.id);
+  await ensureOrganizationOwner(ifc.id, admin.id);
 
   // Colaboradores da coordenação: usuários extras (login com a senha do
   // .env.seed) que ganham ACESSO às páginas do admin via page_collaborators --

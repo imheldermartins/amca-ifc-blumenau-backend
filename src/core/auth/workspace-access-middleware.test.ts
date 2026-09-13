@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const store = vi.hoisted(() => ({ getMembership: vi.fn() }));
-vi.mock("@db/workspace-store", () => ({ default: store }));
+const store = vi.hoisted(() => ({ can: vi.fn() }));
+vi.mock("@db/scoped-access-store", () => ({ default: store }));
 
 import { requireWorkspaceAbility } from "./workspace-access-middleware.js";
 
@@ -17,8 +17,8 @@ function response() {
 beforeEach(() => vi.clearAllMocks());
 
 describe("requireWorkspaceAbility", () => {
-  it("permite superadmin no painel", async () => {
-    store.getMembership.mockResolvedValue({ role: "superadmin" });
+  it("permite quem possui update no painel", async () => {
+    store.can.mockResolvedValue(true);
     const res = response();
     const next = vi.fn();
 
@@ -32,8 +32,8 @@ describe("requireWorkspaceAbility", () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it("responde o mesmo 403 da tela para member", async () => {
-    store.getMembership.mockResolvedValue({ role: "member" });
+  it("nega promoção sem promote_members", async () => {
+    store.can.mockResolvedValue(false);
     const res = response();
     const next = vi.fn();
 
@@ -48,8 +48,8 @@ describe("requireWorkspaceAbility", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("não revela workspace a quem não é membro", async () => {
-    store.getMembership.mockResolvedValue(null);
+  it("nega workspace sem permissão de leitura", async () => {
+    store.can.mockResolvedValue(false);
     const res = response();
 
     await requireWorkspaceAbility("read", "Workspace")(
@@ -58,12 +58,12 @@ describe("requireWorkspaceAbility", () => {
       vi.fn(),
     );
 
-    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 
   it("mantém o envelope de erro da API se a consulta de acesso falhar", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    store.getMembership.mockRejectedValue(new Error("offline", { cause: "SQLERROR" }));
+    store.can.mockRejectedValue(new Error("offline", { cause: "SQLERROR" }));
     const res = response();
     const next = vi.fn();
 

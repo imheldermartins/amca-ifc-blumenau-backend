@@ -1,318 +1,83 @@
-import { rqlite } from "@db/shared";
-import db from "@models/index";
-import type { Schema } from "@/models/schemas/index";
+import { rqlite } from '@db/shared';
+import type { Schema } from '@/models/schemas/index';
+import access, { accessGuard } from './scoped-access-store.js';
+import { parseData } from './workspace-store.js';
+import type { ScopeAccess } from '@core/auth/permissions';
+import { SystemRoleFactory } from './system-role-factory.js';
 
-export interface OrganizationSummary {
-  id: string;
-  name: string;
-  data: Record<string, unknown>;
-  role: Schema.WorkspaceRole;
-  workspaceCount: number;
-}
-
-export interface OrganizationWorkspaceUser {
-  id: string;
-  name: string | null;
-  email: string;
-  organizationRole: Schema.WorkspaceRole | null;
-  workspaceRole: Schema.WorkspaceRole | null;
-}
-
-interface OrganizationWorkspaceUserRow {
-  id: string;
-  name: string | null;
-  email: string;
-  organization_role: Schema.WorkspaceRole | null;
-  workspace_role: Schema.WorkspaceRole | null;
-}
-
-interface OrganizationSummaryRow {
-  id: string;
-  name: string;
-  data: string | Record<string, unknown> | null;
-  role: Schema.WorkspaceRole;
-  workspace_count: number;
-}
-
-export interface CreateOrganizationProvision {
-  organizationId: string;
-  organizationName: string;
-  membershipId: string;
-  ownerId: string;
-  workspaceId: string;
-}
-
-export interface AddOrganizationWorkspaceUserProvision {
-  organizationId: string;
-  workspaceId: string;
-  actorUserId: string;
-  targetUserId: string;
-  organizationMembershipId?: string;
-  workspaceMembershipId?: string;
-  pageRootId?: string;
-  pageRootTitle?: string;
-}
-
-function parseData(value: OrganizationSummaryRow["data"]): Record<string, unknown> {
-  if (value && typeof value === "object") return value;
-  if (typeof value !== "string") return {};
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function summary(row: OrganizationSummaryRow): OrganizationSummary {
-  return {
-    id: row.id,
-    name: row.name,
-    data: parseData(row.data),
-    role: row.role,
-    workspaceCount: row.workspace_count,
-  };
-}
-
+export interface OrganizationSummary extends ScopeAccess { id: string; name: string; data: Record<string, unknown>; role: string | null; workspaceCount: number }
+export interface OrganizationWorkspaceUser { id: string; name: string | null; email: string; organizationRole: string | null; workspaceRole: string | null }
+export interface CreateOrganizationProvision { organizationId: string; organizationName: string; membershipId: string; ownerId: string }
 class OrganizationStore {
   async listForUser(userId: string): Promise<OrganizationSummary[]> {
-    const [rows] = await rqlite<OrganizationSummaryRow>([[
-      `SELECT o.id, o.name, o.data, om.role,
-        COUNT(w.id) AS workspace_count
-      FROM organization_members om
-      JOIN organizations o ON o.id = om.organization_id
-      LEFT JOIN workspaces w ON w.organization_id = o.id
-      WHERE om.user_id = ?
-      GROUP BY o.id, o.name, o.data, om.role
-      ORDER BY lower(o.name), o.created_at`,
-      userId,
-    ]], "query");
-    return (rows ?? []).map(summary);
+    const [rows] = await rqlite<{ id: string }>([[`SELECT o.id FROM organizations o
+      LEFT JOIN organization_members m ON m.organization_id = o.id AND m.user_id = ? AND m.deleted_at IS NULL
+      WHERE o.owner_id = ? OR m.id IS NOT NULL ORDER BY lower(o.name)`, userId, userId]], 'query');
+    const results = await Promise.all((rows ?? []).map(({ id }) => this.getForUser(id, userId)));
+    return results.filter((row): row is OrganizationSummary => row !== null);
   }
-
-  getMembership(organizationId: string, userId: string): Promise<Schema.OrganizationMember | null> {
-    return db.organizationMembers.find({
-      organization_id: organizationId,
-      user_id: userId,
-    } as LookupValues<Schema.OrganizationMember>);
+  async getForUser(id: string, userId: string): Promise<OrganizationSummary | null> {
+    const granted = await access.get('organization', id, userId);
+    if (!granted?.permissions.read.includes('view')) return null;
+    const catalog = granted.permissions.read.includes('workspaces');
+    const [rows] = await rqlite<{ name: string; data: unknown; workspace_count: number }>([[`SELECT name, data,
+      (SELECT COUNT(*) FROM workspaces WHERE organization_id = organizations.id AND ?) AS workspace_count
+      FROM organizations WHERE id = ?`, catalog ? 1 : 0, id]], 'query');
+    const row = rows?.[0];
+    return row ? { ...granted, id, name: row.name, data: parseData(row.data), role: granted.roleId, workspaceCount: row.workspace_count } : null;
   }
-
-  async searchWorkspaceUsers(
-    organizationId: string,
-    workspaceId: string,
-    actorUserId: string,
-    prefixPattern: string,
-    containsPattern: string,
-  ): Promise<OrganizationWorkspaceUser[]> {
-    const [rows] = await rqlite<OrganizationWorkspaceUserRow>([[
-      `SELECT u.id, u.name, u.email,
-        target_organization.role AS organization_role,
-        target_workspace.role AS workspace_role
-      FROM users u
-      JOIN workspaces selected_workspace
-        ON selected_workspace.id = ? AND selected_workspace.organization_id = ?
-      JOIN organization_members actor_organization
-        ON actor_organization.organization_id = selected_workspace.organization_id
-        AND actor_organization.user_id = ? AND actor_organization.role = 'superadmin'
-      JOIN workspace_members actor_workspace
-        ON actor_workspace.workspace_id = selected_workspace.id
-        AND actor_workspace.user_id = ? AND actor_workspace.role = 'superadmin'
-      LEFT JOIN organization_members target_organization
-        ON target_organization.organization_id = selected_workspace.organization_id
-        AND target_organization.user_id = u.id
-      LEFT JOIN workspace_members target_workspace
-        ON target_workspace.workspace_id = selected_workspace.id
-        AND target_workspace.user_id = u.id
-      WHERE lower(COALESCE(u.name, '')) LIKE ? ESCAPE '\\'
-        OR lower(u.email) LIKE ? ESCAPE '\\'
-      ORDER BY CASE
-          WHEN lower(COALESCE(u.name, '')) LIKE ? ESCAPE '\\'
-            OR lower(u.email) LIKE ? ESCAPE '\\'
-          THEN 0 ELSE 1
-        END,
-        lower(COALESCE(u.name, u.email)), lower(u.email)
-      LIMIT 50`,
-      workspaceId, organizationId, actorUserId, actorUserId,
-      containsPattern, containsPattern, prefixPattern, prefixPattern,
-    ]], "query");
-
-    return (rows ?? []).map((row) => ({
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      organizationRole: row.organization_role,
-      workspaceRole: row.workspace_role,
+  async getMembership(organizationId: string, userId: string) {
+    const [rows] = await rqlite<Schema.OrganizationMember>([[
+      `SELECT * FROM organization_members WHERE organization_id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1`,
+      organizationId, userId,
+    ]], 'query');
+    return rows?.[0] ?? null;
+  }
+  async create(input: CreateOrganizationProvision): Promise<boolean> {
+    const verified = `EXISTS (SELECT 1 FROM users WHERE id = ? AND email_verified_at IS NOT NULL)`;
+    const created = `EXISTS (SELECT 1 FROM organizations WHERE id = ? AND owner_id = ?)`;
+    const defaultRole = SystemRoleFactory.defaultStatement('organization', input.organizationId, {
+      text: created, values: [input.organizationId, input.ownerId],
+    });
+    const defaultRoleId = defaultRole[1] as string;
+    const results = await rqlite([
+      [`INSERT INTO organizations (id, name, data, owner_id)
+        SELECT ?, ?, '{}', ? WHERE ${verified}`,
+        input.organizationId, input.organizationName, input.ownerId, input.ownerId],
+      defaultRole,
+      SystemRoleFactory.workspaceGuestStatement(input.organizationId, {
+        text: created, values: [input.organizationId, input.ownerId],
+      }),
+      [`INSERT INTO organization_members (id, organization_id, user_id, organization_member_role_id)
+        SELECT ?, ?, ?, ? WHERE ${created}`,
+        input.membershipId, input.organizationId, input.ownerId, defaultRoleId,
+        input.organizationId, input.ownerId],
+    ], 'execute', { transaction: true });
+    return results.length === 4 && results.every(Boolean);
+  }
+  async update(id: string, actorId: string, name: string): Promise<boolean> {
+    const guard = accessGuard('organization', id, actorId, 'write', 'update');
+    const [saved] = await rqlite([[`UPDATE organizations SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND ${guard.text}`,
+      name, id, ...guard.values]], 'execute', { transaction: true });
+    return saved === true;
+  }
+  async linkWorkspace(organizationId: string, workspaceId: string, actorId: string): Promise<boolean> {
+    const organization = accessGuard('organization', organizationId, actorId, 'write', 'create');
+    // Vincular muda quem é soberano. Somente o proprietário da workspace pode cedê-la.
+    const workspace = accessGuard('workspace', workspaceId, actorId, 'owner', 'owner');
+    const [saved] = await rqlite([[`UPDATE workspaces SET organization_id = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND organization_id IS NULL AND ${organization.text} AND ${workspace.text}`,
+      organizationId, workspaceId, ...organization.values, ...workspace.values]], 'execute', { transaction: true });
+    return saved === true;
+  }
+  async catalog(id: string, userId: string) {
+    const guard = accessGuard('organization', id, userId, 'read', 'workspaces');
+    const [rows] = await rqlite<{ id: string; name: string; icon: string }>([[`SELECT id, name, icon FROM workspaces
+      WHERE organization_id = ? AND ${guard.text} ORDER BY lower(name)`, id, ...guard.values]], 'query');
+    return Promise.all((rows ?? []).map(async (row) => {
+      const grant = await access.get('workspace', row.id, userId);
+      return { ...row, canEnter: grant?.permissions.read.includes('view') ?? false, isMember: grant?.isMember ?? false };
     }));
   }
-
-  async getWorkspaceUser(
-    organizationId: string,
-    workspaceId: string,
-    actorUserId: string,
-    targetUserId: string,
-  ): Promise<OrganizationWorkspaceUser | null> {
-    const [rows] = await rqlite<OrganizationWorkspaceUserRow>([[
-      `SELECT u.id, u.name, u.email,
-        target_organization.role AS organization_role,
-        target_workspace.role AS workspace_role
-      FROM users u
-      JOIN workspaces selected_workspace
-        ON selected_workspace.id = ? AND selected_workspace.organization_id = ?
-      JOIN organization_members actor_organization
-        ON actor_organization.organization_id = selected_workspace.organization_id
-        AND actor_organization.user_id = ? AND actor_organization.role = 'superadmin'
-      JOIN workspace_members actor_workspace
-        ON actor_workspace.workspace_id = selected_workspace.id
-        AND actor_workspace.user_id = ? AND actor_workspace.role = 'superadmin'
-      LEFT JOIN organization_members target_organization
-        ON target_organization.organization_id = selected_workspace.organization_id
-        AND target_organization.user_id = u.id
-      LEFT JOIN workspace_members target_workspace
-        ON target_workspace.workspace_id = selected_workspace.id
-        AND target_workspace.user_id = u.id
-      WHERE u.id = ?
-      LIMIT 1`,
-      workspaceId, organizationId, actorUserId, actorUserId, targetUserId,
-    ]], "query");
-    const row = rows?.[0];
-    return row ? {
-      id: row.id,
-      name: row.name,
-      email: row.email,
-      organizationRole: row.organization_role,
-      workspaceRole: row.workspace_role,
-    } : null;
-  }
-
-  async addWorkspaceUser(input: AddOrganizationWorkspaceUserProvision): Promise<boolean> {
-    const authorization = `EXISTS (
-      SELECT 1
-      FROM workspaces selected_workspace
-      JOIN organization_members actor_organization
-        ON actor_organization.organization_id = selected_workspace.organization_id
-        AND actor_organization.user_id = ? AND actor_organization.role = 'superadmin'
-      JOIN workspace_members actor_workspace
-        ON actor_workspace.workspace_id = selected_workspace.id
-        AND actor_workspace.user_id = ? AND actor_workspace.role = 'superadmin'
-      WHERE selected_workspace.id = ? AND selected_workspace.organization_id = ?
-    )`;
-    const statements: RqliteStatement[] = [];
-
-    if (input.organizationMembershipId) {
-      statements.push([
-        `INSERT INTO organization_members (id, organization_id, user_id, role)
-        SELECT ?, ?, ?, 'member'
-        FROM users target
-        WHERE target.id = ? AND ${authorization}
-          AND NOT EXISTS (
-            SELECT 1 FROM organization_members existing
-            WHERE existing.organization_id = ? AND existing.user_id = ?
-          )`,
-        input.organizationMembershipId, input.organizationId, input.targetUserId,
-        input.targetUserId, input.actorUserId, input.actorUserId,
-        input.workspaceId, input.organizationId,
-        input.organizationId, input.targetUserId,
-      ]);
-    }
-
-    if (input.workspaceMembershipId && input.pageRootId && input.pageRootTitle) {
-      statements.push([
-        `INSERT INTO pages (id, title, data, owner_id)
-        SELECT ?, ?, ?, target.id
-        FROM users target
-        WHERE target.id = ? AND ${authorization}
-          AND NOT EXISTS (
-            SELECT 1 FROM workspace_members existing
-            WHERE existing.workspace_id = ? AND existing.user_id = target.id
-          )`,
-        input.pageRootId, input.pageRootTitle, JSON.stringify({}), input.targetUserId,
-        input.actorUserId, input.actorUserId, input.workspaceId, input.organizationId,
-        input.workspaceId,
-      ]);
-      statements.push([
-        `INSERT INTO workspace_members (id, workspace_id, user_id, role, page_root_id)
-        SELECT ?, ?, ?, 'member', ?
-        FROM pages member_root
-        WHERE member_root.id = ? AND member_root.owner_id = ? AND ${authorization}
-          AND NOT EXISTS (
-            SELECT 1 FROM workspace_members existing
-            WHERE existing.workspace_id = ? AND existing.user_id = ?
-          )`,
-        input.workspaceMembershipId, input.workspaceId, input.targetUserId, input.pageRootId,
-        input.pageRootId, input.targetUserId,
-        input.actorUserId, input.actorUserId, input.workspaceId, input.organizationId,
-        input.workspaceId, input.targetUserId,
-      ]);
-    }
-
-    if (statements.length === 0) return false;
-    const results = await rqlite(statements, "execute", { transaction: true });
-    return results.length === statements.length && results.every(Boolean);
-  }
-
-  async createWithWorkspace(input: CreateOrganizationProvision): Promise<boolean> {
-    const results = await rqlite([
-      [`INSERT INTO organizations (id, name, data)
-        SELECT ?, ?, ?
-        FROM workspaces w
-        JOIN workspace_members wm ON wm.workspace_id = w.id
-        WHERE w.id = ? AND w.organization_id IS NULL
-          AND wm.user_id = ? AND wm.role = 'superadmin'`,
-        input.organizationId, input.organizationName, JSON.stringify({}),
-        input.workspaceId, input.ownerId],
-      [`INSERT INTO organization_members (
-          id, organization_id, user_id, role
-        )
-        SELECT ?, ?, ?, 'superadmin'
-        FROM organizations
-        WHERE id = ?`,
-        input.membershipId, input.organizationId, input.ownerId, input.organizationId],
-      [`UPDATE workspaces
-        SET organization_id = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND organization_id IS NULL
-          AND EXISTS (
-            SELECT 1 FROM organization_members om
-            WHERE om.organization_id = ? AND om.user_id = ?
-              AND om.role = 'superadmin'
-          )
-          AND EXISTS (
-            SELECT 1 FROM workspace_members wm
-            WHERE wm.workspace_id = workspaces.id AND wm.user_id = ?
-              AND wm.role = 'superadmin'
-          )`,
-        input.organizationId, input.workspaceId, input.organizationId,
-        input.ownerId, input.ownerId],
-    ], "execute", { transaction: true });
-
-    return results.length === 3 && results.every(Boolean);
-  }
-
-  async linkWorkspace(
-    organizationId: string,
-    workspaceId: string,
-    userId: string,
-  ): Promise<boolean> {
-    const [updated] = await rqlite([
-      [`UPDATE workspaces
-        SET organization_id = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND organization_id IS NULL
-          AND EXISTS (
-            SELECT 1 FROM organization_members om
-            WHERE om.organization_id = ? AND om.user_id = ?
-              AND om.role = 'superadmin'
-          )
-          AND EXISTS (
-            SELECT 1 FROM workspace_members wm
-            WHERE wm.workspace_id = workspaces.id AND wm.user_id = ?
-              AND wm.role = 'superadmin'
-          )`,
-        organizationId, workspaceId, organizationId, userId, userId],
-    ], "execute", { transaction: true });
-
-    return updated === true;
-  }
 }
-
 export default new OrganizationStore();

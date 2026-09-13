@@ -16,15 +16,18 @@ const router = Router();
  *   schemas:
  *     WorkspaceSummary:
  *       type: object
- *       required: [id, name, icon, role, pageRootId]
+ *       required: [id, name, icon, role, pageRootId, isPersonal]
  *       properties:
  *         id: { type: string }
  *         name: { type: string }
  *         icon: { type: string, example: "lucide:boxes" }
- *         role: { type: string, enum: [superadmin, member] }
+ *         role: { type: string, nullable: true }
  *         pageRootId: { type: string }
  *         organizationId: { type: string, nullable: true }
  *         organizationName: { type: string, nullable: true }
+ *         isPersonal:
+ *           type: boolean
+ *           description: true quando a workspace é a área pessoal e não pertence a uma organização
  * /workspaces:
  *   get:
  *     summary: Lista somente as workspaces do usuário autenticado
@@ -33,24 +36,17 @@ const router = Router();
  *     responses:
  *       200: { description: Workspaces e memberships do usuário }
  *   post:
- *     summary: Cria workspace consumindo uma chave create single-use
- *     description: A primeira pode ser individual; as adicionais exigem organizationId e superadmin da organização.
+ *     summary: Cria workspace dentro de uma organização
+ *     description: Exige organizationId e permissão create na organização. A workspace pessoal nasce no cadastro da conta.
  *     tags: [Workspaces]
  *     security: [{ bearerAuth: [] }]
  *     responses:
- *       201: { description: Workspace, root e membership superadmin criadas }
- *       400: { description: Nome ou chave inválidos }
- *       409: { description: Chave já usada ou expirada }
- * /workspaces/join:
- *   post:
- *     summary: Entra em uma workspace e cria a page-root própria do member
- *     tags: [Workspaces]
- *     security: [{ bearerAuth: [] }]
- *     responses:
- *       201: { description: Membership member e page-root própria criadas }
+ *       201: { description: Workspace, root e membership do owner criadas }
+ *       400: { description: Nome ou organização inválidos }
+ *       403: { description: Sem permissão para criar na organização }
  * /workspaces/{id}/members:
  *   get:
- *     summary: Lista membros (somente superadmin)
+ *     summary: Lista membros (permissão de leitura de membros)
  *     tags: [Workspaces]
  *     responses:
  *       200: { description: Membros da workspace }
@@ -86,26 +82,11 @@ router.get("/", async (req: Request, res: Response) => {
   return res.status(StatusCode.OK).json(workspaces);
 });
 
-router.post("/access-keys/validate", async (req: Request, res: Response) => {
-  const { key, purpose } = (req.body ?? {}) as Input.ValidateWorkspaceKey;
-  if (purpose !== undefined && purpose !== "create" && purpose !== "join") {
-    return res.status(StatusCode.BAD_REQUEST).json({ message: "Finalidade inválida" });
-  }
-  const validation = await workspacesController.validateAccessKey(key, req.userId!, purpose);
-  return res.status(StatusCode.OK).json(validation);
-});
-
-router.post("/join", async (req: Request, res: Response) => {
-  const { key } = (req.body ?? {}) as Input.JoinWorkspace;
-  const result = await workspacesController.joinWithKey(req.userId!, key);
-  return sendMutation(res, result, StatusCode.CREATED);
-});
-
 router.post("/", async (req: Request, res: Response) => {
-  const { name, key, organizationId } = (req.body ?? {}) as Input.CreateWorkspace;
-  const result = await workspacesController.createWithKey(
+  const { name, organizationId } = (req.body ?? {}) as Input.CreateWorkspace;
+  const result = await workspacesController.createInOrganization(
     req.userId!,
-    { name, key, organizationId },
+    { name, organizationId },
   );
   return sendMutation(res, result, StatusCode.CREATED);
 });
@@ -124,7 +105,7 @@ router.get(
 
 router.get(
   "/:id/members",
-  requireWorkspaceAbility("manage", "WorkspaceMembers"),
+  requireWorkspaceAbility("read", "WorkspaceMembers"),
   async (req: Request, res: Response) => {
     const members = await workspacesController.listMembers(req.params.id as string);
     if (!members) {
@@ -138,7 +119,7 @@ router.put(
   "/:id/members/:userId/role",
   requireWorkspaceAbility("manage", "WorkspaceMembers"),
   async (req: Request, res: Response) => {
-    const { role } = (req.body ?? {}) as Input.UpdateWorkspaceMemberRole;
+    const role = req.body?.roleId ?? req.body?.role;
     const result = await workspacesController.updateMemberRole(
       req.params.id as string,
       req.userId!,

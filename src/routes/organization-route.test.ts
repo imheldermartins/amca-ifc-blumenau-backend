@@ -69,12 +69,12 @@ describe("OrganizationRouter", () => {
     controller.create.mockResolvedValueOnce({ ok: true, data: { id: ORGANIZATION_ID } });
     const created = await request("/organizations", "POST", {
       name: "IFC",
-      workspaceId: WORKSPACE_ID,
+      key: "test-key",
     });
     expect(created.status).toBe(201);
     expect(controller.create).toHaveBeenCalledWith(USER_ID, {
       name: "IFC",
-      workspaceId: WORKSPACE_ID,
+      key: "test-key",
     });
 
     controller.linkWorkspace.mockResolvedValueOnce({ ok: true, data: { id: WORKSPACE_ID } });
@@ -104,31 +104,8 @@ describe("OrganizationRouter", () => {
     expect(await response.json()).toEqual({ message: "Acesso não permitido" });
   });
 
-  it("busca e adiciona usuários no escopo organização + workspace", async () => {
-    controller.searchWorkspaceUsers.mockResolvedValueOnce({ ok: true, data: [] });
-    const searched = await request(
-      `/organizations/${ORGANIZATION_ID}/workspaces/${WORKSPACE_ID}/users?q=ana`,
-    );
-    expect(searched.status).toBe(200);
-    expect(controller.searchWorkspaceUsers).toHaveBeenCalledWith(
-      ORGANIZATION_ID,
-      WORKSPACE_ID,
-      USER_ID,
-      "ana",
-    );
-
-    const targetId = "01KXDN4B182DJGAKPX0940H54P";
-    controller.addWorkspaceUser.mockResolvedValueOnce({ ok: true, data: { id: targetId } });
-    const added = await request(
-      `/organizations/${ORGANIZATION_ID}/workspaces/${WORKSPACE_ID}/users/${targetId}`,
-      "POST",
-    );
-    expect(added.status).toBe(201);
-    expect(controller.addWorkspaceUser).toHaveBeenCalledWith(
-      ORGANIZATION_ID,
-      WORKSPACE_ID,
-      USER_ID,
-      targetId,
-    );
+  it("não mantém a antiga adição simultânea sem roles explícitas", async () => {
+    const response=await request(`/organizations/${ORGANIZATION_ID}/workspaces/${WORKSPACE_ID}/users/01KXDN4B182DJGAKPX0940H54P`,"POST");
+    expect(response.status).toBe(404);
   });
 });
