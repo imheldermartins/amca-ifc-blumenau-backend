@@ -40,7 +40,7 @@ describe("AuthOnboardingStore", () => {
   });
 
   it("cria o cadastro comum e a workspace privada na mesma transação", async () => {
-    rqlite.mockResolvedValueOnce([true, true, true, true]);
+    rqlite.mockResolvedValueOnce([true, true, true, true, true, true]);
 
     await expect(
       authOnboardingStore.createPrivateWorkspace(baseProvision),
@@ -49,14 +49,16 @@ describe("AuthOnboardingStore", () => {
     const [statements, endpoint, options] = rqlite.mock.calls[0]!;
     expect(endpoint).toBe("execute");
     expect(options).toEqual({ transaction: true });
-    expect(statements).toHaveLength(4);
+    expect(statements).toHaveLength(6);
     expect(statements[0][0]).toContain("INSERT INTO users");
     expect(statements[1][0]).toContain("INSERT INTO workspaces");
     expect(statements[1][0]).toContain("organization_id");
     expect(statements[2][0]).toContain("INSERT INTO pages");
-    expect(statements[3][0]).toContain("'superadmin'");
+    expect(statements[3][0]).toContain("workspace_roles");
+    expect(statements[4][0]).toContain("page_roles");
+    expect(statements[5][0]).toContain("workspace_member_role_id");
     expect(statements[2].slice(1)).toContain(baseProvision.workspaceId);
-    expect(statements[3].slice(1)).toEqual([
+    expect(statements[5].slice(1)).toEqual([
       baseProvision.membershipId,
       baseProvision.workspaceId,
       baseProvision.userId,
@@ -64,57 +66,4 @@ describe("AuthOnboardingStore", () => {
     ]);
   });
 
-  it("cria usuário e workspace e consome a chave sem reescrever o destinatário", async () => {
-    rqlite.mockResolvedValueOnce([true, true, true, true, true, true]);
-
-    await expect(authOnboardingStore.createWorkspaceWithKey({
-      ...baseProvision,
-      userName: "Helder Editado",
-      userEmail: "novo@ifc.edu.br",
-      keyId: "01KXDN4B182DJGAKPX0940H55B",
-      keyHash: "a".repeat(64),
-      keyAlgorithm: "sha256-v1",
-      keyLinkId: "01KXDN4B182DJGAKPX0940H55C",
-    })).resolves.toBe(true);
-
-    const [statements, endpoint, options] = rqlite.mock.calls[0]!;
-    expect(endpoint).toBe("execute");
-    expect(options).toEqual({ transaction: true });
-    expect(statements).toHaveLength(6);
-    expect(statements.every(([sql]: [string]) => (
-      !sql.includes("UPDATE workspace_access_keys")
-      || !sql.includes("issued_to_name") && !sql.includes("issued_to_email")
-    ))).toBe(true);
-    expect(statements[0].slice(1, 5)).toEqual([
-      baseProvision.userId,
-      "Helder Editado",
-      "novo@ifc.edu.br",
-      baseProvision.passwordHash,
-    ]);
-    expect(statements[4][0]).toContain("workspace_access_key_links");
-    expect(statements[5][0]).toContain("consumed_by_user_id = ?");
-    expect(statements[5][0]).toContain("consumed_as_name = ?");
-    expect(statements[5][0]).toContain("consumed_as_email = ?");
-    expect(statements[5].slice(1)).toEqual([
-      baseProvision.userId,
-      "Helder Editado",
-      "novo@ifc.edu.br",
-      "01KXDN4B182DJGAKPX0940H55B",
-      "a".repeat(64),
-      "sha256-v1",
-      baseProvision.workspaceId,
-    ]);
-  });
-
-  it("só confirma sucesso quando todas as etapas foram gravadas", async () => {
-    rqlite.mockResolvedValueOnce([false, false, false, false, false, false]);
-
-    await expect(authOnboardingStore.createWorkspaceWithKey({
-      ...baseProvision,
-      keyId: "key",
-      keyHash: "hash",
-      keyAlgorithm: "sha256-v1",
-      keyLinkId: "link",
-    })).resolves.toBe(false);
-  });
 });

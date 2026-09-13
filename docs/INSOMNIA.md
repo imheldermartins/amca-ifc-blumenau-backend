@@ -12,7 +12,7 @@ Este guia mostra como testar o fluxo novo.
 | Antes | Agora |
 |---|---|
 | `login` devolvia `{ accessToken, refreshToken }` | devolve `{ user, accessToken }` — o refresh vai no `Set-Cookie` |
-| `register` criava somente o usuário | cria também a workspace privada e devolve `{ user, workspace, accessToken }` |
+| `register` criava a sessão imediatamente | cria uma conta pendente e envia o link de validação |
 | `refresh` recebia `{ refreshToken }` no corpo | recebe o cookie + o header `X-Cubs-Client` — **corpo vazio** |
 | logout não existia | `POST /auth/logout` revoga a sessão no servidor |
 
@@ -36,18 +36,19 @@ reenviam sozinhas — você não copia nada.
 
 ```
 POST http://localhost:3000/api/auth/register
-Body (JSON): { "name": "Helder", "email": "helder@example.com", "password": "suasenha" }
+Body (JSON): { "name": "Helder", "email": "helder@example.com" }
 ```
 
-A resposta inclui `{ "user": {...}, "workspace": {...}, "accessToken":
-"eyJ..." }`. Usuário, workspace `Area de Trabalho do Helder`, root e membership
-`superadmin` são gravados na mesma transação.
+A resposta `202` informa `verificationRequired`, `email` e
+`notificationPending`. Abra o link recebido e conclua com:
 
-O onboarding público por chave usa primeiro
-`POST /api/auth/workspace-key/preview` com `{ "key": "cubs_ws_v1_..." }` e
-depois `POST /api/auth/register/workspace` com `{ key, name, email, password,
-workspaceName }`. O preview não consome a chave; a conclusão consome junto do
-cadastro e devolve o mesmo contrato de sessão.
+```
+POST http://localhost:3000/api/auth/verification/<token>/complete
+Body (JSON): { "password": "suasenha", "name": "Helder" }
+```
+
+A conclusão valida o e-mail, cria a workspace pessoal com suas roles padrão e
+devolve `{ user, workspace, accessToken }`, além do cookie de refresh.
 
 ### 1. Login
 

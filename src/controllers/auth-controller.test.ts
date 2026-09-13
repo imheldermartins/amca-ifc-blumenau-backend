@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const doubles = vi.hoisted(() => ({
   usersFind: vi.fn(),
   usersUpdate: vi.fn(),
-  hash: vi.fn(),
   compare: vi.fn(),
   issueTokenPair: vi.fn(),
-  createPrivateWorkspace: vi.fn(),
-  createWorkspaceWithKey: vi.fn(),
   findUserByCanonicalEmail: vi.fn(),
-  getAccessKey: vi.fn(),
-  getForUser: vi.fn(),
+  getInviteByTokenHash: vi.fn(),
+  beginVerification: vi.fn(),
+  previewVerification: vi.fn(),
+  resendVerification: vi.fn(),
+  completeVerification: vi.fn(),
 }));
 
 vi.mock("@/core/db/model", () => ({
@@ -19,190 +19,80 @@ vi.mock("@/core/db/model", () => ({
     update = doubles.usersUpdate;
   },
 }));
-vi.mock("bcryptjs", () => ({
-  default: { hash: doubles.hash, compare: doubles.compare },
-}));
-vi.mock("@core/auth/jwt-service", () => ({
-  default: { issueTokenPair: doubles.issueTokenPair },
-}));
+vi.mock("bcryptjs", () => ({ default: { compare: doubles.compare } }));
+vi.mock("@core/auth/jwt-service", () => ({ default: { issueTokenPair: doubles.issueTokenPair } }));
 vi.mock("@db/auth-onboarding-store", () => ({
-  default: {
-    createPrivateWorkspace: doubles.createPrivateWorkspace,
-    createWorkspaceWithKey: doubles.createWorkspaceWithKey,
-    findUserByCanonicalEmail: doubles.findUserByCanonicalEmail,
-  },
+  default: { findUserByCanonicalEmail: doubles.findUserByCanonicalEmail },
 }));
-vi.mock("@db/workspace-store", () => ({
+vi.mock("@db/access-invite-store", () => ({
+  default: { getByTokenHash: doubles.getInviteByTokenHash },
+}));
+vi.mock("@/services/account-verification", () => ({
   default: {
-    getAccessKey: doubles.getAccessKey,
-    getForUser: doubles.getForUser,
+    begin: doubles.beginVerification,
+    preview: doubles.previewVerification,
+    resend: doubles.resendVerification,
+    complete: doubles.completeVerification,
   },
 }));
 
 import authController from "./auth-controller.js";
 
-const RAW_KEY = `cubs_ws_v1_${"A".repeat(32)}`;
 const user = {
   id: "01KXDN4AXN6QJBTZTCWP1JWVW4",
   name: "Helder da Silva",
   email: "helder@ifc.estudantes.edu.br",
   password_hash: "bcrypt-hash",
+  email_verified_at: "2026-09-12T12:00:00.000Z",
   token_version: 0,
   created_at: new Date(),
   updated_at: new Date(),
 };
-const workspace = {
-  id: "01KXDN4B182DJGAKPX0940H54N",
-  name: "Area de Trabalho do Helder",
-  data: {},
-  organizationId: null,
-  organizationName: null,
-  icon: "lucide:boxes",
-  createdByUserId: user.id,
-  role: "superadmin" as const,
-  pageRootId: "01KXDN4B182DJGAKPX0940H54N",
-};
-const keyRecord = {
-  id: "01KXDN4B182DJGAKPX0940H55A",
-  key_hash: "a".repeat(64),
-  key_hint: "cubs_ws_v1_…AAAAAA",
-  algorithm_version: "sha256-v1",
-  issued_to_name: "Helder",
-  issued_to_email: "helder@ifc.estudantes.edu.br",
-  purpose: "create" as const,
-  expires_at: "2099-01-01T00:00:00.000Z",
-  consumed_at: null,
-  consumed_by_user_id: null,
-  revoked_at: null,
-  workspace_id: null,
-  workspace_name: null,
-  created_at: new Date(),
-  updated_at: new Date(),
+const verificationStarted = {
+  ok: true as const,
+  email: "helder@ifc.estudantes.edu.br",
+  notificationPending: false,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  doubles.hash.mockResolvedValue("bcrypt-hash");
-  doubles.issueTokenPair.mockReturnValue({
-    accessToken: "access-token",
-    refreshToken: "refresh-token",
-  });
+  doubles.issueTokenPair.mockReturnValue({ accessToken: "access-token", refreshToken: "refresh-token" });
 });
 
 describe("AuthController onboarding", () => {
-  it("cadastro comum cria a workspace privada com o primeiro nome", async () => {
+  it("cadastro comum normaliza a identidade e inicia a validação do e-mail", async () => {
     doubles.findUserByCanonicalEmail.mockResolvedValueOnce(null);
-    doubles.usersFind.mockResolvedValueOnce(user);
-    doubles.createPrivateWorkspace.mockResolvedValueOnce(true);
-    doubles.getForUser.mockResolvedValueOnce(workspace);
+    doubles.beginVerification.mockResolvedValueOnce(verificationStarted);
 
-    const result = await authController.register({
+    await expect(authController.register({
       name: "  Helder   da Silva ",
       email: " HELDER@IFC.ESTUDANTES.EDU.BR ",
-      password: "segredo",
+      returnTo: "/pt-br/organizations/new",
+    })).resolves.toEqual({
+      ok: true,
+      verificationRequired: true,
+      email: verificationStarted.email,
+      notificationPending: false,
     });
 
-    expect(result).toMatchObject({ ok: true, workspace, user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-    } });
-    expect(doubles.createPrivateWorkspace).toHaveBeenCalledWith(expect.objectContaining({
-      userName: "Helder da Silva",
-      userEmail: "helder@ifc.estudantes.edu.br",
-      workspaceName: "Area de Trabalho do Helder",
-      workspaceIcon: "lucide:boxes",
-    }));
-    expect(doubles.issueTokenPair).toHaveBeenCalledWith({ sub: user.id }, 0);
-  });
-
-  it("preview expõe somente o autocomplete de uma chave create válida", async () => {
-    doubles.getAccessKey.mockResolvedValueOnce(keyRecord);
-
-    await expect(authController.previewWorkspaceKey(RAW_KEY)).resolves.toEqual({
-      valid: true,
-      name: "Helder",
+    expect(doubles.beginVerification).toHaveBeenCalledWith({
+      name: "Helder da Silva",
       email: "helder@ifc.estudantes.edu.br",
+      inviteId: null,
+      context: { kind: "native", returnTo: "/pt-br/organizations/new" },
     });
-
-    doubles.getAccessKey.mockResolvedValueOnce({ ...keyRecord, purpose: "join" });
-    await expect(authController.previewWorkspaceKey(RAW_KEY)).resolves.toEqual({ valid: false });
-    doubles.getAccessKey.mockResolvedValueOnce({ ...keyRecord, algorithm_version: "sha256-v0" });
-    await expect(authController.previewWorkspaceKey(RAW_KEY)).resolves.toEqual({ valid: false });
-    await expect(authController.previewWorkspaceKey("malformada")).resolves.toEqual({ valid: false });
+    expect(doubles.issueTokenPair).not.toHaveBeenCalled();
   });
 
-  it("multiform aceita identidade editada sem alterar a identidade emitida", async () => {
-    doubles.getAccessKey.mockResolvedValueOnce(keyRecord);
-    doubles.findUserByCanonicalEmail.mockResolvedValueOnce(null);
-    doubles.usersFind.mockResolvedValueOnce({
-      ...user,
-      name: "Helder Editado",
-      email: "novo@ifc.edu.br",
-    });
-    doubles.createWorkspaceWithKey.mockResolvedValueOnce(true);
-    doubles.getForUser.mockResolvedValueOnce({ ...workspace, name: "Minha Equipe" });
-
-    const result = await authController.registerWithWorkspace({
-      key: RAW_KEY,
-      name: "Helder Editado",
-      email: "novo@ifc.edu.br",
-      password: "segredo",
-      workspaceName: "Minha Equipe",
-    });
-
-    expect(result.ok).toBe(true);
-    expect(doubles.createWorkspaceWithKey).toHaveBeenCalledWith(expect.objectContaining({
-      userName: "Helder Editado",
-      userEmail: "novo@ifc.edu.br",
-      workspaceName: "Minha Equipe",
-      keyId: keyRecord.id,
-      keyHash: keyRecord.key_hash,
-    }));
-    const provision = doubles.createWorkspaceWithKey.mock.calls[0]![0];
-    expect(provision).not.toHaveProperty("issuedEmail");
-    expect(provision).not.toHaveProperty("issuedName");
-  });
-
-  it("chave inválida não consulta se o e-mail já existe", async () => {
-    doubles.getAccessKey.mockResolvedValueOnce(null);
-
-    await expect(authController.registerWithWorkspace({
-      key: RAW_KEY,
-      name: "Helder",
-      email: "alvo@example.com",
-      password: "segredo",
-      workspaceName: "Equipe",
-    })).resolves.toEqual({ ok: false, reason: "invalid_key" });
+  it("rejeita cadastro sem nome e e-mail válido antes de gravar", async () => {
+    await expect(authController.register({ name: " ", email: "invalido" }))
+      .resolves.toEqual({ ok: false, reason: "validation" });
 
     expect(doubles.findUserByCanonicalEmail).not.toHaveBeenCalled();
-    expect(doubles.hash).not.toHaveBeenCalled();
-    expect(doubles.createWorkspaceWithKey).not.toHaveBeenCalled();
+    expect(doubles.beginVerification).not.toHaveBeenCalled();
   });
 
-  it("rejeita cadastro sem nome e e-mail inválido antes de gravar", async () => {
-    await expect(authController.register({
-      name: " ",
-      email: "invalido",
-      password: "segredo",
-    })).resolves.toEqual({ ok: false, reason: "validation" });
-
-    expect(doubles.usersFind).not.toHaveBeenCalled();
-    expect(doubles.createPrivateWorkspace).not.toHaveBeenCalled();
-  });
-
-  it("rejeita senha que excede os 72 bytes aceitos pelo bcrypt", async () => {
-    await expect(authController.register({
-      name: "Helder",
-      email: "helder@ifc.edu.br",
-      password: "á".repeat(37),
-    })).resolves.toEqual({ ok: false, reason: "validation" });
-
-    expect(doubles.usersFind).not.toHaveBeenCalled();
-    expect(doubles.hash).not.toHaveBeenCalled();
-  });
-
-  it("normaliza o e-mail também na fronteira de login", async () => {
+  it("normaliza o e-mail e exige conta validada no login", async () => {
     doubles.findUserByCanonicalEmail.mockResolvedValueOnce(user);
     doubles.compare.mockResolvedValueOnce(true);
 
@@ -211,8 +101,6 @@ describe("AuthController onboarding", () => {
       password: "segredo",
     })).resolves.toMatchObject({ user: { id: user.id } });
 
-    expect(doubles.findUserByCanonicalEmail).toHaveBeenCalledWith(
-      "helder@ifc.estudantes.edu.br",
-    );
+    expect(doubles.findUserByCanonicalEmail).toHaveBeenCalledWith("helder@ifc.estudantes.edu.br");
   });
 });
