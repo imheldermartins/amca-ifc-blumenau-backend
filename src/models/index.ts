@@ -9,8 +9,6 @@ import { pageCollaborators } from "@models/page-collaborator-model";
 import { organizations } from "@models/organization-model";
 import { organizationMembers } from "@models/organization-member-model";
 import { workspaceMembers } from "@models/workspace-member-model";
-import { workspaceAccessKeys } from "@models/workspace-access-key-model";
-import { workspaceAccessKeyLinks } from "@models/workspace-access-key-link-model";
 
 export default {
     users,
@@ -23,7 +21,5 @@ export default {
     organizations,
     organizationMembers,
     workspaceMembers,
-    workspaceAccessKeys,
-    workspaceAccessKeyLinks,
     sqlRaw: Model.sqlRaw,
 };

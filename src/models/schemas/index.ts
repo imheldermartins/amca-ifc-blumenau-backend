@@ -4,6 +4,7 @@ export namespace Schema {
   export interface User extends EntityBase {
     name: string | null;
     email: string;
+    email_verified_at: string | null;
   }
   export interface Users extends User {}
 
@@ -31,45 +32,25 @@ export namespace Schema {
   export interface Organization extends EntityBase {
     name: string;
     data: Record<string, unknown>;
+    owner_id: NonEmptyString | null;
   }
 
   export interface OrganizationMember extends EntityBase {
     organization_id: NonEmptyString;
     user_id: NonEmptyString;
-    role: WorkspaceRole;
+    organization_member_role_id: NonEmptyString | null;
+    deleted_at: string | null;
   }
 
-  export const WORKSPACE_ROLES = ['superadmin', 'member'] as const;
-  export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+  /** ID de uma role editável; não existe enum de nomes de papéis. */
+  export type WorkspaceRole = string;
 
   export interface WorkspaceMember extends EntityBase {
     workspace_id: NonEmptyString;
     user_id: NonEmptyString;
-    role: WorkspaceRole;
+    workspace_member_role_id: NonEmptyString | null;
     page_root_id: NonEmptyString;
-  }
-
-  export const WORKSPACE_KEY_PURPOSES = ['create', 'join'] as const;
-  export type WorkspaceKeyPurpose = (typeof WORKSPACE_KEY_PURPOSES)[number];
-
-  export interface WorkspaceAccessKey extends EntityBase {
-    key_hash: string;
-    key_hint: string;
-    algorithm_version: string;
-    issued_to_name: string;
-    issued_to_email: string;
-    purpose: WorkspaceKeyPurpose;
-    expires_at: string;
-    consumed_at: string | null;
-    consumed_by_user_id: NonEmptyString | null;
-    consumed_as_name: string | null;
-    consumed_as_email: string | null;
-    revoked_at: string | null;
-  }
-
-  export interface WorkspaceAccessKeyLink extends EntityBase {
-    access_key_id: NonEmptyString;
-    workspace_id: NonEmptyString;
+    deleted_at: string | null;
   }
 
   // --- 3. PAGES ---
@@ -181,6 +162,8 @@ export namespace Schema {
   export interface PageCollaborator extends EntityBase {
     page_id: NonEmptyString;   // ID da página
     user_id: NonEmptyString;   // ID do usuário-colaborador
+    page_member_role_id: NonEmptyString | null;
+    deleted_at: string | null;
   }
   export interface PageCollaborators extends PageCollaborator {}
 
