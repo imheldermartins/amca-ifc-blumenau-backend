@@ -189,6 +189,7 @@ describe("channels realtime v1", () => {
     const base = { pageId: PAGE_ID, updatedAt: UPDATED_AT, originUserId: OWNER_ID };
     pageEdit.emitCellUpdated({ ...base, rowId: ROW_ID, columnId: COLUMN_ID, value: false });
     pageEdit.emitPageUpdated({ ...base, title: "Nova pagina" });
+    pageEdit.emitDatabaseUpdated(base);
     pageEdit.emitColumnCreated({
       ...base,
       columnId: COLUMN_ID,
@@ -202,6 +203,7 @@ describe("channels realtime v1", () => {
         { ...base, rowId: ROW_ID, columnId: COLUMN_ID, value: false },
       ]);
       expect(socket.payloads("page-updated")).toEqual([{ ...base, title: "Nova pagina" }]);
+      expect(socket.payloads("database-updated")).toEqual([base]);
       expect(socket.payloads("column-created")).toHaveLength(1);
       expect(socket.payloads("column-deleted")).toHaveLength(1);
       expect(socket.payloads("row-deleted")).toHaveLength(1);

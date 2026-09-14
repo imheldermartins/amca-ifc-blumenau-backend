@@ -3,6 +3,7 @@ import { requireScopedPermission } from "@core/auth/scoped-access-middleware";
 import roleStore from "@db/role-store";
 import type { Request, Response } from "express";
 import pageController from "@/controllers/page-controller";
+import { readPageLatestUpdatedAt } from '@db/page-activity';
 import pageColumnController from "@/controllers/page-column-controller";
 import pageColumnValueController from "@/controllers/page-column-value-controller";
 import pageCollaboratorController from "@/controllers/page-collaborator-controller";
@@ -1045,7 +1046,10 @@ class PageRouter extends BaseRouter<Schema.Page> {
       return res.status(StatusCode.NOT_FOUND).json({ message: `"${this.resourceName}" não encontrado` });
     }
 
-    return res.status(StatusCode.OK).json(item);
+    return res.status(StatusCode.OK).json({
+      ...item,
+      latest_updated_at: await readPageLatestUpdatedAt(item.id),
+    });
   }
 
   protected override async create(req: Request, res: Response): Promise<Response> {
@@ -1074,9 +1078,11 @@ class PageRouter extends BaseRouter<Schema.Page> {
       ...(data !== undefined && { data }),
     } as UpdateValues<Schema.Page>;
 
-    const item = await this.controller.update(
+    const parentId = await pageAccessController.getParentId(req.params.id as string);
+    const item = await pageController.update(
       { id: req.params.id } as LookupValues<Schema.Page>,
       payload,
+      parentId ? [parentId] : [],
     );
 
     if (!item) {
@@ -1100,8 +1106,9 @@ class PageRouter extends BaseRouter<Schema.Page> {
     const rowId = req.params.id as string;
     // Capture a sala antes do soft delete; publique somente após o commit.
     const parentId = await pageAccessController.getParentId(rowId);
-    const deleted = await this.controller.delete(
+    const deleted = await pageController.delete(
       { id: rowId } as LookupValues<Schema.Page>,
+      parentId ? [parentId] : [],
     );
 
     if (!deleted) {

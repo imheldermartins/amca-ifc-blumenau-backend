@@ -3,6 +3,9 @@ import type { Model } from "@/core/db/model";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { SystemRoleFactory } from "@db/system-role-factory";
+import { pageActivityTouchStatement } from '@db/page-activity';
+import { pageChildEdgeStatement } from '@db/page-child-creation';
+import { ulid } from 'ulid';
 
 class PageController implements IBaseController<Schema.Page> {
   private db: Model<Schema.Page> = db.pages;
@@ -55,9 +58,17 @@ class PageController implements IBaseController<Schema.Page> {
     }
   }
 
-  async update(lookup: LookupValues<Schema.Page>, data: UpdateValues<Schema.Page>) {
+  async update(
+    lookup: LookupValues<Schema.Page>,
+    data: UpdateValues<Schema.Page>,
+    databasePageIds: readonly string[] = [],
+  ) {
     try {
-      const updated = await this.db.update(data, lookup);
+      const pageId = typeof lookup.id === "string" ? lookup.id : null;
+      const targets = [...new Set([...(pageId ? [pageId] : []), ...databasePageIds])];
+      const updated = await this.db.update(data, lookup, {
+        after: targets.map(pageActivityTouchStatement),
+      });
 
       if (!updated) throw new Error("Failed to update page");
 
@@ -72,9 +83,11 @@ class PageController implements IBaseController<Schema.Page> {
     }
   }
 
-  async delete(lookup: LookupValues<Schema.Page>) {
+  async delete(lookup: LookupValues<Schema.Page>, databasePageIds: readonly string[] = []) {
     try {
-      const deleted = await this.db.delete(lookup);
+      const deleted = await this.db.delete(lookup, {
+        after: [...new Set(databasePageIds)].map(pageActivityTouchStatement),
+      });
 
       if (!deleted) throw new Error("Failed to delete page");
 
@@ -103,21 +116,20 @@ class PageController implements IBaseController<Schema.Page> {
       const parent = await this.db.find({ id: parentId } as LookupValues<Schema.Page>);
       if (!parent) throw new Error("Parent page not found");
 
+      const childId = ulid();
       const created = await this.db.create({
+        id: childId,
         title: body.title ?? null,
         owner_id: ownerId,
         data: body.data ?? {},
-      } as unknown as CreateValues<Schema.Page>);
+      } as unknown as CreateValues<Schema.Page>, {
+        after: [
+          SystemRoleFactory.defaultStatement('page', childId),
+          pageChildEdgeStatement(parentId, childId),
+          pageActivityTouchStatement(parentId),
+        ],
+      });
       if (!created) throw new Error("Failed to create child page");
-      if (!await SystemRoleFactory.ensureDefault('page', created.id)) {
-        throw new Error("Failed to create default page role");
-      }
-
-      const edge = await db.pageEdges.create({
-        parent_id: parentId,
-        child_id: created.id,
-      } as unknown as CreateValues<Schema.PageEdge>);
-      if (!edge) throw new Error("Failed to link child page to parent");
 
       return created;
     } catch (error) {

@@ -142,6 +142,24 @@ describe("page-column-value-controller — endereço da célula", () => {
       page_id: ROW_ID,
       page_column_id: COLUMN_ID,
       data: JSON.stringify({ value: persisted }),
+    }, { after: [expect.arrayContaining([expect.stringContaining("updated_at = strftime"), ROW_ID])] });
+  });
+
+  it('recarimba a página-filha ao alterar ou limpar uma célula', async () => {
+    dbMocks.values.find.mockResolvedValue(existingValue);
+    dbMocks.columns.find.mockResolvedValue(textColumn);
+    dbMocks.edges.find.mockResolvedValue({ parent_id: PARENT_ID, child_id: ROW_ID });
+    dbMocks.values.update.mockResolvedValue(true);
+    dbMocks.values.delete.mockResolvedValue(true);
+
+    expect((await pageColumnValueController.updateValue(ROW_ID, COLUMN_ID, { value: 'novo' })).ok).toBe(true);
+    expect(dbMocks.values.update.mock.calls[0]?.[2]).toEqual({
+      after: [expect.arrayContaining([expect.stringContaining('updated_at = strftime'), ROW_ID])],
+    });
+
+    expect((await pageColumnValueController.deleteValue(ROW_ID, COLUMN_ID)).ok).toBe(true);
+    expect(dbMocks.values.delete.mock.calls[0]?.[1]).toEqual({
+      after: [expect.arrayContaining([expect.stringContaining('updated_at = strftime'), ROW_ID])],
     });
   });
 });

@@ -23,6 +23,7 @@ describe("contrato realtime v1", () => {
       "cell-updated",
       "row-updated",
       "page-updated",
+      "database-updated",
       "column-updated",
       "column-resizing",
       "view-updated",

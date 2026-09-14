@@ -10,6 +10,7 @@ const COLUMN_ID = "01KXDN4B3X8J9NXGSTMK8PRFMF";
 const VIEW_ID = "01KXVVKQ5DC06250MCYVHMJP1V";
 
 const doubles = vi.hoisted(() => ({
+  readPageLatestUpdatedAt: vi.fn(),
   page: {
     all: vi.fn(),
     get: vi.fn(),
@@ -67,6 +68,7 @@ const doubles = vi.hoisted(() => ({
 
 vi.mock("@db/scoped-access-store", async (load) => ({...await load<object>(),default:{can: (_scope:string,id:string,userId:string) => doubles.access.canAccessPage(userId,id)}}));
 vi.mock("@/controllers/page-controller", () => ({ default: doubles.page }));
+vi.mock('@db/page-activity', () => ({ readPageLatestUpdatedAt: doubles.readPageLatestUpdatedAt }));
 vi.mock("@/controllers/page-column-controller", () => ({ default: doubles.column }));
 vi.mock("@/controllers/page-column-value-controller", () => ({ default: doubles.value }));
 vi.mock("@/controllers/page-collaborator-controller", () => ({
@@ -112,7 +114,7 @@ beforeEach(() => {
 
 async function request(
   path: string,
-  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown,
 ): Promise<Response> {
   const init: RequestInit = {
@@ -126,6 +128,19 @@ async function request(
 }
 
 describe("PageRouter: publicação realtime somente pós-commit", () => {
+  it('retorna a última edição calculada em GET sem coluna persistida', async () => {
+    doubles.page.get.mockResolvedValueOnce({ id: PAGE_ID, title: 'Base', updated_at: '2026-09-14 10:00:00' });
+    doubles.readPageLatestUpdatedAt.mockResolvedValueOnce('2026-09-14 11:30:00');
+
+    const response = await request(`/pages/${PAGE_ID}`, 'GET');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: PAGE_ID,
+      latest_updated_at: '2026-09-14 11:30:00',
+    });
+    expect(doubles.readPageLatestUpdatedAt).toHaveBeenCalledWith(PAGE_ID);
+  });
+
   it("publica o resultado autoritativo de title/data uma vez e não publica em falha", async () => {
     const page = { id: PAGE_ID, title: "Confirmado", data: { inactiveView: { view: "table" } } };
     doubles.page.update.mockResolvedValueOnce(page);

@@ -32,6 +32,7 @@ describe("commitFilterKeyReconcile", () => {
     expect(statements).toHaveLength(4);
     expect(statements[0][0]).toContain("WHERE NOT EXISTS (SELECT 1 FROM pages");
     expect(statements[1][0]).toContain("WHERE NOT EXISTS (SELECT 1 FROM page_columns");
+    expect(statements[2][0]).toContain("updated_at = strftime");
   });
 
   it("propaga a falha do guard para impedir commit parcial", async () => {

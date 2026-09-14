@@ -3,6 +3,7 @@ import type {
   ColumnCreatedPayload,
   ColumnPayload,
   ColumnUpdatedPayload,
+  DatabaseUpdatedPayload,
   PageUpdatedPayload,
   RowPayload,
   RowUpdatedPayload,
@@ -18,6 +19,7 @@ export type PageEditEventName =
   | "cell-updated"
   | "row-updated"
   | "page-updated"
+  | "database-updated"
   | "column-updated"
   | "view-updated"
   | "row-created"
@@ -33,6 +35,7 @@ export class PageEditChannel implements RealtimeChannel {
     "cell-updated",
     "row-updated",
     "page-updated",
+    "database-updated",
     "column-updated",
     "view-updated",
     "row-created",
@@ -61,6 +64,10 @@ export class PageEditChannel implements RealtimeChannel {
 
   emitPageUpdated(payload: PageUpdatedPayload): void {
     this.emit("page-updated", payload);
+  }
+
+  emitDatabaseUpdated(payload: DatabaseUpdatedPayload): void {
+    this.emit("database-updated", payload);
   }
 
   emitColumnUpdated(payload: ColumnUpdatedPayload): void {

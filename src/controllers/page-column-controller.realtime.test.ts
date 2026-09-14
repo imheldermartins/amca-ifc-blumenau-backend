@@ -84,15 +84,13 @@ describe("PageColumnController: resultado autoritativo do reset", () => {
       },
     });
 
-    if (expectedValue === null) {
-      expect(dbMocks.values.delete).toHaveBeenCalledWith({ id: VALUE_ID });
-      expect(dbMocks.values.update).not.toHaveBeenCalled();
-    } else {
-      expect(dbMocks.values.update).toHaveBeenCalledWith(
-        { data: JSON.stringify({ value: expectedValue }) },
-        { id: VALUE_ID },
-      );
-      expect(dbMocks.values.delete).not.toHaveBeenCalled();
-    }
+    const writes = dbMocks.columns.update.mock.calls[0]?.[2]?.after as RqliteStatement[];
+    expect(writes).toHaveLength(3);
+    expect(writes[0]?.[0]).toContain(expectedValue === null ? "DELETE FROM page_columns_values" : "UPDATE page_columns_values");
+    if (expectedValue !== null) expect(writes[0]).toContain(JSON.stringify({ value: expectedValue }));
+    expect(writes[1]).toEqual(expect.arrayContaining([expect.stringContaining("updated_at = strftime"), ROW_ID]));
+    expect(writes[2]).toEqual(expect.arrayContaining([expect.stringContaining("updated_at = strftime"), PAGE_ID]));
+    expect(dbMocks.values.delete).not.toHaveBeenCalled();
+    expect(dbMocks.values.update).not.toHaveBeenCalled();
   });
 });

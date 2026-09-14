@@ -80,6 +80,8 @@ beforeAll(async () => {
     pageEdit,
     { getParentId: async (rowId) => rowId === ROW_ID ? PAGE_ID : null },
     new RealtimeEventFactory(() => new Date(UPDATED_AT)),
+    undefined,
+    { getUpdatedAt: async () => UPDATED_AT },
   );
 });
 
@@ -156,6 +158,7 @@ describe("SocketServer + channels com clientes reais", () => {
     for (const event of [
       "row-updated",
       "page-updated",
+      "database-updated",
       "column-updated",
       "view-updated",
     ] as const) {
@@ -163,6 +166,8 @@ describe("SocketServer + channels com clientes reais", () => {
     }
     const ownerEcho = onceEvent<CellUpdatedPayload>(owner, "cell-updated");
     const collaboratorUpdate = onceEvent<CellUpdatedPayload>(collaborator, "cell-updated");
+    const ownerActivity = onceEvent(owner, "database-updated");
+    const collaboratorActivity = onceEvent(collaborator, "database-updated");
 
     // Representa uma escrita HTTP já confirmada: somente então o publisher é
     // chamado, e ambos os membros autorizados recebem o mesmo fato.
@@ -183,6 +188,8 @@ describe("SocketServer + channels com clientes reais", () => {
     };
     await expect(ownerEcho).resolves.toEqual(expected);
     await expect(collaboratorUpdate).resolves.toEqual(expected);
+    await expect(ownerActivity).resolves.toEqual({ pageId: PAGE_ID, updatedAt: UPDATED_AT, originUserId: OWNER_ID });
+    await expect(collaboratorActivity).resolves.toEqual({ pageId: PAGE_ID, updatedAt: UPDATED_AT, originUserId: OWNER_ID });
 
     const snapshot = {
       "01KXDN4B9A7MYYCTQS1K452QAA": { view: "table", name: "Principal" },

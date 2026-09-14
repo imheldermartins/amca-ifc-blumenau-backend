@@ -69,7 +69,7 @@ export function buildUpdatePageJsonPathsStatement(
     text:
       "UPDATE pages " +
       `SET data = json_set(CASE WHEN json_valid(data) THEN data ELSE '{}' END, ${setters}), ` +
-      "updated_at = CURRENT_TIMESTAMP " +
+      "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') " +
       where,
     values,
   };
@@ -133,7 +133,7 @@ export function buildInsertPageViewStatement(
   return {
     text:
       "UPDATE pages SET data = json_insert(CASE WHEN json_valid(data) THEN data ELSE '{}' END, ?, json(?)), " +
-      "updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL " +
+      "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND deleted_at IS NULL " +
       "AND json_type(CASE WHEN json_valid(data) THEN data ELSE '{}' END, ?) IS NULL" +
       (sourceViewId ? " AND json_type(data, ?) = 'object' AND json_extract(data, ?) IS NULL" : ""),
     values: [path, JSON.stringify(view), pageId, path,
@@ -175,6 +175,13 @@ export async function commitFilterKeyReconcile(input: {
       "WHERE id = ? AND parent_id = ? AND deleted_at IS NULL",
       JSON.stringify(column.data),
       column.id,
+      input.pageId,
+    ]);
+  }
+
+  if (writes.length > 0 && input.pagePatches.length === 0) {
+    writes.push([
+      "UPDATE pages SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND deleted_at IS NULL",
       input.pageId,
     ]);
   }

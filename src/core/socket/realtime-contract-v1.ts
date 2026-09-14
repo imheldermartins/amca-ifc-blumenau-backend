@@ -57,6 +57,8 @@ export interface PageUpdatedPayload extends RealtimePayload {
   title: string | null;
 }
 
+export type DatabaseUpdatedPayload = RealtimePayload;
+
 export interface ColumnUpdatedPayload extends RealtimePayload {
   columnId: string;
   /** Definicao completa da coluna, nunca um patch. */
@@ -90,6 +92,7 @@ export interface RealtimeServerToClientEvents {
   "cell-updated": (payload: CellUpdatedPayload) => void;
   "row-updated": (payload: RowUpdatedPayload) => void;
   "page-updated": (payload: PageUpdatedPayload) => void;
+  "database-updated": (payload: DatabaseUpdatedPayload) => void;
   "column-updated": (payload: ColumnUpdatedPayload) => void;
   "column-resizing": (payload: ColumnResizingPayload) => void;
   "view-updated": (payload: ViewUpdatedPayload) => void;
@@ -135,6 +138,7 @@ export const REALTIME_SERVER_TO_CLIENT_EVENT_NAMES = [
   "cell-updated",
   "row-updated",
   "page-updated",
+  "database-updated",
   "column-updated",
   "column-resizing",
   "view-updated",

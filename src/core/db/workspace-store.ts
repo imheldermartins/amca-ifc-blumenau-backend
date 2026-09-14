@@ -10,6 +10,7 @@ export interface WorkspaceSummary extends ScopeAccess {
   id: string; name: string | null; data: Record<string, unknown>; organizationId: string | null;
   organizationName: string | null; isPersonal: boolean; icon: string; createdByUserId: string | null;
   pageRootId: string; role: string | null;
+  owner: { id: string | null; name: string | null; email: string | null };
 }
 export interface WorkspaceMemberSummary { id: string; name: string | null; email: string; role: string | null; pageRootId: string; roleId: string | null; roleName: string | null }
 export interface CreateWorkspaceProvision {
@@ -29,7 +30,7 @@ class WorkspaceStore {
       LEFT JOIN organizations o ON o.id = w.organization_id
       LEFT JOIN organization_members om ON om.organization_id = o.id AND om.user_id = ? AND om.deleted_at IS NULL
       WHERE m.id IS NOT NULL OR w.created_by_user_id = ? OR o.owner_id = ? OR om.id IS NOT NULL
-      ORDER BY lower(w.name), w.created_at`, userId, userId, userId, userId]], 'query');
+      ORDER BY CASE WHEN w.organization_id IS NULL THEN 0 ELSE 1 END, lower(w.name), w.created_at`, userId, userId, userId, userId]], 'query');
     const result = await Promise.all((rows ?? []).map(({ id }) => this.getForUser(id, userId)));
     return result.filter((row): row is WorkspaceSummary => row !== null);
   }
@@ -37,8 +38,10 @@ class WorkspaceStore {
     const allowed = await access.get('workspace', workspaceId, userId);
     if (!allowed?.permissions.read.includes('view')) return null;
     const [rows] = await rqlite<Record<string, unknown>>([[
-      `SELECT w.*, o.name AS organization_name, COALESCE(m.page_root_id, w.id) AS page_root_id
+      `SELECT w.*, o.name AS organization_name, COALESCE(m.page_root_id, w.id) AS page_root_id,
+        owner.id AS owner_user_id, owner.name AS owner_name, owner.email AS owner_email
        FROM workspaces w LEFT JOIN organizations o ON o.id = w.organization_id
+       LEFT JOIN users owner ON owner.id = w.created_by_user_id
        LEFT JOIN workspace_members m ON m.workspace_id = w.id AND m.user_id = ? AND m.deleted_at IS NULL
        WHERE w.id = ?`, userId, workspaceId,
     ]], 'query');
@@ -47,7 +50,13 @@ class WorkspaceStore {
       organizationId: row.organization_id as string | null, organizationName: row.organization_name as string | null,
       isPersonal: row.organization_id == null,
       icon: row.icon as string || 'lucide:boxes', createdByUserId: row.created_by_user_id as string | null,
-      role: allowed.roleId, pageRootId: row.page_root_id as string } : null;
+      role: allowed.roleId, pageRootId: row.page_root_id as string,
+      owner: {
+        id: row.owner_user_id as string | null,
+        name: row.owner_name as string | null,
+        email: row.owner_email as string | null,
+      },
+    } : null;
   }
   async getMembership(workspaceId: string, userId: string): Promise<Schema.WorkspaceMember | null> {
     const [rows] = await rqlite<Schema.WorkspaceMember>([[

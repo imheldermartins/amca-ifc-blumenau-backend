@@ -1,9 +1,11 @@
 import pageAccessController from "@/controllers/page-access-controller";
+import { readPageLatestUpdatedAt } from '@db/page-activity';
 import type {
   CellUpdatedPayload,
   ColumnCreatedPayload,
   ColumnPayload,
   ColumnUpdatedPayload,
+  DatabaseUpdatedPayload,
   PageUpdatedPayload,
   RowPayload,
   RowUpdatedPayload,
@@ -21,10 +23,15 @@ export interface ParentPageResolver {
   getParentId(pageId: string): Promise<string | null>;
 }
 
+export interface DatabaseActivityReader {
+  getUpdatedAt(pageId: string): Promise<string | null>;
+}
+
 export interface PageEditEmitter {
   emitCellUpdated(payload: CellUpdatedPayload): void;
   emitRowUpdated(payload: RowUpdatedPayload): void;
   emitPageUpdated(payload: PageUpdatedPayload): void;
+  emitDatabaseUpdated(payload: DatabaseUpdatedPayload): void;
   emitColumnUpdated(payload: ColumnUpdatedPayload): void;
   emitViewUpdated(payload: ViewUpdatedPayload): void;
   emitRowCreated(payload: RowPayload): void;
@@ -89,6 +96,7 @@ export class PageRealtimePublisher {
     private readonly parents: ParentPageResolver = pageAccessController,
     private readonly factory: RealtimeEventFactory = new RealtimeEventFactory(),
     private readonly log: RealtimePublisherLogger = defaultLogger,
+    private readonly activity: DatabaseActivityReader = { getUpdatedAt: readPageLatestUpdatedAt },
   ) {}
 
   /** Resolve a room parent da linha depois que a celula foi confirmada. */
@@ -109,6 +117,7 @@ export class PageRealtimePublisher {
         ),
       ),
     );
+    await this.emitDatabaseUpdated(pageId, input.originUserId);
   }
 
   /**
@@ -117,6 +126,9 @@ export class PageRealtimePublisher {
    */
   async pageChanged(input: PageChangedInput): Promise<void> {
     const metadata = this.metadata(input);
+    if (input.data !== undefined || input.title !== undefined) {
+      await this.emitDatabaseUpdated(input.pageId, input.originUserId);
+    }
     if (input.data !== undefined) {
       this.safeEmit("view-updated", input.pageId, () =>
         this.emitter.emitViewUpdated(
@@ -134,6 +146,7 @@ export class PageRealtimePublisher {
 
       const parentId = await this.resolveParent(input.pageId, "row-updated");
       if (!parentId) return;
+      await this.emitDatabaseUpdated(parentId, input.originUserId);
       this.safeEmit("row-updated", parentId, () =>
         this.emitter.emitRowUpdated(
           this.factory.create(
@@ -147,6 +160,7 @@ export class PageRealtimePublisher {
 
   async columnUpdated(input: ColumnUpdatedInput): Promise<void> {
     const metadata = this.metadata(input);
+    await this.emitDatabaseUpdated(input.pageId, input.originUserId);
     this.safeEmit("column-updated", input.pageId, () =>
       this.emitter.emitColumnUpdated(
         this.factory.create(
@@ -158,15 +172,16 @@ export class PageRealtimePublisher {
   }
 
   async rowCreated(input: RowChangedInput): Promise<void> {
-    this.emitRowChange("row-created", input, (payload) => this.emitter.emitRowCreated(payload));
+    await this.emitRowChange("row-created", input, (payload) => this.emitter.emitRowCreated(payload));
   }
 
   async rowDeleted(input: RowChangedInput): Promise<void> {
-    this.emitRowChange("row-deleted", input, (payload) => this.emitter.emitRowDeleted(payload));
+    await this.emitRowChange("row-deleted", input, (payload) => this.emitter.emitRowDeleted(payload));
   }
 
   async columnCreated(input: ColumnCreatedInput): Promise<void> {
     const metadata = this.metadata(input);
+    await this.emitDatabaseUpdated(input.pageId, input.originUserId);
     this.safeEmit("column-created", input.pageId, () =>
       this.emitter.emitColumnCreated(
         this.factory.create(
@@ -178,7 +193,7 @@ export class PageRealtimePublisher {
   }
 
   async columnDeleted(input: ColumnChangedInput): Promise<void> {
-    this.emitColumnChange("column-deleted", input, (payload) =>
+    await this.emitColumnChange("column-deleted", input, (payload) =>
       this.emitter.emitColumnDeleted(payload),
     );
   }
@@ -186,6 +201,7 @@ export class PageRealtimePublisher {
   /** Coluna e todas as celulas resetadas compartilham exatamente o mesmo ISO. */
   async columnReset(input: ColumnResetInput): Promise<void> {
     const metadata = this.metadata(input);
+    await this.emitDatabaseUpdated(input.pageId, input.originUserId);
     this.safeEmit("column-updated", input.pageId, () =>
       this.emitter.emitColumnUpdated(
         this.factory.create(
@@ -212,32 +228,48 @@ export class PageRealtimePublisher {
     }
   }
 
-  private emitRowChange(
+  private async emitRowChange(
     event: "row-created" | "row-deleted",
     input: RowChangedInput,
     emit: (payload: RowPayload) => void,
-  ): void {
+  ): Promise<void> {
+    const metadata = this.metadata(input);
     const payload = this.factory.create(
       { pageId: input.pageId, rowId: input.rowId },
-      this.metadata(input),
+      metadata,
     );
+    await this.emitDatabaseUpdated(input.pageId, input.originUserId);
     this.safeEmit(event, input.pageId, () => emit(payload));
   }
 
-  private emitColumnChange(
+  private async emitColumnChange(
     event: "column-deleted",
     input: ColumnChangedInput,
     emit: (payload: ColumnPayload) => void,
-  ): void {
+  ): Promise<void> {
+    const metadata = this.metadata(input);
     const payload = this.factory.create(
       { pageId: input.pageId, columnId: input.columnId },
-      this.metadata(input),
+      metadata,
     );
+    await this.emitDatabaseUpdated(input.pageId, input.originUserId);
     this.safeEmit(event, input.pageId, () => emit(payload));
   }
 
   private metadata(input: PublishMetadataInput): RealtimeEventMetadata {
     return this.factory.metadata(input.originUserId);
+  }
+
+  private async emitDatabaseUpdated(pageId: string, originUserId: string): Promise<void> {
+    try {
+      const updatedAt = await this.activity.getUpdatedAt(pageId);
+      if (!updatedAt) return;
+      this.safeEmit("database-updated", pageId, () =>
+        this.emitter.emitDatabaseUpdated({ pageId, updatedAt, originUserId }),
+      );
+    } catch (error) {
+      this.log(`[cubs:realtime] Falha ao ler a ultima edicao da pagina ${pageId}`, error);
+    }
   }
 
   private async resolveParent(rowId: string, event: string): Promise<string | null> {

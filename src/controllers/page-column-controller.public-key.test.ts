@@ -88,7 +88,7 @@ describe("PageColumnController: public keys", () => {
       name: "Área (1)",
       type: "text",
       data: { publicKey: { key: "area_1", aliases: [] } },
-    });
+    }, { after: [expect.arrayContaining([expect.stringContaining("updated_at = strftime"), PAGE_ID])] });
   });
 
   it("não permite que coluna real reutilize a key sintética de título", async () => {
@@ -167,6 +167,7 @@ describe("PageColumnController: public keys", () => {
     expect(db.columns.update).toHaveBeenCalledWith(
       { data: { ...existing.data, options: expectedOptions } },
       { id: COLUMN_ID, parent_id: PAGE_ID },
+      { after: [expect.arrayContaining([expect.stringContaining("updated_at = strftime"), PAGE_ID])] },
     );
   });
 

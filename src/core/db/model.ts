@@ -1,5 +1,5 @@
 import { SQLBuilder } from "@db/sql-builder";
-import sql from "@/core/db/shared";
+import sql, { rqlite } from "@/core/db/shared";
 import { ulid } from "ulid";
 import {
   HardDeleteSolution,
@@ -10,6 +10,33 @@ export interface ModelOptions<T> {
   jsonColumns?: (keyof T)[];
   /** Estratégia de exclusão/escopo. Ausente mantém o DELETE físico legado. */
   deleteSolution?: DeleteSolution<T>;
+}
+
+export interface MutationOptions {
+  before?: readonly SqlStatement[];
+  /** Escritas de domínio que precisam compartilhar a transação do Model. */
+  after?: readonly RqliteStatement[];
+}
+
+function wire(statement: SqlStatement): RqliteStatement {
+  return [statement.text, ...statement.values];
+}
+
+async function executeMutation(statement: SqlStatement, options?: MutationOptions): Promise<boolean> {
+  if (!options?.before?.length && !options?.after?.length) return !!await sql(statement);
+  const writes: RqliteStatement[] = [
+    ...(options.before ?? []).map(wire),
+    wire(statement),
+    ...(options.after ?? []),
+  ];
+  // Em um batch transacional, zero linhas alteradas precisa lançar erro para
+  // reverter todas as escritas anteriores, inclusive o relógio da parent.
+  const statements: RqliteStatement[] = writes.flatMap((write) => [
+    write,
+    ["INSERT INTO pages (id, owner_id) SELECT '!', NULL WHERE changes() = 0"],
+  ]);
+  const results = await rqlite(statements, 'execute', { transaction: true });
+  return results.length === statements.length && writes.every((_, index) => results[index * 2] === true);
 }
 
 export class Model<T> {
@@ -47,7 +74,7 @@ export class Model<T> {
     return out as T;
   }
 
-  public async create(data: CreateValues<T>): Promise<T | null> {
+  public async create(data: CreateValues<T>, options?: MutationOptions): Promise<T | null> {
     const id = ulid();
 
     // `data` pode trazer um id explícito (ex.: page_root usa o id da workspace);
@@ -59,7 +86,7 @@ export class Model<T> {
 
     const stmt = this.sql.create(payload);
 
-    const result = await sql(stmt);
+    const result = await executeMutation(stmt, options);
     if (!result)
       throw new Error('Create::Model response is null.', { cause: 'MODELERROR' });
 
@@ -84,19 +111,19 @@ export class Model<T> {
     return rows.map((row) => this.deserialize(row) as T);
   }
 
-  public async update(values: UpdateValues<T>, lookup: LookupValues<T>): Promise<boolean> {
+  public async update(values: UpdateValues<T>, lookup: LookupValues<T>, options?: MutationOptions): Promise<boolean> {
     const stmt = this.sql.update(values, this.deleteSolution.scopeLookup(lookup));
 
-    const result = await sql(stmt);
+    const result = await executeMutation(stmt, options);
 
     return !!result;
   }
 
-  public async delete(lookup: LookupValues<T>): Promise<boolean> {
+  public async delete(lookup: LookupValues<T>, options?: MutationOptions): Promise<boolean> {
     const scopedLookup = this.deleteSolution.scopeLookup(lookup);
     const stmt = this.deleteSolution.statement(this.sql, scopedLookup);
 
-    const result = await sql(stmt);
+    const result = await executeMutation(stmt, options);
 
     return !!result;
   }

@@ -10,12 +10,14 @@ const ROW_ID_2 = "01KXDN4B7A7MYYCTQS1K452QKX";
 const COLUMN_ID = "01KXDN4B3X8J9NXGSTMK8PRFMF";
 const USER_ID = "01KXDN4AXN6QJBTZTCWP1JWVW4";
 const UPDATED_AT = "2026-08-15T20:00:00.000Z";
+const DATABASE_UPDATED_AT = "2026-08-15 20:00:00";
 
 function emitter() {
   return {
     emitCellUpdated: vi.fn(),
     emitRowUpdated: vi.fn(),
     emitPageUpdated: vi.fn(),
+    emitDatabaseUpdated: vi.fn(),
     emitColumnUpdated: vi.fn(),
     emitViewUpdated: vi.fn(),
     emitRowCreated: vi.fn(),
@@ -40,11 +42,21 @@ function publisher(options?: {
     { getParentId },
     new RealtimeEventFactory(options?.now ?? (() => new Date(UPDATED_AT))),
     log,
+    { getUpdatedAt: async () => DATABASE_UPDATED_AT },
   );
   return { realtime, edits, getParentId, log };
 }
 
 describe("PageRealtimePublisher", () => {
+  it("publica o timestamp persistido da base, distinto do relógio do evento", async () => {
+    const { realtime, edits } = publisher();
+    await realtime.rowCreated({ pageId: PAGE_ID, rowId: ROW_ID, originUserId: USER_ID });
+    expect(edits.emitDatabaseUpdated).toHaveBeenCalledWith({
+      pageId: PAGE_ID,
+      updatedAt: DATABASE_UPDATED_AT,
+      originUserId: USER_ID,
+    });
+  });
   it.each([false, 0, "", null])("preserva valor falsy confirmado da celula: %j", async (value) => {
     const { realtime, edits, getParentId } = publisher();
     await realtime.cellUpdated({ rowId: ROW_ID, columnId: COLUMN_ID, value, originUserId: USER_ID });

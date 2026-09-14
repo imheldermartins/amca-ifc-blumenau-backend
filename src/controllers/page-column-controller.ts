@@ -4,7 +4,7 @@ import type { Model } from "@/core/db/model";
 import { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { VALUE_CODECS } from "@/services/value-codec";
-import { updatePageJsonPaths } from "@/core/db/page-json";
+import { buildUpdatePageJsonPathsStatement } from "@/core/db/page-json";
 import {
   FILTER_KEY_REGISTRY_DATA_KEY,
   appendDeletedColumnKeys,
@@ -19,6 +19,8 @@ import {
   reconcilePublicKeyMetadata,
   sanitizePublicKeyMetadata,
 } from "@/services/public-key";
+import { pageActivityTouchStatement } from '@db/page-activity';
+import { pageColumnResetStatements, type CellResetWrite } from '@db/page-column-reset';
 
 const COLUMN_TYPES: readonly Schema.ColumnType[] = ["text", "numeric", "select", "date", "checkbox"];
 const COLOR_OPTIONS: readonly Schema.ColorOptions[] = Schema.COLOR_OPTIONS;
@@ -178,7 +180,9 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
         type,
         data,
         parent_id: input.parent_id ?? null,
-      } as unknown as CreateValues<Schema.PageColumn>);
+      } as unknown as CreateValues<Schema.PageColumn>, {
+        after: input.parent_id ? [pageActivityTouchStatement(input.parent_id)] : [],
+      });
 
       if (!created) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
@@ -276,7 +280,9 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
     if (Object.keys(payload).length === 0) return { ok: true, data: existing };
 
     try {
-      const updated = await this.db.update(payload, lookup);
+      const updated = await this.db.update(payload, lookup, {
+        after: existing.parent_id ? [pageActivityTouchStatement(existing.parent_id)] : [],
+      });
       if (!updated) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
       const column = await this.db.find(lookup);
@@ -299,25 +305,22 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
 
-      // A reserva de public key é gravada antes do soft delete. Se ele falhar, sobra uma
-      // reserva conservadora; o cenário perigoso (link antigo mudar de alvo)
-      // nunca ocorre.
+      const before: SqlStatement[] = [];
       if (existing.parent_id) {
         const page = await db.pages.find({ id: existing.parent_id } as LookupValues<Schema.Page>);
         if (!page) return { ok: false, reason: "not_found", message: "Página não encontrada" };
         const tombstones = appendDeletedColumnKeys(page.data, existing);
-        const reserved = await updatePageJsonPaths(existing.parent_id, [
+        before.push(buildUpdatePageJsonPathsStatement(existing.parent_id, [
           {
             path: [FILTER_KEY_REGISTRY_DATA_KEY, "columns"],
             value: tombstones,
           },
-        ]);
-        if (!reserved) {
-          return { ok: false, reason: "server_error", message: "Erro no servidor" };
-        }
+        ]));
       }
 
-      const deleted = await this.db.delete(lookup);
+      const deleted = await this.db.delete(lookup, {
+        before,
+      });
       if (!deleted) return { ok: false, reason: "server_error", message: "Erro no servidor" };
       return { ok: true, data: existing };
     } catch (error) {
@@ -444,15 +447,22 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
         existing.data?.reservedOptionKeys,
       );
       if (removedOptionKeys.length > 0) base.reservedOptionKeys = removedOptionKeys;
-      await this.db.update(
+      const columnForValidation = { ...existing, data: base };
+      const { resetCells, writes } = await this.planDivergingValues(columnForValidation);
+      const updated = await this.db.update(
         { data: base } as UpdateValues<Schema.PageColumn>,
         lookup,
+        { after: [
+          ...pageColumnResetStatements(existing.id, writes),
+          ...[...new Set(resetCells.map((cell) => cell.rowId))].map(pageActivityTouchStatement),
+          ...(existing.parent_id ? [pageActivityTouchStatement(existing.parent_id)] : []),
+        ] },
       );
+      if (!updated) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
       const column = await this.db.find(lookup);
       if (!column) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
-      const resetCells = await this.resetDivergingValues(column);
       return { ok: true, data: { column, resetCells } };
     } catch (error) {
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
@@ -467,11 +477,11 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
    * BASE — para select isso zera todas as células (base sem options), o
    * "reset total" pretendido.
    */
-  private async resetDivergingValues(
+  private async planDivergingValues(
     column: Schema.PageColumn,
-  ): Promise<Array<{ rowId: string; value: unknown }>> {
+  ): Promise<{ resetCells: Array<{ rowId: string; value: unknown }>; writes: CellResetWrite[] }> {
     const codec = VALUE_CODECS[column.type];
-    if (!codec) return [];
+    if (!codec) return { resetCells: [], writes: [] };
 
     const values = (await db.pageColumnValues.findAll({
       page_column_id: column.id,
@@ -479,6 +489,7 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
 
     const reset = CELL_RESET[column.type];
     const touched: Array<{ rowId: string; value: unknown }> = [];
+    const writes: CellResetWrite[] = [];
 
     for (const row of values) {
       if (!row.page_id) continue;
@@ -491,21 +502,16 @@ class PageColumnController implements IBaseController<Schema.PageColumn> {
       }
       if (valid) continue;
 
-      if (reset.clear) {
-        await db.pageColumnValues.delete({ id: row.id } as LookupValues<Schema.PageColumnValue>);
-      } else {
-        await db.pageColumnValues.update(
-          { data: codec.encode(reset.value) } as unknown as UpdateValues<Schema.PageColumnValue>,
-          { id: row.id } as LookupValues<Schema.PageColumnValue>,
-        );
-      }
+      writes.push(reset.clear
+        ? { id: row.id, clear: true }
+        : { id: row.id, clear: false, data: codec.encode(reset.value) });
       touched.push({
         rowId: row.page_id,
         value: reset.clear ? null : reset.value,
       });
     }
 
-    return touched;
+    return { resetCells: touched, writes };
   }
 
   private normalizeOptions(

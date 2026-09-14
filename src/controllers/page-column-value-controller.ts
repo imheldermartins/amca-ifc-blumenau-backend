@@ -3,6 +3,7 @@ import type { Model } from "@/core/db/model";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { VALUE_CODECS } from "@/services/value-codec";
+import { pageActivityTouchStatement } from '@db/page-activity';
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : "Erro no servidor";
@@ -119,7 +120,9 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
         page_id: input.page_id,
         page_column_id: input.page_column_id,
         data,
-      } as unknown as CreateValues<Schema.PageColumnValue>);
+      } as unknown as CreateValues<Schema.PageColumnValue>, {
+        after: [pageActivityTouchStatement(input.page_id)],
+      });
 
       if (!created) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
@@ -161,7 +164,9 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
       const payload = { data: codec.encode(typed) } as unknown as UpdateValues<Schema.PageColumnValue>;
       const lookup = { id: existing.id } as LookupValues<Schema.PageColumnValue>;
 
-      const updated = await this.db.update(payload, lookup);
+      const updated = await this.db.update(payload, lookup, {
+        after: [pageActivityTouchStatement(pageId)],
+      });
       if (!updated) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
       const row = await this.db.find(lookup);
@@ -208,7 +213,10 @@ class PageColumnValueController implements IBaseController<Schema.PageColumnValu
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
 
-      const deleted = await this.db.delete({ id: row.id } as LookupValues<Schema.PageColumnValue>);
+      const deleted = await this.db.delete(
+        { id: row.id } as LookupValues<Schema.PageColumnValue>,
+        { after: [pageActivityTouchStatement(pageId)] },
+      );
       if (!deleted) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
       return { ok: true, data: null };
