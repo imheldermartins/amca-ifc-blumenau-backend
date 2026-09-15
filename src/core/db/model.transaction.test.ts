@@ -58,8 +58,10 @@ beforeEach(() => {
     sqlite.exec('BEGIN');
     try {
       const results = statements.map(([text, ...values]) => {
-        const result = sqlite.prepare(String(text)).run(...values as Array<string | number | null>);
-        return result.changes > 0;
+        const prepared = sqlite.prepare(String(text));
+        return /^\s*SELECT\b/i.test(String(text))
+          ? prepared.all(...values as Array<string | number | null>)
+          : prepared.run(...values as Array<string | number | null>).changes > 0;
       });
       sqlite.exec('COMMIT');
       return results;
@@ -103,6 +105,23 @@ describe('Model mutation with unified page activity', () => {
     expect(sqlite.prepare('SELECT data FROM page_columns_values WHERE id = ?').get(CELL_ID)?.data).toBe('old');
   });
 
+  it('atualiza e lê o título confirmado na mesma transação', async () => {
+    const pages = new Model<{ id: string; owner_id: string; title: string | null; data: string }>('pages');
+
+    await expect(pages.updateAndFind(
+      { title: 'Título confirmado' },
+      { id: PAGE_ID },
+      { after: [pageActivityTouchStatement(PAGE_ID)] },
+    )).resolves.toMatchObject({ id: PAGE_ID, title: 'Título confirmado' });
+
+    expect(doubles.rqlite).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.arrayContaining([expect.stringMatching(/^SELECT\b/)])]),
+      'request',
+      { transaction: true },
+    );
+    expect(doubles.sql).not.toHaveBeenCalled();
+  });
+
   it('cria a linha, a role, a aresta e o relógio em uma transação', async () => {
     const pages = new Model<{ id: string; owner_id: string; title: string; data: string }>('pages');
     const child = await pages.create({ id: MISSING_ID, owner_id: 'owner', title: 'Linha', data: '{}' } as unknown as CreateValues<{ id: string; owner_id: string; title: string; data: string }>, {
@@ -114,6 +133,12 @@ describe('Model mutation with unified page activity', () => {
     });
 
     expect(child?.id).toBe(MISSING_ID);
+    expect(doubles.rqlite).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.arrayContaining([expect.stringMatching(/^SELECT\b/)])]),
+      'request',
+      { transaction: true },
+    );
+    expect(doubles.sql).not.toHaveBeenCalled();
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM page_roles WHERE page_id = ?').get(MISSING_ID)?.count).toBe(1);
     expect(sqlite.prepare('SELECT parent_id FROM page_edges WHERE child_id = ?').get(MISSING_ID)?.parent_id).toBe(PAGE_ID);
     expect(await readPageLatestUpdatedAt(PAGE_ID)).not.toBeNull();

@@ -21,6 +21,28 @@ describe("parseRqliteResults", () => {
     expect(parseRqliteResults([{ rows_affected: 0, rows: null }])).toEqual([false]);
   });
 
+  it("preserva o índice do guard sem efeito devolvido por /db/request", () => {
+    const rows = [{ id: "01KXVZ00000000000000000000", title: "Linha" }];
+
+    expect(parseRqliteResults([
+      { last_insert_id: 42, rows_affected: 1 },
+      { last_insert_id: 42, rows: null },
+      { rows_affected: 1, rows: null },
+      { last_insert_id: 42, rows: null },
+      { types: { id: "text", title: "text" }, rows },
+    ])).toEqual([true, false, true, false, rows]);
+  });
+
+  it("não mascara erro SQL em um batch que contém guards sem efeito", () => {
+    expect(() => parseRqliteResults([
+      { rows_affected: 1, rows: null },
+      { last_insert_id: 42, rows: null },
+      { error: "constraint failed" },
+    ])).toThrowError(
+      expect.objectContaining({ message: "[constraint failed]", cause: "SQLERROR" }),
+    );
+  });
+
   it("propaga erros SQL com a causa esperada", () => {
     expect(() => parseRqliteResults([{ error: "constraint failed" }])).toThrowError(
       expect.objectContaining({ message: "[constraint failed]", cause: "SQLERROR" }),

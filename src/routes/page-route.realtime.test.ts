@@ -47,6 +47,7 @@ const doubles = vi.hoisted(() => ({
     deleteView: vi.fn(),
     updateFilters: vi.fn(),
     patchView: vi.fn(),
+    reorderViews: vi.fn(),
     reconcile: vi.fn(),
   },
   access: {
@@ -400,6 +401,25 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
     expect((await request(`/pages/${PAGE_ID}/filter-keys/reconcile`, "POST")).status).toBe(200);
     expect(doubles.publisher.columnUpdated).not.toHaveBeenCalled();
     expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
+  });
+
+  it("persiste a ordem das tabs e publica o snapshot confirmado", async () => {
+    const viewIds = [VIEW_ID, "01KXVVKQ5DC06250MCYVHMJP1W"];
+    const data = Object.fromEntries(viewIds.map((viewId, order) => [viewId, { view: "table", order }]));
+    doubles.view.reorderViews.mockResolvedValueOnce({
+      ok: true,
+      data: { viewIds, data, changed: true },
+    });
+
+    const response = await request(`/pages/${PAGE_ID}/views/order`, "PUT", { viewIds });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ viewIds });
+    expect(doubles.publisher.pageChanged).toHaveBeenCalledWith({
+      pageId: PAGE_ID,
+      data,
+      originUserId: USER_ID,
+    });
   });
 
   it("cria view com 201 e publica o snapshot confirmado na sala da página", async () => {

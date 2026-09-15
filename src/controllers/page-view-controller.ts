@@ -55,6 +55,12 @@ export interface PageViewCreateResult {
   data: JsonRecord;
 }
 
+export interface PageViewOrderResult {
+  viewIds: string[];
+  data: JsonRecord;
+  changed: boolean;
+}
+
 export interface FilterWriteResult {
   viewId: string;
   filters: Schema.ViewFiltersV2;
@@ -113,6 +119,20 @@ function same(left: unknown, right: unknown): boolean {
 
 function pageData(page: Schema.Page): JsonRecord {
   return isRecord(page.data) ? page.data : {};
+}
+
+function activeViewEntries(data: JsonRecord): Array<[string, JsonRecord]> {
+  return Object.entries(data).filter(
+    (entry): entry is [string, JsonRecord] => ULID_RE.test(entry[0]) && isActiveView(entry[1]),
+  );
+}
+
+function nextViewOrder(data: JsonRecord): number {
+  const views = activeViewEntries(data);
+  const orders = views
+    .map(([, view]) => view.order)
+    .filter((order): order is number => typeof order === "number" && Number.isInteger(order) && order >= 0);
+  return orders.length > 0 ? Math.max(...orders) + 1 : views.length;
 }
 
 function parseStringList(value: unknown, field: string): string[] {
@@ -227,6 +247,7 @@ class PageViewController {
           publicKey: reconcilePublicKeyMetadata(title.column_name, "coluna", undefined, reservedTitleKeys),
         },
         orderedHeaderCols: [],
+        order: nextViewOrder(currentData),
       };
       const inserted = await insertPageViewJson(pageId, viewId, view);
       if (!inserted) return { ok: false, reason: "conflict", message: "Não foi possível criar a view" };
@@ -264,6 +285,7 @@ class PageViewController {
       const view: JsonRecord = {
         ...source,
         name,
+        order: nextViewOrder(currentData),
         urlKey: reconcilePublicKeyMetadata(name, "view", undefined, collectReservedPublicKeys(viewKeyEntities(currentData), "view")),
       };
       const inserted = await insertPageViewJson(pageId, viewId, view, sourceViewId);
@@ -295,6 +317,51 @@ class PageViewController {
       const page = await db.pages.find({ id: pageId } as LookupValues<Schema.Page>);
       if (!page) return { ok: false, reason: "server_error", message: "Erro no servidor" };
       return { ok: true, data: { viewId, data: pageData(page) } };
+    } catch (error) {
+      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+  }
+
+  async reorderViews(pageId: string, raw: unknown): Promise<PageViewResult<PageViewOrderResult>> {
+    if (
+      !isRecord(raw) || Object.keys(raw).some((key) => key !== "viewIds") ||
+      !Array.isArray(raw.viewIds) || raw.viewIds.length === 0 ||
+      raw.viewIds.some((viewId) => typeof viewId !== "string" || !ULID_RE.test(viewId)) ||
+      new Set(raw.viewIds).size !== raw.viewIds.length
+    ) {
+      return { ok: false, reason: "validation", message: "Ordem de views inválida" };
+    }
+
+    try {
+      const context = await this.context(pageId);
+      if (!context) return { ok: false, reason: "not_found", message: "Página não encontrada" };
+      const currentData = pageData(context.page);
+      const activeIds = activeViewEntries(currentData).map(([viewId]) => viewId);
+      const requestedIds = raw.viewIds as string[];
+      if (
+        requestedIds.length !== activeIds.length ||
+        requestedIds.some((viewId) => !activeIds.includes(viewId))
+      ) {
+        return { ok: false, reason: "conflict", message: "Catálogo de views desatualizado" };
+      }
+
+      const patches = requestedIds.flatMap<PageJsonPathUpdate>((viewId, order) => {
+        const view = currentData[viewId] as JsonRecord;
+        return view.order === order ? [] : [{ path: [viewId, "order"], value: order }];
+      });
+      if (patches.length > 0) {
+        const updated = await updatePageJsonPaths(pageId, patches, requestedIds, currentData);
+        if (!updated) return { ok: false, reason: "conflict", message: "Catálogo de views desatualizado" };
+      }
+      // O CAS acima garante que `currentData` era o snapshot efetivamente
+      // alterado. Monte a resposta conhecida sem uma segunda leitura que, em
+      // cluster, poderia alcançar uma réplica atrasada após o commit.
+      const data = { ...currentData };
+      requestedIds.forEach((viewId, order) => {
+        data[viewId] = { ...(currentData[viewId] as JsonRecord), order };
+      });
+      return { ok: true, data: { viewIds: [...requestedIds], data, changed: patches.length > 0 } };
     } catch (error) {
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };

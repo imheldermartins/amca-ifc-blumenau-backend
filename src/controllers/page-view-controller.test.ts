@@ -202,6 +202,62 @@ describe("PageViewController", () => {
       .toMatchObject({ ok: false, reason: "not_found" });
   });
 
+  it("persiste a ordem completa das views em um único patch protegido", async () => {
+    const first = { view: "table", name: "Tabela", order: 0 };
+    const second = { view: "graph", name: "Grafo", order: 1 };
+    const currentData = { [VIEW_ID]: first, [OTHER_VIEW_ID]: second };
+    let persisted = page(currentData);
+    mocks.pages.find.mockImplementation(async () => persisted);
+    mocks.pageJson.updatePageJsonPaths.mockImplementation(async (_pageId, patches) => {
+      persisted = page({
+        [VIEW_ID]: { ...first, order: patches.find((patch: { path: string[] }) => patch.path[0] === VIEW_ID)?.value },
+        [OTHER_VIEW_ID]: { ...second, order: patches.find((patch: { path: string[] }) => patch.path[0] === OTHER_VIEW_ID)?.value },
+      });
+      return true;
+    });
+
+    const result = await pageViewController.reorderViews(PAGE_ID, {
+      viewIds: [OTHER_VIEW_ID, VIEW_ID],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        viewIds: [OTHER_VIEW_ID, VIEW_ID],
+        changed: true,
+        data: {
+          [VIEW_ID]: { ...first, order: 1 },
+          [OTHER_VIEW_ID]: { ...second, order: 0 },
+        },
+      },
+    });
+    expect(mocks.pages.find).toHaveBeenCalledTimes(1);
+    expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledWith(
+      PAGE_ID,
+      [
+        { path: [OTHER_VIEW_ID, "order"], value: 0 },
+        { path: [VIEW_ID, "order"], value: 1 },
+      ],
+      [OTHER_VIEW_ID, VIEW_ID],
+      currentData,
+    );
+  });
+
+  it("recusa ordem parcial, duplicada ou baseada em catálogo desatualizado", async () => {
+    mocks.pages.find.mockResolvedValue(page({
+      [VIEW_ID]: { view: "table", name: "Tabela" },
+      [OTHER_VIEW_ID]: { view: "graph", name: "Grafo" },
+    }));
+
+    expect(await pageViewController.reorderViews(PAGE_ID, { viewIds: [VIEW_ID] }))
+      .toMatchObject({ ok: false, reason: "conflict" });
+    expect(await pageViewController.reorderViews(PAGE_ID, { viewIds: [VIEW_ID, VIEW_ID] }))
+      .toMatchObject({ ok: false, reason: "validation" });
+    expect(await pageViewController.reorderViews(PAGE_ID, { viewIds: [VIEW_ID, COLUMN_ID] }))
+      .toMatchObject({ ok: false, reason: "conflict" });
+    expect(mocks.pageJson.updatePageJsonPaths).not.toHaveBeenCalled();
+  });
+
   it("carimba filtros no servidor e altera somente o path da view pedida", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(NOW));

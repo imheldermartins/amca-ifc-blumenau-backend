@@ -66,15 +66,12 @@ class PageController implements IBaseController<Schema.Page> {
     try {
       const pageId = typeof lookup.id === "string" ? lookup.id : null;
       const targets = [...new Set([...(pageId ? [pageId] : []), ...databasePageIds])];
-      const updated = await this.db.update(data, lookup, {
+      const page = await this.db.updateAndFind(data, lookup, {
         after: targets.map(pageActivityTouchStatement),
       });
 
-      if (!updated) throw new Error("Failed to update page");
-
-      const page = await this.db.find(lookup);
-
-      return page ?? null;
+      if (!page) throw new Error("Failed to update page");
+      return page;
     } catch (error) {
       if (error instanceof Error) {
         console.error(`[${error.cause}] ${error.message}`);

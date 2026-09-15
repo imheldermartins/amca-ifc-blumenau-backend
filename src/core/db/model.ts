@@ -39,6 +39,42 @@ async function executeMutation(statement: SqlStatement, options?: MutationOption
   return results.length === statements.length && writes.every((_, index) => results[index * 2] === true);
 }
 
+async function executeMutationAndRead<T>(
+  statement: SqlStatement,
+  readStatement: SqlStatement,
+  operation: 'Create' | 'Update',
+  options?: MutationOptions,
+): Promise<T | null> {
+  const writes: RqliteStatement[] = [
+    ...(options?.before ?? []).map(wire),
+    wire(statement),
+    ...(options?.after ?? []),
+  ];
+  const guardedWrites: RqliteStatement[] = options?.before?.length || options?.after?.length
+    ? writes.flatMap((write) => [
+        write,
+        ["INSERT INTO pages (id, owner_id) SELECT '!', NULL WHERE changes() = 0"],
+      ])
+    : writes;
+
+  // A mutação e o SELECT viajam no mesmo /db/request transacional. Em um
+  // cluster, isso evita ler logo depois em uma réplica ainda atrasada e
+  // responder erro embora a escrita já tenha sido confirmada pelo líder.
+  const results = await rqlite<T>(
+    [...guardedWrites, wire(readStatement)],
+    'request',
+    { transaction: true },
+  );
+  const rows = results[guardedWrites.length];
+  const writesSucceeded = guardedWrites.length === writes.length
+    ? writes.every((_, index) => results[index] === true)
+    : writes.every((_, index) => results[index * 2] === true);
+  if (!writesSucceeded || !Array.isArray(rows)) {
+    throw new Error(`${operation}::Model response is null.`, { cause: 'MODELERROR' });
+  }
+  return rows[0] ?? null;
+}
+
 export class Model<T> {
   private sql: SQLBuilder<T>;
   // Colunas JSON: gravadas como texto (ver SQLBuilder.toSetValue) e
@@ -85,14 +121,11 @@ export class Model<T> {
     const payload = { id, ...data } as CreateValues<T>;
 
     const stmt = this.sql.create(payload);
-
-    const result = await executeMutation(stmt, options);
-    if (!result)
-      throw new Error('Create::Model response is null.', { cause: 'MODELERROR' });
-
-    // Recupera pela CHAVE inserida (não por todos os campos) -- confiável mesmo
-    // com colunas JSON ou valores repetidos entre linhas.
-    return this.find({ id: insertedId } as unknown as LookupValues<T>);
+    const read = this.sql.read({
+      ...this.deleteSolution.scopeLookup({ id: insertedId } as unknown as LookupValues<T>),
+      limit: 1,
+    });
+    return this.deserialize(await executeMutationAndRead<T>(stmt, read, 'Create', options));
   }
 
   public async find(lookup: LookupValues<T>): Promise<T | null> {
@@ -117,6 +150,23 @@ export class Model<T> {
     const result = await executeMutation(stmt, options);
 
     return !!result;
+  }
+
+  /**
+   * Atualiza e devolve a linha confirmada dentro do mesmo `/db/request`.
+   * Isso impede um falso 404 quando o UPDATE foi confirmado pelo líder, mas
+   * uma leitura subsequente alcançaria uma réplica ainda atrasada.
+   */
+  public async updateAndFind(
+    values: UpdateValues<T>,
+    lookup: LookupValues<T>,
+    options?: MutationOptions,
+  ): Promise<T | null> {
+    const scopedLookup = this.deleteSolution.scopeLookup(lookup);
+    const stmt = this.sql.update(values, scopedLookup);
+    const read = this.sql.read({ ...scopedLookup, limit: 1 });
+
+    return this.deserialize(await executeMutationAndRead<T>(stmt, read, 'Update', options));
   }
 
   public async delete(lookup: LookupValues<T>, options?: MutationOptions): Promise<boolean> {

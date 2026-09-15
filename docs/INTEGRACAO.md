@@ -63,6 +63,7 @@ personalização das **views** daquela base, indexada pelo ULID da view:
 {
   "01KXVVKQ5DC06250MCYVHMJP1V": {        // ULID da view = identidade canônica
     "view": "table",                      // table | grid | board | calendar | timeline | graph
+    "order": 0,                            // posição persistida da tab
     "name": "Docentes",                   // rótulo da tab
     "urlKey": { "key": "docentes", "aliases": [] },
     "filters": {
@@ -108,7 +109,10 @@ inteiro:
    view (ordem, largura, nome, título e apresentação).
 2. `PUT /pages/:id/views/:viewId/filters` substitui filtros e agrupamentos como
    um único documento atômico e carimba `filters.updatedAt` no servidor.
-3. `PUT /pages/:id` ainda substitui `data` inteiro e fica restrito à criação
+3. `PUT /pages/:id/views/order` recebe `{ viewIds: string[] }`, valida o catálogo
+   ativo completo e reindexa `order` de todas as tabs numa única escrita. Se o
+   snapshot mudar antes do commit, responde `409` sem sobrescrever a concorrência.
+4. `PUT /pages/:id` ainda substitui `data` inteiro e fica restrito à criação
    inicial da view fallback; usá-lo para uma personalização comum pode apagar
    ou reverter trabalho concorrente.
 
@@ -123,6 +127,11 @@ de ids; a posição É a ordem. A alternativa — um `order` inteiro/float por c
 — exigiria reindexar ou rebalancear frações a cada movimentação, e degrada
 justamente onde há muitos elementos já chaveados por id. Reordenar aqui é
 produzir um array novo; o patch por view grava essa lista como uma unidade.
+
+A ordem das **tabs** cruza vários snapshots e, por isso, usa `order` em cada
+view, reindexado pelo endpoint de ordem completa. O frontend ordena por esse
+campo e mantém snapshots legados sem `order` em sua ordem original, depois das
+views já ordenadas.
 
 **Por que não em `page_edges`.** As arestas são por LINHA (parent → child); a
 personalização é por VIEW. Guardar configuração de view na aresta multiplicaria
@@ -204,6 +213,7 @@ efeito do snapshot — é do backend — e está registrado em
 | Leitura (backend → UI) | ✅ `parseViewSettings` / `parseDatabase` em `src/lib/databaseParser.ts` |
 | Fallback sem view salva | ✅ `createFallbackViewSettings` (uma tab `table` com todas as colunas) |
 | **Escrita de personalização (UI → backend)** | ✅ `PATCH /pages/:id/views/:viewId` |
+| **Ordem das tabs** | ✅ `PUT /pages/:id/views/order` (lista completa, escrita atômica) |
 | **Filtros e agrupamentos** | ✅ `PUT /pages/:id/views/:viewId/filters` (atômico, timestamp server-side) |
 | **Upgrade legado/public keys** | ✅ `POST /pages/:id/filter-keys/reconcile` (idempotente, sem migration) |
 
@@ -354,6 +364,12 @@ A escrita é exclusivamente HTTP. Depois que o controller/rqlite confirma, a
 rota chama um método semântico de `PageRealtimePublisher`; Socket.IO apenas
 propaga o fato para `page-database:{pageId}`. Falha de broadcast é logada e não
 transforma uma escrita persistida em falso erro HTTP.
+
+As mutações que precisam devolver a página confirmada — criação de linha e
+`PUT /pages/:id`, inclusive `pages.title` — executam escrita e `SELECT` no mesmo
+`/db/request` transacional. Assim, a resposta não depende de uma leitura
+imediatamente posterior em outra réplica e o publisher só recebe um resultado
+autoritativo do mesmo commit.
 
 O wire canônico é
 [`src/core/socket/realtime-contract-v1.ts`](../src/core/socket/realtime-contract-v1.ts),

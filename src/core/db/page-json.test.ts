@@ -86,6 +86,39 @@ describe("page JSON updates", () => {
     sqlite.close();
   });
 
+  it("protege todos os alvos durante a reordenação de views", () => {
+    const expectedData = {
+      [VIEW_ID]: { view: "table", order: 0 },
+      [OTHER_VIEW_ID]: { view: "graph", order: 1 },
+    };
+    const statement = buildUpdatePageJsonPathsStatement(
+      PAGE_ID,
+      [
+        { path: [VIEW_ID, "order"], value: 1 },
+        { path: [OTHER_VIEW_ID, "order"], value: 0 },
+      ],
+      [VIEW_ID, OTHER_VIEW_ID],
+      expectedData,
+    );
+    expect(statement.text.match(/json_type\(data, \?\)/g)).toHaveLength(2);
+    expect(statement.values.slice(-5)).toEqual([
+      `$.\"${VIEW_ID}\"`,
+      `$.\"${VIEW_ID}\".deletedAt`,
+      `$.\"${OTHER_VIEW_ID}\"`,
+      `$.\"${OTHER_VIEW_ID}\".deletedAt`,
+      JSON.stringify(expectedData),
+    ]);
+
+    const sqlite = new DatabaseSync(":memory:");
+    sqlite.exec("CREATE TABLE pages (id TEXT PRIMARY KEY, data TEXT, updated_at TEXT, deleted_at TEXT)");
+    sqlite.prepare("INSERT INTO pages (id, data) VALUES (?, ?)").run(PAGE_ID, JSON.stringify({
+      ...expectedData,
+      [COLUMN_ID]: { view: "grid", order: 2 },
+    }));
+    expect(sqlite.prepare(statement.text).run(...(statement.values as string[])).changes).toBe(0);
+    sqlite.close();
+  });
+
   it("recusa ids fora do contrato antes de montar o JSON path", () => {
     expect(() => buildUpdatePageViewFiltersStatement(PAGE_ID, 'x".filters', {})).toThrow(
       "Invalid page or view id",

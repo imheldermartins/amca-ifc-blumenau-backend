@@ -19,7 +19,16 @@ export const authorizedPageDelivery: PageEventDelivery = (io,event,payload) => {
         socket.emit('page-database-denied',{pageId:payload.pageId});
         continue;
       }
-      if ('rowId' in payload && event !== 'row-deleted' && !await access.can('page',payload.rowId,socket.data.userId,'read','view')) continue;
+      // A criação grava página, aresta e role default no mesmo commit, sem
+      // criar page_collaborators na filha. Nesse instante a visibilidade dos
+      // destinatários é herdada da parent. Evitar a segunda leitura também
+      // impede que uma réplica ainda sem a nova página descarte o primeiro
+      // `row-created`. Nos eventos posteriores, a política própria da filha
+      // continua sendo revalidada normalmente.
+      const needsRowAuthorization = 'rowId' in payload
+        && event !== 'row-created'
+        && event !== 'row-deleted';
+      if (needsRowAuthorization && !await access.can('page',payload.rowId,socket.data.userId,'read','view')) continue;
       const target = socket as unknown as {emit(event:PageEditEventName,payload:unknown):void};
       target.emit(event,payload);
     }

@@ -942,6 +942,29 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  *       404:
  *         description: Página/view não encontrada ou sem acesso
  *
+ * /pages/{id}/views/order:
+ *   put:
+ *     summary: Persiste a ordem completa das tabs de uma página
+ *     tags: [Pages]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [viewIds]
+ *             properties:
+ *               viewIds:
+ *                 type: array
+ *                 items: { type: string }
+ *     responses:
+ *       200:
+ *         description: Ordem confirmada
+ *       409:
+ *         description: Catálogo de views desatualizado
+ *
  * /pages/{id}/filter-keys/reconcile:
  *   post:
  *     summary: Repara public keys e promove filtros legados para v2
@@ -997,6 +1020,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     // campos usam patch por caminho para nunca reescrever `pages.data` inteiro.
     this.router.post("/:id/views", middleware.handle, requireScopedPermission("page", "write", "update"), this.createView.bind(this));
     this.router.post("/:id/views/:viewId/duplicate", middleware.handle, requireScopedPermission("page", "write", "update"), this.duplicateView.bind(this));
+    this.router.put("/:id/views/order", middleware.handle, requireScopedPermission("page", "write", "update"), this.reorderViews.bind(this));
     this.router.put("/:id/views/:viewId/filters", middleware.handle, requireScopedPermission("page", "write", "update"), this.updateViewFilters.bind(this));
     this.router.patch("/:id/views/:viewId", middleware.handle, requireScopedPermission("page", "write", "update"), this.patchView.bind(this));
     this.router.delete("/:id/views/:viewId", middleware.handle, requireScopedPermission("page", "write", "update"), this.deleteView.bind(this));
@@ -1280,6 +1304,19 @@ class PageRouter extends BaseRouter<Schema.Page> {
       viewId: result.data.viewId,
       filters: result.data.filters,
     });
+  }
+
+  private async reorderViews(req: Request, res: Response): Promise<Response> {
+    const result = await pageViewController.reorderViews(req.params.id as string, req.body);
+    if (!result.ok) return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    if (result.data.changed) {
+      await pageRealtimePublisher.pageChanged({
+        pageId: req.params.id as string,
+        data: result.data.data,
+        originUserId: req.userId as string,
+      });
+    }
+    return res.status(StatusCode.OK).json({ viewIds: result.data.viewIds });
   }
 
   private async patchView(req: Request, res: Response): Promise<Response> {

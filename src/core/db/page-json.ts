@@ -47,12 +47,18 @@ function jsonPath(segments: readonly string[]): string {
 export function buildUpdatePageJsonPathsStatement(
   pageId: string,
   patches: readonly PageJsonPathUpdate[],
-  requiredViewId?: string,
+  requiredViewId?: string | readonly string[],
+  expectedData?: Record<string, unknown>,
 ): SqlStatement {
   if (!ULID_RE.test(pageId) || patches.length === 0) {
     throw new Error("Invalid page id or empty JSON patch");
   }
-  if (requiredViewId !== undefined && !ULID_RE.test(requiredViewId)) {
+  const requiredViewIds = requiredViewId === undefined
+    ? []
+    : typeof requiredViewId === "string"
+      ? [requiredViewId]
+      : [...requiredViewId];
+  if (requiredViewIds.some((viewId) => !ULID_RE.test(viewId))) {
     throw new Error("Invalid view id");
   }
 
@@ -60,9 +66,13 @@ export function buildUpdatePageJsonPathsStatement(
   const setters = patches.map(() => "?, json(?)").join(", ");
   const values: unknown[] = [...pairs, pageId];
   let where = "WHERE id = ? AND deleted_at IS NULL";
-  if (requiredViewId !== undefined) {
+  for (const viewId of requiredViewIds) {
     where += " AND json_type(data, ?) = 'object' AND json_extract(data, ?) IS NULL";
-    values.push(jsonPath([requiredViewId]), jsonPath([requiredViewId, "deletedAt"]));
+    values.push(jsonPath([viewId]), jsonPath([viewId, "deletedAt"]));
+  }
+  if (expectedData !== undefined) {
+    where += " AND CASE WHEN json_valid(data) THEN json(data) ELSE NULL END = json(?)";
+    values.push(JSON.stringify(expectedData));
   }
 
   return {
@@ -110,10 +120,11 @@ export async function updatePageViewFiltersJson(
 export async function updatePageJsonPaths(
   pageId: string,
   patches: readonly PageJsonPathUpdate[],
-  requiredViewId?: string,
+  requiredViewId?: string | readonly string[],
+  expectedData?: Record<string, unknown>,
 ): Promise<boolean> {
   const [updated] = await rqlite(
-    [wire(buildUpdatePageJsonPathsStatement(pageId, patches, requiredViewId))],
+    [wire(buildUpdatePageJsonPathsStatement(pageId, patches, requiredViewId, expectedData))],
     "execute",
   );
   return updated === true;
