@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@db/scoped-access-store', () => ({ default: mocks.access, ULID_RE: /^[0-9A-HJKMNP-TV-Z]{26}$/i }));
 vi.mock('@db/role-store', () => ({ default: mocks.roles }));
 vi.mock('@db/membership-request-store', () => ({ default: mocks.requests }));
-vi.mock('@core/mail/smtp-service', () => ({ SmtpService: { fromEnvironment: () => ({ send: mocks.send, close: mocks.close }) } }));
+vi.mock('@/services/mail/smtp-service', () => ({ SmtpService: { fromEnvironment: () => ({ send: mocks.send, close: mocks.close }) } }));
 import controller from './access-controller.js';
 const scopeId = ulid(), actor = ulid(), requester = ulid(), requestId = ulid(), roleId = ulid();
 beforeEach(() => {

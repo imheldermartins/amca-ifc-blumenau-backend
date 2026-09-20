@@ -1,11 +1,13 @@
 import accessStore from "@db/scoped-access-store";
 import db from "@models/index";
+import type { SharedPage } from "@/controllers/types/page-access-controller.types";
+export type { SharedPage } from "@/controllers/types/page-access-controller.types";
 
 // ULID (26 chars, alfabeto Crockford) -- mesmo guarda dos demais controllers.
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
 
 /** Consultas de acesso delegadas à política de roles e herança por escopo. */
-class PageAccessController {
+export class PageAccessController {
   /** Falhas de consulta negam o acesso; ownership e roles são resolvidos no banco. */
   async canAccessPage(userId: string, pageId: string): Promise<boolean> {
     if (!ULID_RE.test(userId) || !ULID_RE.test(pageId)) return false;
@@ -64,15 +66,6 @@ class PageAccessController {
       return null;
     }
   }
-}
-
-/** Página compartilhada COMIGO, com o dono resolvido para exibição. */
-export interface SharedPage {
-  id: string;
-  title: string | null;
-  owner_id: string;
-  owner_name: string | null;
-  owner_email: string;
 }
 
 export default new PageAccessController();

@@ -77,8 +77,8 @@ vi.mock("@/controllers/page-collaborator-controller", () => ({
 }));
 vi.mock("@/controllers/page-view-controller", () => ({ default: doubles.view }));
 vi.mock("@/controllers/page-access-controller", () => ({ default: doubles.access }));
-vi.mock("@core/socket/page-realtime-publisher", () => ({ default: doubles.publisher }));
-vi.mock("@/core/auth/middleware", () => ({
+vi.mock("@/services/realtime/page-realtime-publisher", () => ({ default: doubles.publisher }));
+vi.mock("@/services/auth/middleware", () => ({
   default: {
     handle: (request: unknown, _response: unknown, next: () => void) => {
       (request as { userId?: string }).userId = USER_ID;

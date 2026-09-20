@@ -22,12 +22,19 @@ services:
     environment:
       - NODE_ID=${NODE_ID:-1}
       - RQLITE_ADVERTISE_IP=${RQLITE_ADVERTISE_IP}
+      - RQLITE_HTTP_ADVERTISE_PORT=${RQLITE_HTTP_ADVERTISE_PORT:-4001}
       - JOIN_NODE=${JOIN_NODE}
       # Valor ÚNICO para o header Access-Control-Allow-Origin (o padrão CORS
       # não aceita lista nesse header). Vazio = header desligado.
       - RQLITE_HTTP_ALLOW_ORIGIN=${RQLITE_HTTP_ALLOW_ORIGIN}
     volumes:
       - rqlite_data:/rqlite/file
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:4001/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
 volumes:

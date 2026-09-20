@@ -1,5 +1,5 @@
 import { rqlite } from "@db/shared";
-import { PERMISSION_CATALOG, type AccessScope, type PermissionKind, type ScopeAccess } from "@core/auth/permissions";
+import { PERMISSION_CATALOG, type AccessScope, type PermissionKind, type ScopeAccess } from "@/services/auth/permissions";
 
 export const SCOPE_TABLES = {
   organization: { resource: "organizations", members: "organization_members", owner: "owner_id" },

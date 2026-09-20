@@ -2,30 +2,9 @@ import { ulid } from 'ulid';
 import { rqlite } from '@db/shared';
 import { SCOPE_TABLES } from './scoped-access-store.js';
 import { SystemRoleFactory } from './system-role-factory.js';
-import type { AccessScope } from '@core/auth/permissions';
-
-export interface InviteRecord {
-  id: string;
-  scopeType: AccessScope;
-  scopeId: string;
-  scopeName: string;
-  roleId: string;
-  roleName: string;
-  recipientEmail: string | null;
-  authorId: string;
-  authorName: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'canceled' | 'expired';
-  expiresAt: string | null;
-  acceptanceLimit: number | null;
-  acceptanceCount: number;
-  notifiedAt: string | null;
-  createdAt: string;
-}
-
-interface ScopeContext {
-  workspaceId: string | null;
-  organizationId: string | null;
-}
+import type { AccessScope } from '@/services/auth/permissions';
+import type { InviteRecord, InviteScopeContext } from '@/core/db/types/access-invite-store.types';
+export type { InviteRecord } from '@/core/db/types/access-invite-store.types';
 
 const scopeNameExpression = `CASE invite.scope_type
   WHEN 'organization' THEN (SELECT name FROM organizations WHERE id = invite.scope_id)
@@ -270,7 +249,7 @@ class AccessInviteStore {
     return accepted?.[0]?.accepted === 1;
   }
 
-  private async scopeContext(scope: AccessScope, scopeId: string): Promise<ScopeContext> {
+  private async scopeContext(scope: AccessScope, scopeId: string): Promise<InviteScopeContext> {
     if (scope === 'organization') return { organizationId: null, workspaceId: null };
     if (scope === 'workspace') {
       const [rows] = await rqlite<{ organizationId: string | null }>([[

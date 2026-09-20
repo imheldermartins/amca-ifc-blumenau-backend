@@ -19,13 +19,11 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-    "experimentalDecorators": true,
     "paths": {
       "@/*": ["./src/*.ts"],
       "@models/*": ["./src/models/*.ts"],
       "@controllers/*": ["./src/controllers/*.ts"],
       "@db/*": ["./src/core/db/*.ts"],
-      "@core/*": ["./src/core/*.ts"],
       "@routes/*": ["./src/routes/*.ts"],
       "@public/*": ["./public/*"]
     }

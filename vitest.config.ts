@@ -20,7 +20,6 @@ const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "src");
 export default defineConfig({
   resolve: {
     alias: {
-      "@core": path.resolve(src, "core"),
       "@models": path.resolve(src, "models"),
       "@controllers": path.resolve(src, "controllers"),
       "@db": path.resolve(src, "core/db"),

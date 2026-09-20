@@ -20,7 +20,7 @@ vi.mock("@/core/db/model", () => ({
   },
 }));
 vi.mock("bcryptjs", () => ({ default: { compare: doubles.compare } }));
-vi.mock("@core/auth/jwt-service", () => ({ default: { issueTokenPair: doubles.issueTokenPair } }));
+vi.mock("@/services/auth/jwt-service", () => ({ default: { issueTokenPair: doubles.issueTokenPair } }));
 vi.mock("@db/auth-onboarding-store", () => ({
   default: { findUserByCanonicalEmail: doubles.findUserByCanonicalEmail },
 }));

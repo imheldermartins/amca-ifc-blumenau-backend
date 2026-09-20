@@ -1,10 +1,6 @@
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
-
-export interface CellResetWrite {
-  id: string;
-  clear: boolean;
-  data?: string;
-}
+import type { CellResetWrite } from "@/core/db/types/page-column-reset.types";
+export type { CellResetWrite } from "@/core/db/types/page-column-reset.types";
 
 /** Writes de células agrupados com a definição da coluna e o relógio da base. */
 export function pageColumnResetStatements(columnId: string, writes: readonly CellResetWrite[]): RqliteStatement[] {

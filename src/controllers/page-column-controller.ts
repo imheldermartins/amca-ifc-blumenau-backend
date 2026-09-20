@@ -72,7 +72,7 @@ const messageOf = (error: unknown): string =>
  * em createColumn/updateColumn -- a rota mapeia reason -> StatusCode. Os métodos do
  * IBaseController delegam a essas variantes (fonte única da regra).
  */
-class PageColumnController implements IBaseController<Schema.PageColumn> {
+export class PageColumnController implements IBaseController<Schema.PageColumn> {
   private db: Model<Schema.PageColumn> = db.pageColumns;
 
   async all(lookup?: LookupsConfig<Schema.PageColumn>) {

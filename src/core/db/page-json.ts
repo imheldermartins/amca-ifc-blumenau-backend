@@ -1,17 +1,8 @@
 import { rqlite } from "./shared.js";
+import type { PageColumnJsonUpdate, PageJsonPathUpdate } from "@/core/db/types/page-json.types";
+export type { PageColumnJsonUpdate, PageJsonPathUpdate } from "@/core/db/types/page-json.types";
 
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
-
-export interface PageColumnJsonUpdate {
-  id: string;
-  data: Record<string, unknown>;
-}
-
-export interface PageJsonPathUpdate {
-  /** Caminho JSON completo; todos os segmentos são validados antes do SQL. */
-  path: readonly string[];
-  value: unknown;
-}
 
 function wire(statement: SqlStatement): RqliteStatement {
   return [statement.text, ...statement.values];

@@ -7,7 +7,7 @@ import { pageActivityTouchStatement } from '@db/page-activity';
 import { pageChildEdgeStatement } from '@db/page-child-creation';
 import { ulid } from 'ulid';
 
-class PageController implements IBaseController<Schema.Page> {
+export class PageController implements IBaseController<Schema.Page> {
   private db: Model<Schema.Page> = db.pages;
 
   async all(lookup?: LookupsConfig<Schema.Page>) {

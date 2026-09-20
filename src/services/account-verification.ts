@@ -1,35 +1,18 @@
 import bcrypt from 'bcryptjs';
 import { ulid } from 'ulid';
-import accountVerificationStore, { type VerificationContext } from '@db/account-verification-store';
+import accountVerificationStore from '@db/account-verification-store';
 import accessInviteStore from '@db/access-invite-store';
 import authOnboardingStore from '@db/auth-onboarding-store';
 import workspaceStore, { type WorkspaceSummary } from '@db/workspace-store';
-import { accountVerificationEmail } from '@core/mail/account-verification-email';
-import { SmtpService } from '@core/mail/smtp-service';
+import { accountVerificationEmail } from '@/services/mail/account-verification-email';
+import { SmtpService } from '@/services/mail/smtp-service';
 import { createOpaqueToken, hashOpaqueToken, isOpaqueToken, opaqueTokenHint } from './opaque-token.js';
 import type { Schema } from '@/models/schemas/index';
+import type { BeginVerificationInput, BeginVerificationResult, VerificationPreview } from '@/services/types/account-verification.types';
+export type { BeginVerificationInput, BeginVerificationResult, VerificationPreview } from '@/services/types/account-verification.types';
 
 const VERIFICATION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const SALT_ROUNDS = 10;
-
-export interface BeginVerificationInput {
-  name: string | null;
-  email: string;
-  inviteId?: string | null;
-  context: VerificationContext;
-  bypassCooldown?: boolean;
-}
-
-export type BeginVerificationResult =
-  | { ok: true; email: string; notificationPending: boolean }
-  | { ok: false; reason: 'already_verified' | 'too_soon' | 'failed' };
-
-export interface VerificationPreview {
-  valid: boolean;
-  email?: string;
-  name?: string | null;
-  invite?: { scopeType: string; scopeId: string; scopeName: string; roleName: string; authorName: string } | null;
-}
 
 /** Orquestra token, SMTP e ativação sem expor o hash ou o segredo persistido. */
 export class AccountVerificationService {
@@ -56,7 +39,7 @@ export class AccountVerificationService {
       smtp = SmtpService.fromEnvironment();
       const verificationUrl = new URL(`/pt-br/verify-email/${encodeURIComponent(token)}`, origin);
       if (effective.context.returnTo) verificationUrl.searchParams.set('returnTo', effective.context.returnTo);
-      await smtp.send(accountVerificationEmail({ name: effective.name, email: effective.email, verificationUrl: verificationUrl.toString() }));
+      await smtp.send(accountVerificationEmail.create({ name: effective.name, email: effective.email, verificationUrl: verificationUrl.toString() }));
       return { ok: true, email: effective.email, notificationPending: false };
     } catch {
       return { ok: true, email: effective.email, notificationPending: true };

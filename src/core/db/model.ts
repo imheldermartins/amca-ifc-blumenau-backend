@@ -3,20 +3,9 @@ import sql, { rqlite } from "@/core/db/shared";
 import { ulid } from "ulid";
 import {
   HardDeleteSolution,
-  type DeleteSolution,
 } from "@db/soft-delete-solution";
-
-export interface ModelOptions<T> {
-  jsonColumns?: (keyof T)[];
-  /** Estratégia de exclusão/escopo. Ausente mantém o DELETE físico legado. */
-  deleteSolution?: DeleteSolution<T>;
-}
-
-export interface MutationOptions {
-  before?: readonly SqlStatement[];
-  /** Escritas de domínio que precisam compartilhar a transação do Model. */
-  after?: readonly RqliteStatement[];
-}
+import type { ModelOptions, MutationOptions } from "@/core/db/types/model.types";
+export type { ModelOptions, MutationOptions } from "@/core/db/types/model.types";
 
 function wire(statement: SqlStatement): RqliteStatement {
   return [statement.text, ...statement.values];

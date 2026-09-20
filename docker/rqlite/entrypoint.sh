@@ -1,6 +1,7 @@
 #!/bin/sh
 
 ADV_IP=${RQLITE_ADVERTISE_IP:-$(hostname -i | awk '{print $1}')}
+HTTP_ADV_PORT=${RQLITE_HTTP_ADVERTISE_PORT:-4001}
 
 echo "=== Iniciando Nó rqlite ==="
 echo "IP Anunciado (Advertise IP): $ADV_IP"
@@ -9,7 +10,7 @@ NODE_ID=${NODE_ID:-1}
 HTTP_ADDR="0.0.0.0:4001"
 RAFT_ADDR="0.0.0.0:4002"
 
-HTTP_ADV_ADDR="${ADV_IP}:8000"
+HTTP_ADV_ADDR="${ADV_IP}:${HTTP_ADV_PORT}"
 RAFT_ADV_ADDR="${ADV_IP}:4002"
 
 # Build arguments list

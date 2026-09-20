@@ -1,6 +1,6 @@
 # SMTP, validação de conta e convites
 
-`src/core/mail/smtp-service.ts` centraliza conexão, verificação e envio SMTP com
+`src/services/mail/smtp-service.ts` centraliza conexão, verificação e envio SMTP com
 Nodemailer. A configuração é lida quando `SmtpService.fromEnvironment()` é
 chamado. A API pode continuar iniciando sem SMTP configurado.
 
@@ -13,13 +13,13 @@ A porta 587 usa STARTTLS; a porta 465 usa TLS desde a conexão. Produção exige
 Um capturador local em desenvolvimento pode usar `SMTP_REQUIRE_TLS=false`.
 
 ```ts
-import { SmtpService } from "@/core/mail/smtp-service";
-import { accountVerificationEmail } from "@/core/mail/account-verification-email";
+import { SmtpService } from "@/services/mail/smtp-service";
+import { accountVerificationEmail } from "@/services/mail/account-verification-email";
 
 const smtp = SmtpService.fromEnvironment();
 try {
   await smtp.verify();
-  await smtp.send(accountVerificationEmail({
+  await smtp.send(accountVerificationEmail.create({
     name: recipient.name,
     email: recipient.email,
     verificationUrl,
@@ -35,7 +35,7 @@ entrega na caixa de entrada. Erros do provedor são sanitizados.
 
 ## Editar templates e macros
 
-Os arquivos ficam em `src/core/mail/templates/`:
+Os arquivos ficam em `src/services/mail/templates/`:
 
 - `membership-request.html` e `.txt`: solicitação enviada aos responsáveis com
   permissão de adicionar membros. Macros: `recipient_name`, `recipient_email`,
@@ -51,7 +51,7 @@ Use `{{macro}}` no arquivo. `Template.render` retorna `subject`, `bodyHtml` e
 o endereço de ação. Valores inseridos no HTML são escapados automaticamente.
 Macros ausentes falham antes do envio. Não há execução de código no template.
 Reinicie o processo após editar os arquivos. `npm run build` copia os templates
-para `dist/core/mail/templates` junto ao JavaScript compilado.
+para `dist/services/mail/templates` junto ao JavaScript compilado.
 
 ## Validação de conta e convites
 

@@ -2,12 +2,9 @@ import { rqlite } from '@db/shared';
 import type { Schema } from '@/models/schemas/index';
 import access, { accessGuard } from './scoped-access-store.js';
 import { parseData } from './workspace-store.js';
-import type { ScopeAccess } from '@core/auth/permissions';
 import { SystemRoleFactory } from './system-role-factory.js';
-
-export interface OrganizationSummary extends ScopeAccess { id: string; name: string; data: Record<string, unknown>; role: string | null; workspaceCount: number }
-export interface OrganizationWorkspaceUser { id: string; name: string | null; email: string; organizationRole: string | null; workspaceRole: string | null }
-export interface CreateOrganizationProvision { organizationId: string; organizationName: string; membershipId: string; ownerId: string }
+import type { CreateOrganizationProvision, OrganizationSummary, OrganizationWorkspaceUser } from '@/core/db/types/organization-store.types';
+export type { CreateOrganizationProvision, OrganizationSummary, OrganizationWorkspaceUser } from '@/core/db/types/organization-store.types';
 class OrganizationStore {
   async listForUser(userId: string): Promise<OrganizationSummary[]> {
     const [rows] = await rqlite<{ id: string }>([[`SELECT o.id FROM organizations o

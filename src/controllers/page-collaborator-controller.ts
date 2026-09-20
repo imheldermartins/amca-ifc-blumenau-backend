@@ -12,7 +12,7 @@ function exactEmail(value: unknown): string | null {
 }
 
 /** Consultas dos vínculos de página. Escritas passam por RoleStore. */
-class PageCollaboratorController {
+export class PageCollaboratorController {
   private db: Model<Schema.PageCollaborator> = db.pageCollaborators;
 
   /**

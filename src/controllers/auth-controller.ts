@@ -1,40 +1,34 @@
 import { Model } from '@/core/db/model';
 import bcrypt from 'bcryptjs';
 import type { Schema } from '@/models/schemas/index';
-import jwtService, { type TokenPair } from '@core/auth/jwt-service';
+import jwtService from '@/services/auth/jwt-service';
+import type { TokenPair } from '@/services/auth/types/jwt.types';
 import authOnboardingStore from '@db/auth-onboarding-store';
 import accessInviteStore from '@db/access-invite-store';
-import type { WorkspaceSummary } from '@db/workspace-store';
-import accountVerification, { type BeginVerificationResult, type VerificationPreview } from '@/services/account-verification';
+import accountVerification from '@/services/account-verification';
+import type { BeginVerificationResult, VerificationPreview } from '@/services/types/account-verification.types';
 import { hashOpaqueToken, isOpaqueToken } from '@/services/opaque-token';
+import type {
+  LoginInput,
+  LoginResult,
+  RegisterInput,
+  RegisterResult,
+  VerificationCompleteResult,
+} from '@/controllers/types/auth-controller.types';
+export type {
+  LoginInput,
+  LoginResult,
+  RegisterInput,
+  RegisterResult,
+  VerificationCompleteResult,
+} from '@/controllers/types/auth-controller.types';
 
 const MAX_NAME_LENGTH = 120;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const normalizeEmail = (value: string): string => value.trim().toLowerCase();
 
-export interface RegisterInput {
-  email: string;
-  name: string;
-  inviteToken?: string;
-  returnTo?: string;
-  /** Compatibilidade de chamada: a senha só é usada após o clique do e-mail. */
-  password?: string;
-}
-
-export interface LoginInput { email: string; password: string }
-
-export type RegisterResult =
-  | { ok: true; verificationRequired: true; email: string; notificationPending: boolean }
-  | { ok: false; reason: 'validation' | 'invalid_invite' | 'email_taken' | 'too_soon' | 'failed' };
-
-export type VerificationCompleteResult =
-  | { ok: true; user: Schema.User; workspace: WorkspaceSummary; tokens: TokenPair; inviteAccepted: boolean | null }
-  | { ok: false; reason: 'validation' | 'invalid_token' | 'failed' };
-
-export type LoginResult = { user: Schema.User; tokens: TokenPair };
-
 /** Cadastro em duas etapas: identidade pendente por e-mail e senha somente após o clique. */
-class AuthController {
+export class AuthController {
   private readonly users = new Model<Schema.UserCredentials>('users');
 
   public async register(input: RegisterInput): Promise<RegisterResult> {

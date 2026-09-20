@@ -1,52 +1,144 @@
-import { Router, type Request, type Response } from 'express';
-import middleware from '@core/auth/middleware';
-import { ACCESS_SCOPES, PERMISSION_CATALOG, type AccessScope } from '@core/auth/permissions';
-import { ULID_RE } from '@db/scoped-access-store';
-import controller, { type AccessResult } from '@controllers/access-controller';
-import { StatusCode } from '@core/http/status-code';
-const router = Router();
-router.use(middleware.handle);
-router.get('/catalog', (_req, res) => res.json(PERMISSION_CATALOG));
-router.use('/:scope/:id', (req, res, next) => {
-  if (!ACCESS_SCOPES.includes(req.params.scope as AccessScope) || !ULID_RE.test(req.params.id as string)) {
-    res.status(StatusCode.BAD_REQUEST).json({ message: 'Escopo inválido' }); return;
+import type { NextFunction, Request, Response } from "express";
+import controller from "@controllers/access-controller";
+import type { AccessResult } from "@/controllers/types/access-controller.types";
+import { ApplicationRouter } from "@/routes/application-router";
+import middleware from "@/services/auth/middleware";
+import { ACCESS_SCOPES, PERMISSION_CATALOG } from "@/services/auth/permissions";
+import type { AccessScope } from "@/services/auth/permissions";
+import { StatusCode } from "@/services/http/status-code";
+import { ULID_RE } from "@db/scoped-access-store";
+
+export class AccessRouter extends ApplicationRouter {
+  public constructor() {
+    super(middleware.handle);
   }
-  next();
-});
-const args = (req: Request): [AccessScope, string, string] => [req.params.scope as AccessScope, req.params.id as string, req.userId!];
-const send = (res: Response, result: AccessResult, status: number = StatusCode.OK) => result.ok ? res.status(status).json(result.data)
-  : res.status({ validation: StatusCode.BAD_REQUEST, forbidden: StatusCode.FORBIDDEN, conflict: StatusCode.CONFLICT, server_error: StatusCode.INTERNAL_SERVER_ERROR }[result.reason]).json({ message: result.message });
-/**
- * @openapi
- * /access/{scope}/{id}:
- *   get:
- *     summary: Permissões efetivas do usuário autenticado no escopo
- *     tags: [Access]
- *     security: [{ bearerAuth: [] }]
- *     parameters:
- *       - { in: path, name: scope, required: true, schema: { type: string, enum: [organization, workspace, page] } }
- *       - { in: path, name: id, required: true, schema: { type: string } }
- *     responses:
- *       200: { description: Propriedade, membership, role e permissões }
- *       403: { description: Sem leitura }
- */
-router.get('/:scope/:id', async (req, res) => send(res, await controller.current(...args(req))));
-router.get('/:scope/:id/roles', async (req, res) => send(res, await controller.roles(...args(req))));
-router.post('/:scope/:id/roles', async (req, res) => send(res, await controller.saveRole(...args(req), req.body ?? {})));
-router.put('/:scope/:id/roles/:roleId', async (req, res) => send(res, await controller.saveRole(...args(req), req.body ?? {}, req.params.roleId as string)));
-router.delete('/:scope/:id/roles/:roleId', async (req, res) => send(res, await controller.removeRole(...args(req), req.params.roleId as string)));
-router.get('/:scope/:id/organization-workspace-roles', async (req, res) => send(res, await controller.organizationWorkspaceRoles(...args(req))));
-router.post('/:scope/:id/roles/:roleId/copy', async (req, res) => send(res, await controller.copyWorkspaceRole(...args(req), req.params.roleId as string)));
-router.get('/:scope/:id/members', async (req, res) => send(res, await controller.members(...args(req))));
-router.get('/:scope/:id/member/:memberId', async (req, res) => send(res, await controller.members(...args(req), req.params.memberId as string)));
-router.post('/:scope/:id/members', async (req, res) => send(res, await controller.addMember(...args(req), req.body ?? {})));
-router.put('/:scope/:id/member/:userId', async (req, res) => send(res, await controller.assign(...args(req), req.params.userId as string, req.body?.roleId)));
-router.delete('/:scope/:id/member/:userId', async (req, res) => send(res, await controller.removeMember(...args(req), req.params.userId as string)));
-router.get('/:scope/:id/member-search', async (req, res) => send(res, await controller.searchEmail(...args(req), req.query.email)));
-router.get('/:scope/:id/invites', async (req, res) => send(res, await controller.invites(...args(req))));
-router.post('/:scope/:id/invites', async (req, res) => send(res, await controller.createInvite(...args(req), req.body ?? {}), StatusCode.CREATED));
-router.delete('/:scope/:id/invites/:inviteId', async (req, res) => send(res, await controller.removeInvite(...args(req), req.params.inviteId as string)));
-router.get('/:scope/:id/requests', async (req, res) => send(res, await controller.requests(...args(req))));
-router.post('/:scope/:id/requests', async (req, res) => send(res, await controller.request(...args(req))));
-router.post('/:scope/:id/requests/:requestId/decision', async (req, res) => send(res, await controller.decide(...args(req), req.params.requestId as string, req.body ?? {})));
-export default router;
+
+  protected registerRoutes(): void {
+    this.router.get("/catalog", this.catalog.bind(this));
+    this.router.use("/:scope/:id", this.validateScope.bind(this));
+    this.router.get("/:scope/:id", this.current.bind(this));
+    this.router.get("/:scope/:id/roles", this.roles.bind(this));
+    this.router.post("/:scope/:id/roles", this.createRole.bind(this));
+    this.router.put("/:scope/:id/roles/:roleId", this.updateRole.bind(this));
+    this.router.delete("/:scope/:id/roles/:roleId", this.removeRole.bind(this));
+    this.router.get("/:scope/:id/organization-workspace-roles", this.organizationWorkspaceRoles.bind(this));
+    this.router.post("/:scope/:id/roles/:roleId/copy", this.copyWorkspaceRole.bind(this));
+    this.router.get("/:scope/:id/members", this.members.bind(this));
+    this.router.get("/:scope/:id/member/:memberId", this.member.bind(this));
+    this.router.post("/:scope/:id/members", this.addMember.bind(this));
+    this.router.put("/:scope/:id/member/:userId", this.assignMember.bind(this));
+    this.router.delete("/:scope/:id/member/:userId", this.removeMember.bind(this));
+    this.router.get("/:scope/:id/member-search", this.searchMember.bind(this));
+    this.router.get("/:scope/:id/invites", this.invites.bind(this));
+    this.router.post("/:scope/:id/invites", this.createInvite.bind(this));
+    this.router.delete("/:scope/:id/invites/:inviteId", this.removeInvite.bind(this));
+    this.router.get("/:scope/:id/requests", this.requests.bind(this));
+    this.router.post("/:scope/:id/requests", this.requestAccess.bind(this));
+    this.router.post("/:scope/:id/requests/:requestId/decision", this.decideRequest.bind(this));
+  }
+
+  private catalog(_req: Request, res: Response): Response {
+    return res.status(StatusCode.OK).json(PERMISSION_CATALOG);
+  }
+
+  private validateScope(req: Request, res: Response, next: NextFunction): void {
+    if (!ACCESS_SCOPES.includes(req.params.scope as AccessScope) || !ULID_RE.test(req.params.id as string)) {
+      res.status(StatusCode.BAD_REQUEST).json({ message: "Escopo inválido" });
+      return;
+    }
+    next();
+  }
+
+  private async current(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.current(...this.context(req)));
+  }
+
+  private async roles(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.roles(...this.context(req)));
+  }
+
+  private async createRole(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.saveRole(...this.context(req), req.body ?? {}));
+  }
+
+  private async updateRole(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.saveRole(...this.context(req), req.body ?? {}, req.params.roleId as string));
+  }
+
+  private async removeRole(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.removeRole(...this.context(req), req.params.roleId as string));
+  }
+
+  private async organizationWorkspaceRoles(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.organizationWorkspaceRoles(...this.context(req)));
+  }
+
+  private async copyWorkspaceRole(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.copyWorkspaceRole(...this.context(req), req.params.roleId as string));
+  }
+
+  private async members(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.members(...this.context(req)));
+  }
+
+  private async member(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.members(...this.context(req), req.params.memberId as string));
+  }
+
+  private async addMember(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.addMember(...this.context(req), req.body ?? {}));
+  }
+
+  private async assignMember(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.assign(...this.context(req), req.params.userId as string, req.body?.roleId));
+  }
+
+  private async removeMember(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.removeMember(...this.context(req), req.params.userId as string));
+  }
+
+  private async searchMember(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.searchEmail(...this.context(req), req.query.email));
+  }
+
+  private async invites(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.invites(...this.context(req)));
+  }
+
+  private async createInvite(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.createInvite(...this.context(req), req.body ?? {}), StatusCode.CREATED);
+  }
+
+  private async removeInvite(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.removeInvite(...this.context(req), req.params.inviteId as string));
+  }
+
+  private async requests(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.requests(...this.context(req)));
+  }
+
+  private async requestAccess(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.request(...this.context(req)));
+  }
+
+  private async decideRequest(req: Request, res: Response): Promise<Response> {
+    return this.send(res, await controller.decide(...this.context(req), req.params.requestId as string, req.body ?? {}));
+  }
+
+  private context(req: Request): [AccessScope, string, string] {
+    return [req.params.scope as AccessScope, req.params.id as string, req.userId as string];
+  }
+
+  private send(res: Response, result: AccessResult, successStatus = StatusCode.OK): Response {
+    if (result.ok) return res.status(successStatus).json(result.data);
+    const statuses = {
+      validation: StatusCode.BAD_REQUEST,
+      forbidden: StatusCode.FORBIDDEN,
+      conflict: StatusCode.CONFLICT,
+      server_error: StatusCode.INTERNAL_SERVER_ERROR,
+    } as const;
+    return res.status(statuses[result.reason]).json({ message: result.message });
+  }
+}
+
+export default new AccessRouter().build();

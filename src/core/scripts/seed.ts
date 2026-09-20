@@ -4,6 +4,7 @@ import { ulid } from "ulid";
 import db from "@models/index";
 import type { Schema } from "@/models/schemas/index";
 import { VALUE_CODECS } from "@/services/value-codec";
+import type { SeedProfessor } from "@/core/scripts/types/seed.types";
 
 /**
  * Seed do Cub's — popula a base com dados reais/realistas do IFC:
@@ -20,11 +21,6 @@ import { VALUE_CODECS } from "@/services/value-codec";
  */
 
 // --- Dados públicos: docentes por campus ---
-
-interface SeedProfessor {
-  name: string;
-  email: string;
-}
 
 const BLUMENAU_PROFESSORS: SeedProfessor[] = [
   { name: "Aldelir Fernando Luiz", email: "aldelir.luiz@ifc.edu.br" },

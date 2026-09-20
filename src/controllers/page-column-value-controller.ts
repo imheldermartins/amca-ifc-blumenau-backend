@@ -20,7 +20,7 @@ const messageOf = (error: unknown): string =>
  * Os métodos do IBaseController são acesso BRUTO (não passam pelo codec) e
  * existem só para satisfazer o contrato -- a rota usa as variantes.
  */
-class PageColumnValueController implements IBaseController<Schema.PageColumnValue> {
+export class PageColumnValueController implements IBaseController<Schema.PageColumnValue> {
   private db: Model<Schema.PageColumnValue> = db.pageColumnValues;
 
   // --- IBaseController (acesso bruto; a rota usa as variantes com codec) ---

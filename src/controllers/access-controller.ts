@@ -1,17 +1,18 @@
 import access, { ULID_RE } from '@db/scoped-access-store';
 import roleStore from '@db/role-store';
 import requestStore from '@db/membership-request-store';
-import { allows, canDelegate, parsePermissions, ROLE_MANAGEMENT_PERMISSION, type AccessScope } from '@core/auth/permissions';
-import { SmtpService } from '@core/mail/smtp-service';
-import { membershipRequestEmail } from '@core/mail/membership-request-email';
+import { allows, canDelegate, parsePermissions, ROLE_MANAGEMENT_PERMISSION, type AccessScope } from '@/services/auth/permissions';
+import { SmtpService } from '@/services/mail/smtp-service';
+import { membershipRequestEmail } from '@/services/mail/membership-request-email';
 import accessInviteStore from '@db/access-invite-store';
-import { inviteFlow } from '@core/invitations/invite-flow';
+import { inviteFlowRegistry } from '@/services/invitations/invite-flow';
+import type { AccessResult } from '@/controllers/types/access-controller.types';
+export type { AccessResult } from '@/controllers/types/access-controller.types';
 
-export type AccessResult<T = unknown> = { ok: true; data: T } | { ok: false; reason: 'validation' | 'forbidden' | 'conflict' | 'server_error'; message: string };
 const denied = { ok: false, reason: 'forbidden', message: 'Acesso não permitido' } as const;
 const invalid = { ok: false, reason: 'validation', message: 'Dados inválidos' } as const;
 const conflict = { ok: false, reason: 'conflict', message: 'A operação não foi concluída. Atualize as informações e confira as permissões.' } as const;
-class AccessController {
+export class AccessController {
   async run(operation: () => Promise<AccessResult>): Promise<AccessResult> {
     try { return await operation(); } catch (error) {
       console.error('Falha na operação de acesso', error instanceof Error ? error.name : 'Unknown');
@@ -65,7 +66,7 @@ class AccessController {
       const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
         || (body.roleId !== undefined && (typeof body.roleId !== 'string' || !ULID_RE.test(body.roleId)))) return invalid;
-      const result = await inviteFlow(scope).sendInvite({
+      const result = await inviteFlowRegistry.for(scope).sendInvite({
         scopeId: id,
         actorId: actor,
         roleId: body.roleId as string | undefined,
@@ -101,7 +102,7 @@ class AccessController {
             try {
               // Uma revogação antes do envio também remove o destinatário.
               if (!await access.can(scope, id, person.id, 'write', 'add_members')) continue;
-              await smtp.send(membershipRequestEmail({
+              await smtp.send(membershipRequestEmail.create({
                 recipient: { name: person.name || person.email, email: person.email },
                 requester: { name: context.requester.name || context.requester.email, email: context.requester.email },
                 scopeName: context.scopeName, scopeType: { organization: 'Organização', workspace: 'Workspace', page: 'Página' }[scope] as 'Organização' | 'Workspace' | 'Página',
@@ -158,7 +159,7 @@ class AccessController {
       if (acceptanceLimit !== null && (!Number.isInteger(acceptanceLimit) || acceptanceLimit < 1 || acceptanceLimit > 100_000)) return invalid;
       const expiresAt = expiresIn === 'never' ? null
         : new Date(Date.now() + (expiresIn === '7d' ? 7 : 1) * 24 * 60 * 60 * 1000).toISOString();
-      const result = await inviteFlow(scope).sendInvite({
+      const result = await inviteFlowRegistry.for(scope).sendInvite({
         scopeId: id,
         actorId: actor,
         roleId: body.roleId as string | null | undefined,

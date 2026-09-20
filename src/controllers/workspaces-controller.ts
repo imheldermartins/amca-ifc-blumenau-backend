@@ -7,26 +7,12 @@ import workspaceStore, {
 import accessStore, { ULID_RE } from "@db/scoped-access-store";
 import type { Schema } from "@/models/schemas/index";
 import { isWorkspaceIcon } from "@/services/workspace-icon";
+import type { WorkspaceMutationResult } from "@/controllers/types/workspace-controller.types";
+export type { WorkspaceMutationResult } from "@/controllers/types/workspace-controller.types";
 
 const MAX_WORKSPACE_NAME = 120;
 
-type MutationReason =
-  | "validation"
-  | "forbidden"
-  | "conflict"
-  | "not_found"
-  | "server_error";
-export type WorkspaceMutationResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; reason: MutationReason; message: string };
-
-function cleanWorkspaceName(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const clean = value.trim().replace(/\s+/g, " ");
-  return clean.length > 0 && clean.length <= MAX_WORKSPACE_NAME ? clean : null;
-}
-
-class WorkspacesController {
+export class WorkspacesController {
   async listForUser(userId: string): Promise<WorkspaceSummary[] | null> {
     try {
       return await workspaceStore.listForUser(userId);
@@ -49,7 +35,7 @@ class WorkspacesController {
     userId: string,
     input: { name?: unknown; organizationId?: unknown },
   ): Promise<WorkspaceMutationResult<WorkspaceSummary>> {
-    const name = cleanWorkspaceName(input.name);
+    const name = this.cleanWorkspaceName(input.name);
     if (!name) {
       return { ok: false, reason: "validation", message: "Nome da workspace inválido" };
     }
@@ -99,7 +85,7 @@ class WorkspacesController {
   ): Promise<WorkspaceMutationResult<WorkspaceSummary>> {
     const payload: UpdateValues<Schema.Workspace> = {};
     if (input.name !== undefined) {
-      const name = cleanWorkspaceName(input.name);
+      const name = this.cleanWorkspaceName(input.name);
       if (!name) return { ok: false, reason: "validation", message: "Nome da workspace inválido" };
       payload.name = name;
     }
@@ -170,6 +156,12 @@ class WorkspacesController {
 
   private log(error: unknown): void {
     if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+  }
+
+  private cleanWorkspaceName(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const clean = value.trim().replace(/\s+/g, " ");
+    return clean.length > 0 && clean.length <= MAX_WORKSPACE_NAME ? clean : null;
   }
 }
 

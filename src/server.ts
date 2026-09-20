@@ -1,5 +1,5 @@
-import HttpServer from "@core/http/http-server";
-import authRouter from "@/core/auth/auth-router";
+import HttpServer from "@/services/http/http-server";
+import authRouter from "@routes/auth-route";
 import userRouter from "@routes/user-route";
 import pageRouter from "@routes/page-route";
 import workspaceRouter from "@routes/workspace-route";

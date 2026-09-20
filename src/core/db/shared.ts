@@ -1,10 +1,8 @@
 import sendRequest from "@/utils/sendRequest";
-import { RAFT_URL } from "@/constants/raft_url";
+import { DB_RAFT_URL } from "@/constants/database";
+import type { RqliteEndpoint, RqliteOptions } from "@/core/db/types/rqlite-client.types";
 
-const WORKSPACE_DB_API_URL = RAFT_URL;
-
-type Endpoint = 'query' | 'execute' | 'request';
-type RqliteOptions = { transaction?: boolean };
+const WORKSPACE_DB_API_URL = DB_RAFT_URL;
 
 const isError = <T = any>(res: Result<T>): res is ErrorQuerying => 'error' in res;
 
@@ -75,12 +73,12 @@ export function rqlite<T>(
 ): Promise<SuccessResult<T>[]>;
 export function rqlite<T>(
   sqlQueries: RqliteStatement[],
-  endpoint: Endpoint,
+  endpoint: RqliteEndpoint,
   options?: RqliteOptions,
 ): Promise<SuccessResult<T>[]>;
 export async function rqlite<T>(
   sqlQueries: RqliteStatement[],
-  endpoint: Endpoint,
+  endpoint: RqliteEndpoint,
   options: RqliteOptions = {},
 ): Promise<SuccessResult<T>[]> {
   const transaction = options.transaction ? "&transaction" : "";
@@ -104,7 +102,7 @@ export async function rqlite<T>(
  */
 async function sql<T>(
   statement: string | SqlStatement,
-  endpoint: Endpoint = 'request',
+  endpoint: RqliteEndpoint = 'request',
 ): Promise<SuccessResult<T> | null> {
 
   // String simples segue crua; statement parametrizado vira `[text, ...values]`,

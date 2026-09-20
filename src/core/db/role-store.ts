@@ -1,16 +1,9 @@
 import { ulid } from "ulid";
 import { rqlite } from "@db/shared";
 import { accessGuard, SCOPE_TABLES } from "./scoped-access-store.js";
-import { PERMISSION_CATALOG, ROLE_MANAGEMENT_PERMISSION, type AccessScope, type Permissions } from "@core/auth/permissions";
-
-export interface RoleRecord {
-  id: string; name: string; roles: Permissions; isDefault: boolean;
-  systemKey: string | null; created_at: string; updated_at: string;
-}
-export interface MemberRecord {
-  id: string; membershipId: string; name: string | null; email: string;
-  roleId: string | null; roleName: string | null; permissions: Permissions;
-}
+import { PERMISSION_CATALOG, ROLE_MANAGEMENT_PERMISSION, type AccessScope, type Permissions } from "@/services/auth/permissions";
+import type { MemberRecord, RoleRecord } from "@/core/db/types/role-store.types";
+export type { MemberRecord, RoleRecord } from "@/core/db/types/role-store.types";
 
 export function decodeRoles(value: unknown): Permissions {
   try {

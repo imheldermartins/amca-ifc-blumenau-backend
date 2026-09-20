@@ -7,7 +7,7 @@ import requests from './membership-request-store.js';
 import organizations from './organization-store.js';
 import workspaces from './workspace-store.js';
 import onboarding from './auth-onboarding-store.js';
-import { fullPermissions } from '@core/auth/permissions';
+import { fullPermissions } from '@/services/auth/permissions';
 
 const suite = process.env.RUN_RQLITE_INTEGRATION === '1' ? describe : describe.skip;
 suite('permissões e provisionamento no rqlite isolado', () => {

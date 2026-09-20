@@ -1,17 +1,8 @@
 import { rqlite } from "@db/shared";
 import type { Schema } from "@/models/schemas/index";
 import { SystemRoleFactory } from "./system-role-factory.js";
-
-export interface PrivateWorkspaceProvision {
-  userId: string;
-  userName: string;
-  userEmail: string;
-  passwordHash: string;
-  workspaceId: string;
-  workspaceName: string;
-  workspaceIcon: string;
-  membershipId: string;
-}
+import type { PrivateWorkspaceProvision } from "@/core/db/types/auth-onboarding-store.types";
+export type { PrivateWorkspaceProvision } from "@/core/db/types/auth-onboarding-store.types";
 
 /**
  * Fronteira transacional do cadastro. Usuário, workspace, root e membership

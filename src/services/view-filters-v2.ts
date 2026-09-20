@@ -1,4 +1,6 @@
 import type { Schema } from "@/models/schemas/index";
+import type { FilterColumnDefinition } from "@/services/types/view-filters.types";
+export type { FilterColumnDefinition } from "@/services/types/view-filters.types";
 
 export const VIEW_FILTERS_VERSION = 2 as const;
 /** ID canônico da coluna sintética usado hoje pelo frontend/snapshot. */
@@ -12,12 +14,6 @@ const CONDITIONS = new Set<Schema.ViewFilterCondition>([
   "between",
 ]);
 const VIEW_FILTER_KEYS = new Set(["version", "clauses", "groupBy", "passthrough"]);
-
-export interface FilterColumnDefinition {
-  id: string;
-  type: Schema.ColumnType;
-  options?: readonly Schema.SelectOption[];
-}
 
 export class ViewFiltersValidationError extends Error {}
 

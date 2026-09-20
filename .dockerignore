@@ -1,11 +1,19 @@
-node_modules
-dist
-docker
-.env
-.env.*
-!.env.example
-.git
-.claude
-CLAUDE.md
-NEXT_STEPS.md
-*.log
+# O contexto do backend é allowlist: documentação, Git, envs, testes auxiliares
+# e qualquer arquivo novo não entram na imagem por acidente.
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!tsconfig.json
+!src
+!src/**
+# Testes e scripts operacionais/de desenvolvimento não pertencem ao runtime.
+src/**/*.test.ts
+src/core/scripts/**
+!src/core/scripts/migrate.ts
+!src/core/scripts/wait-for-database.ts
+!scripts
+!scripts/copy-mail-templates.mjs
+!docker
+!docker/backend
+!docker/backend/entrypoint.sh

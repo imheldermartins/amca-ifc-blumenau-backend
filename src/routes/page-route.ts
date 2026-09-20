@@ -1,5 +1,5 @@
 import scopedAccess from "@db/scoped-access-store";
-import { requireScopedPermission } from "@core/auth/scoped-access-middleware";
+import { requireScopedPermission } from "@/services/auth/scoped-access-middleware";
 import roleStore from "@db/role-store";
 import type { Request, Response } from "express";
 import pageController from "@/controllers/page-controller";
@@ -11,978 +11,11 @@ import pageViewController from "@/controllers/page-view-controller";
 import type { Schema } from "@/models/schemas/index";
 import type { Input } from "@/models/schemas/inputs";
 import { BaseRouter } from "@routes/base-router";
-import middleware from "@/core/auth/middleware";
-import { requirePageAccess } from "@/core/auth/page-access-middleware";
+import middleware from "@/services/auth/middleware";
+import { requirePageAccess } from "@/services/auth/page-access-middleware";
 import pageAccessController from "@/controllers/page-access-controller";
-import pageRealtimePublisher from "@core/socket/page-realtime-publisher";
-import { StatusCode } from "@core/http/status-code";
-
-const reasonToStatus = (reason: ServiceFailureReason): StatusCode => {
-  switch (reason) {
-    case "not_found":
-      return StatusCode.NOT_FOUND;
-    case "validation":
-      return StatusCode.BAD_REQUEST;
-    case "conflict":
-      return StatusCode.CONFLICT;
-    default:
-      return StatusCode.INTERNAL_SERVER_ERROR;
-  }
-};
-
-// `?type` das rotas de coluna: nome canônico do schema, aceitando o apelido "number".
-const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
-  const raw = req.query.type;
-  const value = typeof raw === "string" ? raw : undefined;
-  return value === "number" ? "numeric" : (value as Schema.ColumnType | undefined);
-};
-
-/**
- * @openapi
- * components:
- *   schemas:
- *     Page:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           readOnly: true
- *         title:
- *           type: string
- *           nullable: true
- *         data:
- *           type: object
- *         owner_id:
- *           type: string
- *           readOnly: true
- *
- * /pages:
- *   get:
- *     summary: Lista as páginas do usuário autenticado
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Lista de páginas do dono (token)
- *       401:
- *         description: Token de acesso ausente ou inválido
- *   post:
- *     summary: Cria uma página (owner_id vem do token)
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               title:
- *                 type: string
- *                 nullable: true
- *               data:
- *                 type: object
- *     responses:
- *       201:
- *         description: Página criada
- *       401:
- *         description: Token de acesso ausente ou inválido
- *
- * /pages/{id}:
- *   get:
- *     summary: Busca uma página própria por id
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Página encontrada
- *       401:
- *         description: Token de acesso ausente ou inválido
- *       404:
- *         description: Página não encontrada
- *   put:
- *     summary: Atualiza uma página própria
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Página atualizada
- *       401:
- *         description: Token de acesso ausente ou inválido
- *   delete:
- *     summary: Remove uma página própria
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       204:
- *         description: Página removida
- *       401:
- *         description: Token de acesso ausente ou inválido
- *
- * /pages/{id}/page:
- *   get:
- *     summary: Lê o dataset da página parent (linhas + colunas + valores)
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: id da página parent (na raiz, == id da workspace)
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Dataset agrupado por página-filha
- *   post:
- *     summary: Adiciona uma página-filha à página parent
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: id da página parent
- *         schema:
- *           type: string
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               title:
- *                 type: string
- *                 nullable: true
- *               data:
- *                 type: object
- *     responses:
- *       201:
- *         description: Página-filha criada e vinculada via page_edges
- *
- * /pages/{id}/breadcrumb:
- *   get:
- *     summary: Trilha de ancestrais (breadcrumb) da página, do topo até ela
- *     description: >
- *       Sobe a hierarquia de page_edges a partir da página-alvo via CTE
- *       recursivo. Retorna, do ancestral mais alto (maior depth) até a própria
- *       página (depth 0), os campos id (child_id), parent_id e depth.
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: id da página-alvo (child_id)
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Lista ordenada de ancestrais (breadcrumb)
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   id:
- *                     type: string
- *                   parent_id:
- *                     type: string
- *                   depth:
- *                     type: integer
- *       401:
- *         description: Token de acesso ausente ou inválido
- */
-
-/**
- * @openapi
- * components:
- *   schemas:
- *     SelectOption:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           readOnly: true
- *           description: ULID gerado no backend
- *         value:
- *           type: string
- *         color:
- *           type: string
- *           enum: [red, pink, orange, yellow, green, blue, purple, grey]
- *       required: [value]
- *     PageColumn:
- *       type: object
- *       properties:
- *         id:
- *           type: string
- *           readOnly: true
- *         name:
- *           type: string
- *           nullable: true
- *         type:
- *           type: string
- *           enum: [text, numeric, select, date, checkbox]
- *           readOnly: true
- *           description: Definido pela query ?type na criação
- *         data:
- *           type: object
- *           description: Config por tipo (options no select, format no numeric)
- *           properties:
- *             options:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/SelectOption'
- *             format:
- *               type: string
- *               enum: [percentage, currency]
- *         parent_id:
- *           type: string
- *           readOnly: true
- *     PageColumnValue:
- *       type: object
- *       description: Resposta decodificada (sem envelope); no banco `data` guarda `{"value":<T>}`.
- *       properties:
- *         id:
- *           type: string
- *           readOnly: true
- *         page_id:
- *           type: string
- *         page_column_id:
- *           type: string
- *         type:
- *           type: string
- *           enum: [text, numeric, select, date, checkbox]
- *           readOnly: true
- *         value:
- *           description: Valor "nu" cujo tipo depende do type da coluna
- *
- * /pages/parent/{id}/columns:
- *   get:
- *     summary: Lista as colunas da página parent
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: id da página parent
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Lista de colunas
- *       401:
- *         description: Token de acesso ausente ou inválido
- *   post:
- *     summary: Cria uma coluna na página parent (type vem da query; parent_id da URL)
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: query
- *         name: type
- *         required: true
- *         description: Tipo da coluna ("number" é aceito como apelido de numeric)
- *         schema:
- *           type: string
- *           enum: [text, numeric, select, date, checkbox]
- *     requestBody:
- *       description: Body dinâmico por tipo (select -> options; numeric -> format)
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *                 nullable: true
- *               options:
- *                 type: array
- *                 description: Apenas type=select; id de cada option é gerado no backend
- *                 items:
- *                   type: object
- *                   properties:
- *                     value:
- *                       type: string
- *                     color:
- *                       type: string
- *                       enum: [red, pink, orange, yellow, green, blue, purple, grey]
- *                   required: [value]
- *               format:
- *                 type: string
- *                 description: Apenas type=numeric
- *                 enum: [percentage, currency]
- *     responses:
- *       201:
- *         description: Coluna criada
- *       400:
- *         description: Tipo de coluna não suportado ou options/format inválidos
- *       401:
- *         description: Token de acesso ausente ou inválido
- *
- * /pages/parent/{id}/columns/{column_id}:
- *   get:
- *     summary: Busca uma coluna da página parent
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: column_id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Coluna encontrada
- *       404:
- *         description: Coluna não encontrada
- *   put:
- *     summary: Atualiza uma coluna da página parent (type opcional via query)
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: column_id
- *         required: true
- *         schema:
- *           type: string
- *       - in: query
- *         name: type
- *         required: false
- *         description: Troca o tipo da coluna ("number" = numeric)
- *         schema:
- *           type: string
- *           enum: [text, numeric, select, date, checkbox]
- *     requestBody:
- *       description: Body dinâmico por tipo (select -> options; numeric -> format)
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *                 nullable: true
- *               options:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     value:
- *                       type: string
- *                     color:
- *                       type: string
- *                       enum: [red, pink, orange, yellow, green, blue, purple, grey]
- *                   required: [value]
- *               format:
- *                 type: string
- *                 enum: [percentage, currency]
- *     responses:
- *       200:
- *         description: Coluna atualizada
- *       400:
- *         description: Tipo de coluna não suportado ou options/format inválidos
- *       404:
- *         description: Coluna não encontrada
- *   delete:
- *     summary: Remove uma coluna da página parent
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: column_id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       204:
- *         description: Coluna removida
- *       404:
- *         description: Coluna não encontrada
- *
- * /pages/{id}/column/{column_id}/value:
- *   get:
- *     summary: Lê o valor da célula (página, coluna), decodificado
- *     description: A célula (page_id, page_column_id) tem no máximo UM valor (UNIQUE no banco).
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: page_id da linha
- *         schema:
- *           type: string
- *       - in: path
- *         name: column_id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Valor encontrado (decodificado)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/PageColumnValue'
- *       401:
- *         description: Token de acesso ausente ou inválido
- *       404:
- *         description: Célula vazia (sem valor definido)
- *   post:
- *     summary: Cria o valor da célula (payload dinâmico; 409 se a célula já tiver valor)
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: column_id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       description: "date aceita { startDate, endDate } (vira start@end); demais usam value"
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               value:
- *                 description: Valor "nu"; validado conforme o type da coluna
- *               startDate:
- *                 type: string
- *                 description: Apenas type=date (ISO)
- *               endDate:
- *                 type: string
- *                 description: Apenas type=date (ISO); com startDate forma o range
- *     responses:
- *       201:
- *         description: Valor criado (decodificado)
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/PageColumnValue'
- *       400:
- *         description: Valor inválido para o tipo da coluna
- *       404:
- *         description: Coluna (column_id) não encontrada
- *       409:
- *         description: Célula já tem valor -- use PUT para atualizar
- *   put:
- *     summary: Atualiza o valor da célula (revalida pelo type da coluna)
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: column_id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       description: "date aceita { startDate, endDate }; demais usam value"
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               value:
- *                 description: Novo valor "nu"
- *               startDate:
- *                 type: string
- *                 description: Apenas type=date (ISO)
- *               endDate:
- *                 type: string
- *                 description: Apenas type=date (ISO)
- *     responses:
- *       200:
- *         description: Valor atualizado (decodificado)
- *       400:
- *         description: Valor inválido para o tipo da coluna
- *       404:
- *         description: Célula vazia (ou coluna não encontrada)
- *   delete:
- *     summary: Remove o valor da célula
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *       - in: path
- *         name: column_id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       204:
- *         description: Valor removido
- *       404:
- *         description: Célula vazia (nada a remover)
- */
-
-/**
- * @openapi
- * components:
- *   schemas:
- *     PageCollaborator:
- *       type: object
- *       description: Vínculo (page_collaborators) de um usuário com acesso à página.
- *       properties:
- *         id:
- *           type: string
- *           readOnly: true
- *         page_id:
- *           type: string
- *         user_id:
- *           type: string
- *     PageCollaboratorSummary:
- *       type: object
- *       description: Resumo do usuário-colaborador (sem o vínculo), usado na listagem.
- *       properties:
- *         id:
- *           type: string
- *           description: id do USUÁRIO (não do vínculo)
- *         name:
- *           type: string
- *           nullable: true
- *         email:
- *           type: string
- *
- * /pages/{id}/collaborators:
- *   get:
- *     summary: Lista os colaboradores da página (resumo do usuário)
- *     description: >
- *       Devolve os usuários com acesso à página (join de page_collaborators com
- *       users), apenas com id, name e email -- nunca dados sensíveis. Página
- *       sem colaboradores responde lista vazia.
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: id da página
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Lista de colaboradores (pode ser vazia)
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/PageCollaboratorSummary'
- *       401:
- *         description: Token de acesso ausente ou inválido
- *   post:
- *     summary: Adiciona usuários (colaboradores) à página, em lote
- *     description: >
- *       Vincula um ou mais usuários à página via page_collaborators. Idempotente: quem
- *       já colabora entra em `skipped` (sem colidir no UNIQUE). Todos os
- *       `userIds` precisam existir; caso contrário nada é gravado (404).
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: id da página
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               userIds:
- *                 type: array
- *                 description: ULIDs dos usuários a vincular
- *                 items:
- *                   type: string
- *             required: [userIds]
- *     responses:
- *       201:
- *         description: Colaboradores processados (criados e/ou já existentes)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 added:
- *                   type: array
- *                   description: Vínculos criados agora
- *                   items:
- *                     $ref: '#/components/schemas/PageCollaborator'
- *                 skipped:
- *                   type: array
- *                   description: user_ids que já eram colaboradores
- *                   items:
- *                     type: string
- *       400:
- *         description: userIds ausente/vazio ou com ULID inválido
- *       401:
- *         description: Token de acesso ausente ou inválido
- *       404:
- *         description: Página ou algum dos usuários não encontrado
- *
- * /pages/{id}/collaborator-candidates:
- *   get:
- *     summary: Busca usuários da workspace atual que podem entrar na página
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - { in: path, name: id, required: true, schema: { type: string } }
- *       - { in: query, name: q, schema: { type: string } }
- *     responses:
- *       200:
- *         description: Usuários da workspace, sem owner e vínculos já existentes
- *       404:
- *         description: Página sem workspace associada
- *
- * /pages/{id}/collaborators/{collaboratorId}:
- *   get:
- *     summary: Detalha o vínculo (page_collaborators) de um colaborador na página
- *     description: >
- *       Diferente da listagem: aqui volta a LINHA da tabela page_collaborators
- *       (id do vínculo, page_id, user_id e timestamps), não o resumo do usuário.
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: id da página
- *         schema:
- *           type: string
- *       - in: path
- *         name: collaboratorId
- *         required: true
- *         description: user_id do colaborador
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Vínculo encontrado
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/PageCollaborator'
- *       400:
- *         description: id inválido
- *       401:
- *         description: Token de acesso ausente ou inválido
- *       404:
- *         description: Vínculo (colaborador) não encontrado nesta página
- *   delete:
- *     summary: Remove um colaborador da página
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: id da página
- *         schema:
- *           type: string
- *       - in: path
- *         name: collaboratorId
- *         required: true
- *         description: user_id do colaborador a remover
- *         schema:
- *           type: string
- *     responses:
- *       204:
- *         description: Colaborador removido
- *       400:
- *         description: id inválido
- *       401:
- *         description: Token de acesso ausente ou inválido
- *       404:
- *         description: Vínculo (colaborador) não encontrado nesta página
- */
-
-/**
- * @openapi
- * components:
- *   schemas:
- *     PublicKeyMetadata:
- *       type: object
- *       required: [key, aliases]
- *       properties:
- *         key:
- *           type: string
- *           example: area_de_atuacao
- *         aliases:
- *           type: array
- *           items:
- *             type: string
- *     ViewFilterClause:
- *       type: object
- *       required: [columnId, condition, values]
- *       properties:
- *         columnId:
- *           type: string
- *           description: ULID canônico da coluna ou page_title
- *         condition:
- *           type: string
- *           enum: [equals, contains, greaterThan, lessThan, between]
- *         values:
- *           type: array
- *           items:
- *             type: string
- *     ViewFiltersV2:
- *       type: object
- *       required: [version, updatedAt, clauses, groupBy, passthrough]
- *       properties:
- *         version:
- *           type: integer
- *           enum: [2]
- *         updatedAt:
- *           type: string
- *           nullable: true
- *           readOnly: true
- *         clauses:
- *           type: array
- *           items:
- *             $ref: '#/components/schemas/ViewFilterClause'
- *         groupBy:
- *           type: array
- *           items:
- *             type: string
- *         passthrough:
- *           type: array
- *           items:
- *             type: array
- *             minItems: 2
- *             maxItems: 2
- *             items:
- *               type: string
- *
- * /pages/{id}/views:
- *   post:
- *     summary: Cria uma view sem alterar as views existentes
- *     description: type é opcional; quando ausente, cria uma view table. O snapshot salvo usa o campo view.
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *       - in: query
- *         name: type
- *         required: false
- *         schema:
- *           type: string
- *           enum: [table, grid, board, calendar, timeline, graph]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [name]
- *             properties:
- *               name: { type: string }
- *               type:
- *                 type: string
- *                 enum: [table, grid, board, calendar, timeline, graph]
- *               title: { type: object }
- *     responses:
- *       201:
- *         description: View criada
- *       400:
- *         description: Tipo, nome ou apresentação inválidos
- *       404:
- *         description: Página não encontrada
- *
- * /pages/{id}/views/{viewId}/filters:
- *   put:
- *     summary: Substitui filtros e agrupamentos de uma view atomicamente
- *     description: updatedAt é rejeitado no request e carimbado pelo servidor.
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *       - in: path
- *         name: viewId
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             allOf:
- *               - $ref: '#/components/schemas/ViewFiltersV2'
- *     responses:
- *       200:
- *         description: Documento confirmado e carimbado
- *       400:
- *         description: Documento, ids ou condições inválidos
- *       401:
- *         description: Token inválido
- *       404:
- *         description: Página/view não encontrada ou sem acesso
- *
- * /pages/{id}/views/{viewId}:
- *   patch:
- *     summary: Altera campos de apresentação de uma view sem regravar outras
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *       - in: path
- *         name: viewId
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             description: Aceita view, name, title, orderedHeaderCols, orderedRows e columnWidths.
- *             properties:
- *               view:
- *                 type: string
- *                 enum: [table, grid, board, calendar, timeline, graph]
- *     responses:
- *       200:
- *         description: View atualizada
- *       400:
- *         description: Patch inválido
- *       404:
- *         description: Página/view não encontrada ou sem acesso
- *
- * /pages/{id}/views/order:
- *   put:
- *     summary: Persiste a ordem completa das tabs de uma página
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [viewIds]
- *             properties:
- *               viewIds:
- *                 type: array
- *                 items: { type: string }
- *     responses:
- *       200:
- *         description: Ordem confirmada
- *       409:
- *         description: Catálogo de views desatualizado
- *
- * /pages/{id}/filter-keys/reconcile:
- *   post:
- *     summary: Repara public keys e promove filtros legados para v2
- *     description: Operação idempotente sobre JSON existente; não aplica migration.
- *     tags: [Pages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Catálogo e snapshots reconciliados
- *       404:
- *         description: Página não encontrada ou sem acesso
- */
+import pageRealtimePublisher from "@/services/realtime/page-realtime-publisher";
+import { StatusCode } from "@/services/http/status-code";
 
 /**
  * Pages: CRUD completo protegido por JWT. O `owner_id` SEMPRE vem do token
@@ -990,7 +23,7 @@ const resolveTypeQuery = (req: Request): Schema.ColumnType | undefined => {
  * As rotas adicionais (motor de páginas) são registradas ao lado do CRUD base,
  * sem alterar o BaseRouter.
  */
-class PageRouter extends BaseRouter<Schema.Page> {
+export class PageRouter extends BaseRouter<Schema.Page> {
   protected readonly resourceName = "Page";
 
   constructor() {
@@ -1001,6 +34,10 @@ class PageRouter extends BaseRouter<Schema.Page> {
       update: [middleware.handle, requireScopedPermission("page", "write", "update")],
       delete: [middleware.handle, requireScopedPermission("page", "write", "delete")],
     });
+  }
+
+  protected override registerRoutes(): void {
+    super.registerRoutes();
 
     // Rotas adicionais (registradas após o CRUD base do super()). O
     // `requirePageAccess` é o guarda de dono-ou-colaborador (herdado pela árvore).
@@ -1044,8 +81,8 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
   /**
    * `GET /pages/shared` é caminho FIXO e precisa vencer o `GET /:id` do CRUD —
-   * registrado aqui, e não no construtor, porque o super() já registra o
-   * "/:id" antes de o corpo do construtor rodar (era exatamente o bug: a aba
+   * registrado aqui porque `BaseRouter.registerRoutes()` chama `staticRoutes`
+   * antes do CRUD (era exatamente o bug: a aba
    * "Colaborando" pedia /pages/shared e o express respondia com o handler de
    * página, id="shared", que não passa nem no formato de ULID → 404).
    */
@@ -1213,7 +250,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     );
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     return res.status(StatusCode.OK).json(result.data);
@@ -1238,7 +275,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
       req.query.q,
     );
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
     return res.status(StatusCode.OK).json(result.data);
   }
@@ -1250,7 +287,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
       req.query.type,
     );
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
     await pageRealtimePublisher.pageChanged({
       pageId: req.params.id as string,
@@ -1265,7 +302,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
   private async duplicateView(req: Request, res: Response): Promise<Response> {
     const result = await pageViewController.duplicateView(req.params.id as string, req.params.viewId as string);
-    if (!result.ok) return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    if (!result.ok) return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     await pageRealtimePublisher.pageChanged({
       pageId: req.params.id as string,
       data: result.data.data,
@@ -1276,7 +313,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
   private async deleteView(req: Request, res: Response): Promise<Response> {
     const result = await pageViewController.deleteView(req.params.id as string, req.params.viewId as string);
-    if (!result.ok) return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    if (!result.ok) return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     await pageRealtimePublisher.pageChanged({
       pageId: req.params.id as string,
       data: result.data.data,
@@ -1292,7 +329,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
       req.body,
     );
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     await pageRealtimePublisher.pageChanged({
@@ -1308,7 +345,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
   private async reorderViews(req: Request, res: Response): Promise<Response> {
     const result = await pageViewController.reorderViews(req.params.id as string, req.body);
-    if (!result.ok) return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+    if (!result.ok) return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     if (result.data.changed) {
       await pageRealtimePublisher.pageChanged({
         pageId: req.params.id as string,
@@ -1326,7 +363,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
       req.body,
     );
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     if (result.data.changed) {
@@ -1350,7 +387,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     }
     const result = await pageViewController.reconcile(req.params.id as string);
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     const columnsById = new Map(result.data.columns.map((column) => [String(column.id), column]));
@@ -1385,7 +422,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
   // POST /pages/parent/:id/columns?type=<type> -- type vem da query; parent_id da URL.
   private async createColumn(req: Request, res: Response): Promise<Response> {
     const body = (req.body ?? {}) as Input.CreatePageColumn;
-    const type = resolveTypeQuery(req) ?? body.type;
+    const type = this.resolveTypeQuery(req) ?? body.type;
 
     const result = await pageColumnController.createColumn({
       ...(body.name !== undefined && { name: body.name }),
@@ -1398,7 +435,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     });
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     await pageRealtimePublisher.columnCreated({
@@ -1436,7 +473,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
   // PUT /pages/parent/:id/columns/:column_id?type=<type> -- parent_id imutável.
   private async updateColumn(req: Request, res: Response): Promise<Response> {
     const body = (req.body ?? {}) as Input.UpdatePageColumn;
-    const type = resolveTypeQuery(req) ?? body.type;
+    const type = this.resolveTypeQuery(req) ?? body.type;
 
     const input: Input.UpdatePageColumn = {
       ...(body.name !== undefined && { name: body.name }),
@@ -1453,7 +490,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     );
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     await pageRealtimePublisher.columnUpdated({
@@ -1473,7 +510,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     );
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     const { column, resetCells } = result.data;
@@ -1495,7 +532,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     );
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     await pageRealtimePublisher.columnDeleted({
@@ -1522,7 +559,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     } as Input.CreatePageColumnValue);
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     // Célula que NASCE é `cell-updated` como qualquer outra: para quem assiste,
@@ -1543,7 +580,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     );
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     return res.status(StatusCode.OK).json(result.data);
@@ -1564,7 +601,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     );
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     await this.emitCell(req, result.data.value);
@@ -1590,7 +627,7 @@ class PageRouter extends BaseRouter<Schema.Page> {
     );
 
     if (!result.ok) {
-      return res.status(reasonToStatus(result.reason)).json({ message: result.message });
+      return res.status(this.reasonToStatus(result.reason)).json({ message: result.message });
     }
 
     // Limpar a célula é uma atualização para `null` — mesmo evento, sem um
@@ -1599,6 +636,25 @@ class PageRouter extends BaseRouter<Schema.Page> {
 
     return res.status(StatusCode.NO_CONTENT).send();
   }
+
+  private reasonToStatus(reason: ServiceFailureReason): number {
+    switch (reason) {
+      case "not_found":
+        return StatusCode.NOT_FOUND;
+      case "validation":
+        return StatusCode.BAD_REQUEST;
+      case "conflict":
+        return StatusCode.CONFLICT;
+      default:
+        return StatusCode.INTERNAL_SERVER_ERROR;
+    }
+  }
+
+  private resolveTypeQuery(req: Request): Schema.ColumnType | undefined {
+    const raw = req.query.type;
+    const value = typeof raw === "string" ? raw : undefined;
+    return value === "number" ? "numeric" : (value as Schema.ColumnType | undefined);
+  }
 }
 
-export default new PageRouter().router;
+export default new PageRouter().build();

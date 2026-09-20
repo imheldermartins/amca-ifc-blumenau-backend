@@ -1,4 +1,6 @@
 import type { SQLBuilder } from "@db/sql-builder";
+import type { DeleteSolution } from "@/core/db/types/soft-delete.types";
+export type { DeleteSolution } from "@/core/db/types/soft-delete.types";
 
 /**
  * Estratégia de exclusão de um `Model`.
@@ -7,12 +9,6 @@ import type { SQLBuilder } from "@db/sql-builder";
  * de leitura/update. Isso impede que um registro já enviado à lixeira volte a
  * aparecer ou continue aceitando escrita por acidente.
  */
-export interface DeleteSolution<T> {
-  scopeRead(lookup?: LookupsConfig<T>): LookupsConfig<T> | undefined;
-  scopeLookup(lookup: LookupValues<T>): LookupValues<T>;
-  statement(sql: SQLBuilder<T>, lookup: LookupValues<T>): SqlStatement;
-}
-
 /** Exclusão física padrão, preservada para models que não têm lixeira. */
 export class HardDeleteSolution<T> implements DeleteSolution<T> {
   scopeRead(lookup?: LookupsConfig<T>): LookupsConfig<T> | undefined {

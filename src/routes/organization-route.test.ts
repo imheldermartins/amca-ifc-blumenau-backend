@@ -15,7 +15,7 @@ const controller = vi.hoisted(() => ({
 }));
 
 vi.mock("@controllers/organizations-controller", () => ({ default: controller }));
-vi.mock("@/core/auth/middleware", () => ({
+vi.mock("@/services/auth/middleware", () => ({
   default: {
     handle: (request: unknown, _response: unknown, next: () => void) => {
       (request as { userId?: string }).userId = USER_ID;

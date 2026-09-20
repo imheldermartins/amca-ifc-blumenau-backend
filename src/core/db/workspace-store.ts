@@ -3,20 +3,9 @@ import { rqlite } from '@db/shared';
 import type { Schema } from '@/models/schemas/index';
 import access, { accessGuard } from './scoped-access-store.js';
 import roles from './role-store.js';
-import type { ScopeAccess } from '@core/auth/permissions';
 import { SystemRoleFactory } from './system-role-factory.js';
-
-export interface WorkspaceSummary extends ScopeAccess {
-  id: string; name: string | null; data: Record<string, unknown>; organizationId: string | null;
-  organizationName: string | null; isPersonal: boolean; icon: string; createdByUserId: string | null;
-  pageRootId: string; role: string | null;
-  owner: { id: string | null; name: string | null; email: string | null };
-}
-export interface WorkspaceMemberSummary { id: string; name: string | null; email: string; role: string | null; pageRootId: string; roleId: string | null; roleName: string | null }
-export interface CreateWorkspaceProvision {
-  workspaceId: string; workspaceName: string; workspaceIcon: string; organizationId: string;
-  ownerId: string; rootTitle: string; membershipId: string;
-}
+import type { CreateWorkspaceProvision, WorkspaceMemberSummary, WorkspaceSummary } from '@/core/db/types/workspace-store.types';
+export type { CreateWorkspaceProvision, WorkspaceMemberSummary, WorkspaceSummary } from '@/core/db/types/workspace-store.types';
 export function parseData(value: unknown): Record<string, unknown> {
   try { const parsed = typeof value === 'string' ? JSON.parse(value) : value;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};

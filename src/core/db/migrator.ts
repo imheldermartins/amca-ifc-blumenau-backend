@@ -2,12 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { rqlite } from "@db/shared";
-
-export interface Migration {
-  id: string;
-  up: string[];
-  down?: string[];
-}
+import type { Migration } from "@/core/db/types/migration.types";
+export type { Migration } from "@/core/db/types/migration.types";
 
 export class Migrator {
 

@@ -17,7 +17,7 @@ As memberships guardam, respectivamente, `organization_member_role_id`,
 
 ## Catálogo e hierarquia
 
-`GET /api/access/catalog` é a fonte do catálogo utilizado pela interface.
+`GET /api/v1/access/catalog` é a fonte do catálogo utilizado pela interface.
 
 | Escopo | Leitura | Escrita |
 | --- | --- | --- |
@@ -58,7 +58,7 @@ edições concorrentes e evitar perda silenciosa de alterações.
 
 ## HTTP e telas
 
-Prefixo comum: `/api/access/:scope/:id`, com escopo `organization`, `workspace`
+Prefixo comum: `/api/v1/access/:scope/:id`, com escopo `organization`, `workspace`
 ou `page`; todos os endpoints exigem autenticação.
 
 | Método e sufixo | Corpo / resultado |
@@ -156,7 +156,7 @@ devem ser atualizados juntos.
 `npm test` cobre contratos, SMTP com transporte injetado, templates, migração com
 dados legados e autorização. Para integração com uma base descartável, publique
 rqlite em `127.0.0.1:18012`, aplique migrations e execute
-`RUN_RQLITE_INTEGRATION=1 RQLITE_PORT=18012 npm test -- src/core/db/scoped-access.integration.test.ts`
+`RUN_RQLITE_INTEGRATION=1 DB_RAFT_PORT=18012 npm test -- src/core/db/scoped-access.integration.test.ts`
 (em PowerShell, defina as duas variáveis com `$env:` antes do comando).
 O script recusa outra porta. Não execute seed sobre a base de desenvolvimento
 para testar a migração.

@@ -1,8 +1,8 @@
 import accessInviteStore from '@db/access-invite-store';
-import { inviteFlow } from '@core/invitations/invite-flow';
+import { inviteFlowRegistry } from '@/services/invitations/invite-flow';
 import { hashOpaqueToken, isOpaqueToken } from '@/services/opaque-token';
 
-class InviteController {
+export class InviteController {
   async preview(token: unknown) {
     try {
       if (!isOpaqueToken(token, 'cubs_invite_v1_')) return { valid: false } as const;
@@ -29,7 +29,7 @@ class InviteController {
     try {
       if (!isOpaqueToken(token, 'cubs_invite_v1_')) return false;
       const invite = await accessInviteStore.getByTokenHash(hashOpaqueToken(token));
-      return Boolean(invite && await inviteFlow(invite.scopeType).accept(token, userId));
+      return Boolean(invite && await inviteFlowRegistry.for(invite.scopeType).accept(token, userId));
     } catch {
       return false;
     }

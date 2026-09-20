@@ -5,9 +5,8 @@
 #   2. Copiar os templates e preencher:
 #        docker/backend.prod.env.example -> docker/backend.prod.env
 #        docker/rqlite.prod.env.example  -> docker/rqlite.prod.env
-#   3. Subir e migrar:
+#   3. Subir (o entrypoint do backend aplica migrations antes do servidor):
 #        docker compose -f docker/docker-compose.prod.yml up -d --build
-#        docker compose -f docker/docker-compose.prod.yml exec backend npx tsx src/core/scripts/migrate.ts
 #
 # Segurança: o rqlite NÃO publica porta nenhuma — só o backend o alcança,
 # pela rede interna do compose (http://rqlite:4001). Complementa o bind
@@ -20,6 +19,12 @@ services:
     env_file: ./rqlite.prod.env
     volumes:
       - rqlite_data:/rqlite/file
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:4001/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   backend:
@@ -30,7 +35,15 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - rqlite
+      rqlite:
+        condition: service_healthy
+        restart: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/ready').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     restart: unless-stopped
 
   frontend:
@@ -40,7 +53,9 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+        restart: true
     restart: unless-stopped
 
 volumes:

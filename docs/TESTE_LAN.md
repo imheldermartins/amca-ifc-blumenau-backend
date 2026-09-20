@@ -3,7 +3,7 @@
 IP Wi-Fi desta máquina: `192.168.1.27`.
 
 O celular e o computador devem estar na mesma rede Wi-Fi. O celular acessa
-somente o frontend; ele encaminha `/api` e `/socket.io` para o backend, então
+somente o frontend; ele encaminha `/api/v1` e `/socket.io` para o backend, então
 não é necessário apontar o celular para rqlite.
 
 Em três terminais, execute:
@@ -16,6 +16,10 @@ npm run dev:lan
 # C:\Projects\cubs-frontend
 npm run dev:lan
 ```
+
+No `docker/.env.lan`, quando `RQLITE_ADVERTISE_IP` apontar para o IP do host,
+use também `RQLITE_HTTP_ADVERTISE_PORT=8000`, que é a porta publicada pelo
+Compose. Sem um endereço externo explícito, o padrão interno correto é `4001`.
 
 No celular, abra `http://192.168.1.27:5173`.
 

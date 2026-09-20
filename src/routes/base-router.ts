@@ -1,8 +1,7 @@
-import { Router, type Request, type Response, type RequestHandler } from "express";
-import { StatusCode } from "@core/http/status-code";
-
-export type RouteOperation = "all" | "get" | "create" | "update" | "delete";
-export type RouteMiddlewares = Partial<Record<RouteOperation, RequestHandler[]>>;
+import type { Request, Response, RequestHandler } from "express";
+import { StatusCode } from "@/services/http/status-code";
+import type { RouteMiddlewares, RouteOperation } from "@/routes/types/router.types";
+import { ApplicationRouter } from "@/routes/application-router";
 
 /**
  * Abstrai o mapeamento HTTP <-> IBaseController<T> que se repetia em cada
@@ -14,25 +13,20 @@ export type RouteMiddlewares = Partial<Record<RouteOperation, RequestHandler[]>>
  *      (ex: validação de campo), chamando super.<metodo>() pra reaproveitar
  *      o resto do fluxo.
  *
- * IMPORTANTE: os middlewares são recebidos via parâmetro de construtor, não
- * como campo de classe na subclasse -- campo de classe da subclasse só é
- * inicializado DEPOIS que o super() retorna, e registerRoutes() já roda
- * dentro do super(). Passando por parâmetro, o valor já está disponível
- * antes das rotas serem registradas.
+ * `ApplicationRouter.build()` materializa as rotas uma única vez, depois que
+ * a instância concreta terminou de ser construída.
  */
-export abstract class BaseRouter<T> {
-  public readonly router: Router;
+export abstract class BaseRouter<T> extends ApplicationRouter {
   protected abstract readonly resourceName: string;
 
   constructor(
     protected readonly controller: IBaseController<T>,
     private readonly middlewares: RouteMiddlewares = {},
   ) {
-    this.router = Router();
-    this.registerRoutes();
+    super();
   }
 
-  protected registerRoutes(): void {
+  protected override registerRoutes(): void {
     // ANTES do CRUD, sempre: o express casa na ORDEM de registro, e "/:id"
     // engole qualquer caminho fixo irmão registrado depois ("/pages/shared"
     // viraria id="shared"). Registrar aqui é o que garante a precedência.
@@ -51,18 +45,14 @@ export abstract class BaseRouter<T> {
    * Rotas de CAMINHO FIXO que precisam vencer o "/:id" do CRUD (ex.:
    * `GET /pages/shared`). Registradas antes de tudo por `registerRoutes()`.
    *
-   * IMPORTANTE: sobrescreva como MÉTODO, não como arrow field, e não dependa
-   * de campo de classe da subclasse (`resourceName` ainda é undefined aqui) --
-   * isto roda dentro do super(). Handlers do prototype (`this.x.bind(this)`)
-   * e singletons de módulo funcionam normalmente.
+   * Sobrescreva como método para manter o ciclo de construção uniforme.
    */
   protected staticRoutes(): void {}
 
   /**
    * Operações HTTP que serão registradas -- por padrão, o CRUD completo.
    * Subclasses sobrescrevem para desabilitar operações (ex: omitir "create").
-   * IMPORTANTE: sobrescreva como MÉTODO, não como arrow field -- registerRoutes()
-   * roda dentro do super(), e só métodos (no prototype) já existem nesse momento.
+   * Sobrescreva como método para manter o ciclo de construção uniforme.
    */
   protected enabledOperations(): Set<RouteOperation> {
     return new Set<RouteOperation>(["all", "get", "create", "update", "delete"]);

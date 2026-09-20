@@ -6,10 +6,9 @@ import {
   sanitizePublicKeyMetadata,
   type PublicKeyEntity,
 } from "@/services/public-key";
+import type { JsonRecord } from "@/services/types/json.types";
 
 export const FILTER_KEY_REGISTRY_DATA_KEY = "__filterKeyRegistry";
-
-type JsonRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);

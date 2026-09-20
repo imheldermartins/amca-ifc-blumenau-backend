@@ -35,7 +35,7 @@ reenviam sozinhas — você não copia nada.
 ### 0. Cadastro comum
 
 ```
-POST http://localhost:3000/api/auth/register
+POST http://localhost:3000/api/v1/auth/register
 Body (JSON): { "name": "Helder", "email": "helder@example.com" }
 ```
 
@@ -43,7 +43,7 @@ A resposta `202` informa `verificationRequired`, `email` e
 `notificationPending`. Abra o link recebido e conclua com:
 
 ```
-POST http://localhost:3000/api/auth/verification/<token>/complete
+POST http://localhost:3000/api/v1/auth/verification/<token>/complete
 Body (JSON): { "password": "suasenha", "name": "Helder" }
 ```
 
@@ -53,7 +53,7 @@ devolve `{ user, workspace, accessToken }`, além do cookie de refresh.
 ### 1. Login
 
 ```
-POST http://localhost:3000/api/auth/login
+POST http://localhost:3000/api/v1/auth/login
 Body (JSON): { "email": "voce@exemplo.com", "password": "suasenha" }
 ```
 
@@ -70,7 +70,7 @@ outros requests.
 ### 2. Uma rota autenticada qualquer
 
 ```
-GET http://localhost:3000/api/auth/me
+GET http://localhost:3000/api/v1/auth/me
 Header: Authorization: Bearer {{ accessToken }}
 ```
 
@@ -80,7 +80,7 @@ usa para saber quem está logado.
 ### 3. Refresh (renovar o access token)
 
 ```
-POST http://localhost:3000/api/auth/refresh
+POST http://localhost:3000/api/v1/auth/refresh
 Header: X-Cubs-Client: web
 Body: (VAZIO)
 ```
@@ -95,7 +95,7 @@ Body: (VAZIO)
 ### 4. Logout (e a prova da revogação)
 
 ```
-POST http://localhost:3000/api/auth/logout
+POST http://localhost:3000/api/v1/auth/logout
 Header: X-Cubs-Client: web
 ```
 
@@ -120,6 +120,6 @@ dias.
 
 ## Referência
 
-Contrato completo das rotas: `src/core/auth/auth-router.ts`. Política do cookie
-por ambiente: `src/core/auth/cookie.config.ts`. Revogação: a migração
+Contrato completo das rotas: `src/routes/auth-route.ts`. Política do cookie
+por ambiente: `src/services/auth/cookie.config.ts`. Revogação: a migração
 `token_version` e `auth-controller.revoke`.

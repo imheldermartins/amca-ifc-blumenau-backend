@@ -1,6 +1,6 @@
 import { ulid } from 'ulid';
 import { rqlite } from '@db/shared';
-import { fullPermissions, type AccessScope } from '@core/auth/permissions';
+import { fullPermissions, type AccessScope } from '@/services/auth/permissions';
 
 const tables = {
   organization: { table: 'organization_roles', foreignKey: 'organization_id' },

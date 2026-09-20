@@ -27,6 +27,26 @@ import {
   ViewFiltersValidationError,
   type FilterColumnDefinition,
 } from "@/services/view-filters-v2";
+import type {
+  FilterKeyCatalog,
+  FilterKeyReconcileResult,
+  FilterWriteResult,
+  JsonRecord,
+  PageViewCreateResult,
+  PageViewOrderResult,
+  PageViewPatchResult,
+  PageViewResult,
+} from "@/controllers/types/page-view-controller.types";
+export type {
+  FilterKeyCatalog,
+  FilterKeyReconcileResult,
+  FilterWriteResult,
+  PageViewCreateResult,
+  PageViewFailure,
+  PageViewOrderResult,
+  PageViewPatchResult,
+  PageViewResult,
+} from "@/controllers/types/page-view-controller.types";
 
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
 const VIEW_KINDS = new Set(["table", "grid", "board", "calendar", "timeline", "graph"]);
@@ -39,55 +59,6 @@ const VIEW_PATCH_KEYS = new Set([
   "orderedRows",
   "columnWidths",
 ]);
-
-type JsonRecord = Record<string, unknown>;
-
-export interface PageViewPatchResult {
-  viewId: string;
-  view: JsonRecord;
-  data: JsonRecord;
-  changed: boolean;
-}
-
-export interface PageViewCreateResult {
-  viewId: string;
-  view: JsonRecord;
-  data: JsonRecord;
-}
-
-export interface PageViewOrderResult {
-  viewIds: string[];
-  data: JsonRecord;
-  changed: boolean;
-}
-
-export interface FilterWriteResult {
-  viewId: string;
-  filters: Schema.ViewFiltersV2;
-  data: JsonRecord;
-}
-
-export interface FilterKeyCatalog {
-  views: Array<{ id: string; urlKey: Schema.PublicKeyMetadata }>;
-  columns: Array<{
-    id: string;
-    publicKey: Schema.PublicKeyMetadata;
-    options: Array<{ id: string; publicKey: Schema.PublicKeyMetadata }>;
-  }>;
-}
-
-export interface FilterKeyReconcileResult {
-  pageId: string;
-  data: JsonRecord;
-  columns: Schema.PageColumn[];
-  catalog: FilterKeyCatalog;
-  changedPage: boolean;
-  changedColumnIds: string[];
-}
-
-export type PageViewFailure =
-  | { ok: false; reason: "not_found" | "validation" | "conflict" | "server_error"; message: string };
-export type PageViewResult<T> = { ok: true; data: T } | PageViewFailure;
 
 function isRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -184,7 +155,7 @@ function definitions(columns: readonly Schema.PageColumn[]): FilterColumnDefinit
   ];
 }
 
-class PageViewController {
+export class PageViewController {
   private async context(pageId: string): Promise<{
     page: Schema.Page;
     columns: Schema.PageColumn[];

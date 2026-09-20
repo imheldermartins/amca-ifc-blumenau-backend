@@ -40,7 +40,7 @@ no resize efêmero e dentro do snapshot, onde a apresentação é de fato espec�
 
 ## Composição do backend
 
-O diretório `src/core/socket/` contém responsabilidades independentes:
+O diretório `src/services/realtime/` contém responsabilidades independentes:
 
 - `RealtimeChannel`: contrato de id, eventos client/server, `attach` e
   `register`.
@@ -50,6 +50,8 @@ O diretório `src/core/socket/` contém responsabilidades independentes:
   conexão autenticada ao registry.
 - `PageRoomChannel`: join/leave, `canAccessPage`, ACK/negação, presença e
   cleanup de disconnect.
+- `Room` + `PageRoom`: Template Method/Value Object para nome, parsing e
+  membership das salas, sem espalhar prefixos pelos channels.
 - `PageInteractionChannel`: resize efêmero, somente para membros da room e sem
   eco ao autor.
 - `PageEditChannel`: único emissor dos fatos duráveis de página.
@@ -65,7 +67,7 @@ O antigo `realtime-service.ts` foi removido; não existe fachada paralela.
 ## Contrato v1
 
 A fonte canônica e portátil é
-`src/core/socket/realtime-contract-v1.ts`. Ela não possui imports internos. A
+`src/services/realtime/contracts/realtime-contract-v1.ts`. Ela não possui imports internos. A
 cópia gerada do frontend fica em
 `../cubs-frontend/src/services/realtime-contract-v1.ts`.
 

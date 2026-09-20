@@ -1,14 +1,8 @@
 import type { Schema } from "@/models/schemas/index";
+import type { PublicKeyEntity, PublicKeyFallback } from "@/services/types/public-key.types";
+export type { PublicKeyEntity, PublicKeyFallback } from "@/services/types/public-key.types";
 
 const PUBLIC_KEY_RE = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
-
-export type PublicKeyFallback = "coluna" | "opcao" | "view";
-
-export interface PublicKeyEntity {
-  id: string;
-  label: string | null | undefined;
-  publicKey?: Schema.PublicKeyMetadata | null | undefined;
-}
 
 /**
  * Converte um label em uma key estavel e legivel para URL. A identidade de

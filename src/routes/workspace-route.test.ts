@@ -17,7 +17,7 @@ const controller = vi.hoisted(() => ({
 }));
 
 vi.mock("@/controllers/workspaces-controller", () => ({ default: controller }));
-vi.mock("@/core/auth/middleware", () => ({
+vi.mock("@/services/auth/middleware", () => ({
   default: {
     handle: (request: unknown, _response: unknown, next: () => void) => {
       (request as { userId?: string }).userId = USER_ID;
@@ -25,7 +25,7 @@ vi.mock("@/core/auth/middleware", () => ({
     },
   },
 }));
-vi.mock("@/core/auth/workspace-access-middleware", () => ({
+vi.mock("@/services/auth/workspace-access-middleware", () => ({
   requireWorkspaceAbility: () => (
     _request: unknown,
     _response: unknown,

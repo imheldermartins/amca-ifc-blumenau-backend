@@ -1,7 +1,7 @@
-type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
+import type { HttpRequestMethod } from "@/utils/types/request.types";
 
 export default async function sendRequest<T>(
-    method: Method, 
+    method: HttpRequestMethod,
     url: string, 
     body?: string | object,
     headers?: HeadersInit

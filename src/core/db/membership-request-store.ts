@@ -2,13 +2,9 @@ import { ulid } from 'ulid';
 import { rqlite } from '@db/shared';
 import { accessGuard, SCOPE_TABLES } from './scoped-access-store.js';
 import roles, { delegationGuard } from './role-store.js';
-import type { AccessScope } from '@core/auth/permissions';
-
-export interface MembershipRequest {
-  id: string; scopeId: string; requesterId: string; requesterName: string | null; requesterEmail: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'canceled' | 'expired'; acceptedBy: string | null; decidedBy: string | null;
-  decidedAt: string | null; createdAt: string; notifiedEmails: string[]; roleId: string | null;
-}
+import type { AccessScope } from '@/services/auth/permissions';
+import type { MembershipRequest } from '@/core/db/types/membership-request-store.types';
+export type { MembershipRequest } from '@/core/db/types/membership-request-store.types';
 class MembershipRequestStore {
   async list(scope: AccessScope, scopeId: string, actorId: string): Promise<MembershipRequest[]> {
     const manager = accessGuard(scope, scopeId, actorId, 'write', 'add_members');

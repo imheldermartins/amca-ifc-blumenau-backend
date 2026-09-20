@@ -8,6 +8,11 @@ e este arquivo é o que precisa ser corrigido.
 > v1 funcionam ponta a ponta. O protocolo é modular, orientado à página e
 > agnóstico ao renderer; contrato e decisão canônica estão em
 > [ADR 0001](adr/0001-realtime-v1.md).
+>
+> **Migração de contrato:** este backend passa a publicar as rotas em
+> `/api/v1`. O frontend deve atualizar `API_BASE_PATH` de `/api` para `/api/v1`
+> quando esta branch for integrada; o repositório do frontend não é alterado
+> por este refactor de backend.
 
 ---
 
@@ -15,37 +20,39 @@ e este arquivo é o que precisa ser corrigido.
 
 ```
 browser :5173 (Vite dev)  |  :80 (nginx prod)
-    │  axios baseURL = <origem?> + /api          src/lib/connection.ts
+    │  axios baseURL = <origem?> + /api/v1       src/lib/connection.ts
     ▼
 mediador  — repassa o path INTACTO, sem reescrever
     │      dev : proxy do Vite    (vite.config.ts)
     │      prod: nginx            (nginx/nginx.conf)
     ▼
-backend :3000  — routers montados sob API_PREFIX
-                 src/core/http/http-server.ts
+backend :3000  — routers montados sob /api/v1
+                 src/services/http/http-server.ts
 ```
 
-### O prefixo `/api` é REAL nos dois lados
+### O prefixo `/api/v1` é real nos dois lados
 
-Todos os routers entram sob `API_PREFIX` no `mountRoutes` do
-[http-server.ts](../src/core/http/http-server.ts) — um ponto só, então router
-novo já nasce prefixado. Os mediadores **não** reescrevem o path.
+`/api` é a raiz fixa da API. Apenas a versão (`v1`) é uma constante de sistema.
+Todos os routers entram sob `/api/${API_VERSION}` no `mountRoutes` do
+[http-server.ts](../src/services/http/http-server.ts), e os mediadores não
+reescrevem o path.
 
-Isso mudou em 2026-07-19. Antes o `/api` era invenção do mediador e morria nele;
-o backend servia na raiz. As duas configurações são plausíveis e a diferença é
-invisível até quebrar, então valem os avisos:
+Nesta branch, o contrato anterior em `/api` ganhou a versão explícita `v1`.
+As duas configurações são plausíveis e a diferença é invisível até quebrar,
+então valem os avisos:
 
 | Ponta | O que preserva o prefixo | Como quebra |
 |---|---|---|
-| Vite | ausência de `rewrite` no proxy | um `rewrite` que fatie `/api` → backend recebe `/pages`, responde 404 |
-| nginx | `proxy_pass http://cubs_backend;` **sem** barra final | com `/` no final o nginx troca `/api/pages` → `/pages` → 404 |
-| axios | `baseURL` sempre terminando em `/api` | montar a URL sem o prefixo quando `VITE_CUBS_API_URL` está definida |
+| Vite | ausência de `rewrite` no proxy | um `rewrite` que fatie `/api/v1` → backend recebe `/pages`, responde 404 |
+| nginx | `proxy_pass http://cubs_backend;` **sem** barra final | com `/` no final o nginx troca `/api/v1/pages` → `/pages` → 404 |
+| axios | `baseURL` sempre terminando em `/api/v1` | montar a URL sem o prefixo quando `VITE_CUBS_API_URL` está definida |
 
-`VITE_CUBS_API_URL` recebe **só a origem** (`http://localhost:3000`), sem `/api`
+`VITE_CUBS_API_URL` recebe **só a origem** (`http://localhost:3000`), sem `/api/v1`
 — o prefixo é colado no código, em `connection.ts`.
 
-**Fora do prefixo:** `/api-docs` (Swagger UI) e `/socket.io` (handshake do
-socket.io) vivem na raiz do backend. Não são rotas de dados.
+**Fora do prefixo:** `/health` e `/socket.io` vivem na raiz do backend. O Swagger
+baseado em comentários foi removido; a documentação futura deve usar uma
+abstração por decorators antes de voltar a ser publicada.
 
 ---
 
@@ -243,34 +250,34 @@ usam o **cookie** de refresh — ver o quadro de auth abaixo.
 
 | Rota | Papel no fluxo | Consumidor |
 |---|---|---|
-| `POST /api/auth/login` | `{ user, accessToken }` + cookie de refresh | `AuthService` |
-| `POST /api/auth/register` | cria conta pendente e envia link de validação | `SignUpPage` |
-| `GET /api/auth/verification/:token` | prévia sem consumo do link de 24h | `VerifyEmailPage` |
-| `POST /api/auth/verification/:token/complete` | valida e-mail, define senha, cria workspace privada e sessão | `VerifyEmailPage` |
-| `POST /api/auth/verification/resend` | após 60s, invalida o token anterior e envia outro | `SignUpPage` |
-| `POST /api/auth/refresh` | novo access token (cookie → cookie) | `ApiService` |
-| `POST /api/auth/logout` | revoga a sessão, limpa o cookie | `AuthService.signOut` |
-| `GET /api/auth/me` | o usuário do token (sustenta o guard) | `AuthService.restore` |
-| `GET /api/workspaces` | lista workspaces + permissões + `pageRootId` + `isPersonal` do usuário | `WorkspaceSelectorPage` |
-| `POST /api/workspaces` | `{ name, organizationId }`; toda workspace adicional pertence a uma organização e exige `write.create` | `WorkspaceAccessPage` |
-| `GET /api/organizations` | organizações e permissões efetivas | `OrganizationsPage` |
-| `POST /api/organizations` | `{ name }`; exige conta validada e owner vem da sessão | `NewOrganizationPage` |
-| `GET /api/organizations/:id/workspaces` | catálogo com `canEnter` separado da visibilidade | `OrganizationPage` |
-| `PUT /api/organizations/:id/workspaces/:workspaceId` | vincula workspace própria com permissão de criação na organização | `OrganizationPage` |
-| `GET /api/workspaces/:id` | workspace e permissões efetivas | `WorkspaceSettingsLayout` |
-| `PUT /api/workspaces/:id` | altera `{ name, icon }` com `write.update` | `WorkspaceGeneralSettingsPage` |
-| `GET /api/workspaces/:id/page_root` | resolve ponto de entrada sem criar página | `getEntryPage` |
-| `/api/access/:scope/:id/*` | templates, membros, permissões e solicitações | `AccessPages` |
-| `GET/POST/DELETE /api/access/:scope/:id/invites/*` | convite individual ou link genérico, expiração e histórico | `AccessMembersPage` |
-| `GET /api/invites/:token` / `POST .../accept` | revisão pública e aceite autenticado | `InvitePage` |
-| `GET /api/pages/:id` | a página; `data` traz o **snapshot** | `getPage` → `settings` |
-| `GET /api/pages/:id/collaborators` | vínculos `{ id, name, email }` | `PageShell` / configurações da página |
-| `GET /api/pages/:id/collaborator-candidates?q=` | candidatos limitados à workspace dona da árvore | configurações da página |
-| `POST /api/pages/:id/collaborators` | compatibilidade: exige `{ userIds, roleId }` e valida a delegação | clientes anteriores; UI usa `/access` |
-| `GET /api/pages/parent/:id/columns` | definição das colunas | `getColumns` → `headerCols` |
-| `GET /api/pages/:id/page` | filhas + valores (as linhas) | `getChildren` → `rows` |
-| `PUT /api/pages/parent/:id/columns/:cid` | config da coluna (name/type/options/**format/currency/mask**) | menu de coluna |
-| `POST /api/pages/parent/:id/columns/:cid/reset` | "reset de tipos" (zera o `data`, reseta células divergentes) | `onColumnReset` |
+| `POST /api/v1/auth/login` | `{ user, accessToken }` + cookie de refresh | `AuthService` |
+| `POST /api/v1/auth/register` | cria conta pendente e envia link de validação | `SignUpPage` |
+| `GET /api/v1/auth/verification/:token` | prévia sem consumo do link de 24h | `VerifyEmailPage` |
+| `POST /api/v1/auth/verification/:token/complete` | valida e-mail, define senha, cria workspace privada e sessão | `VerifyEmailPage` |
+| `POST /api/v1/auth/verification/resend` | após 60s, invalida o token anterior e envia outro | `SignUpPage` |
+| `POST /api/v1/auth/refresh` | novo access token (cookie → cookie) | `ApiService` |
+| `POST /api/v1/auth/logout` | revoga a sessão, limpa o cookie | `AuthService.signOut` |
+| `GET /api/v1/auth/me` | o usuário do token (sustenta o guard) | `AuthService.restore` |
+| `GET /api/v1/workspaces` | lista workspaces + permissões + `pageRootId` + `isPersonal` do usuário | `WorkspaceSelectorPage` |
+| `POST /api/v1/workspaces` | `{ name, organizationId }`; toda workspace adicional pertence a uma organização e exige `write.create` | `WorkspaceAccessPage` |
+| `GET /api/v1/organizations` | organizações e permissões efetivas | `OrganizationsPage` |
+| `POST /api/v1/organizations` | `{ name }`; exige conta validada e owner vem da sessão | `NewOrganizationPage` |
+| `GET /api/v1/organizations/:id/workspaces` | catálogo com `canEnter` separado da visibilidade | `OrganizationPage` |
+| `PUT /api/v1/organizations/:id/workspaces/:workspaceId` | vincula workspace própria com permissão de criação na organização | `OrganizationPage` |
+| `GET /api/v1/workspaces/:id` | workspace e permissões efetivas | `WorkspaceSettingsLayout` |
+| `PUT /api/v1/workspaces/:id` | altera `{ name, icon }` com `write.update` | `WorkspaceGeneralSettingsPage` |
+| `GET /api/v1/workspaces/:id/page_root` | resolve ponto de entrada sem criar página | `getEntryPage` |
+| `/api/v1/access/:scope/:id/*` | templates, membros, permissões e solicitações | `AccessPages` |
+| `GET/POST/DELETE /api/v1/access/:scope/:id/invites/*` | convite individual ou link genérico, expiração e histórico | `AccessMembersPage` |
+| `GET /api/v1/invites/:token` / `POST .../accept` | revisão pública e aceite autenticado | `InvitePage` |
+| `GET /api/v1/pages/:id` | a página; `data` traz o **snapshot** | `getPage` → `settings` |
+| `GET /api/v1/pages/:id/collaborators` | vínculos `{ id, name, email }` | `PageShell` / configurações da página |
+| `GET /api/v1/pages/:id/collaborator-candidates?q=` | candidatos limitados à workspace dona da árvore | configurações da página |
+| `POST /api/v1/pages/:id/collaborators` | compatibilidade: exige `{ userIds, roleId }` e valida a delegação | clientes anteriores; UI usa `/access` |
+| `GET /api/v1/pages/parent/:id/columns` | definição das colunas | `getColumns` → `headerCols` |
+| `GET /api/v1/pages/:id/page` | filhas + valores (as linhas) | `getChildren` → `rows` |
+| `PUT /api/v1/pages/parent/:id/columns/:cid` | config da coluna (name/type/options/**format/currency/mask**) | menu de coluna |
+| `POST /api/v1/pages/parent/:id/columns/:cid/reset` | "reset de tipos" (zera o `data`, reseta células divergentes) | `onColumnReset` |
 
 ### Organizações, memberships, roles e convites
 
@@ -329,7 +336,7 @@ F5 pelo cookie, via `restore()` (`/auth/refresh` → `/auth/me`).
 - `logout` **revoga de verdade** (incrementa `users.token_version`): um refresh
   vazado morre no logout, não só quando expira.
 - Política do cookie por ambiente (dev `cubs_rt` sem Secure; prod
-  `__Host-cubs_rt` com Secure) é fonte única em `core/auth/cookie.config.ts`.
+  `__Host-cubs_rt` com Secure) é fonte única em `services/auth/cookie.config.ts`.
 - Como testar isso no Insomnia (o refresh saiu do corpo): `docs/INSOMNIA.md`.
 
 `loadPage(pageId)` dispara as três leituras em paralelo e passa por
@@ -372,7 +379,7 @@ imediatamente posterior em outra réplica e o publisher só recebe um resultado
 autoritativo do mesmo commit.
 
 O wire canônico é
-[`src/core/socket/realtime-contract-v1.ts`](../src/core/socket/realtime-contract-v1.ts),
+[`src/services/realtime/contracts/realtime-contract-v1.ts`](../src/services/realtime/contracts/realtime-contract-v1.ts),
 sem imports internos. O frontend consome uma cópia gerada em
 `src/services/realtime-contract-v1.ts`. Sincronize e confira a partir do
 backend:
@@ -421,7 +428,7 @@ parte do realtime v1: são operações HTTP e não publicam eventos Socket.IO.
 | Peça | Status |
 |---|---|
 | Auth (refresh em cookie HttpOnly, access em memória, logout revoga) | ✅ |
-| Prefixo `/api` ponta a ponta | ✅ verificado dev (Vite) e prod (nginx) |
+| Prefixo `/api/v1` no backend | 🟡 frontend precisa atualizar `API_BASE_PATH` ao integrar esta branch |
 | Leitura de base (workspace → página → filhas → UI) | ✅ |
 | Snapshot: formato + leitura | ✅ |
 | Snapshot: escrita pelo app | ✅ (ordem de linhas/colunas e largura) |
@@ -441,7 +448,7 @@ que o contrato antigo não seja reintroduzido.
 
 ### 5.1 Token sobrevive ao usuário → 404 enganoso
 
-O middleware ([middleware.ts](../src/core/auth/middleware.ts)) valida **só
+O middleware ([middleware.ts](../src/services/auth/middleware.ts)) valida **só
 assinatura e expiração** do JWT; nunca confere se o usuário ainda existe. Depois
 de um `npm run seed` que recria a tabela `users`, o token guardado no browser
 aponta para um id fantasma e **continua passando pela autenticação**.

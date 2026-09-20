@@ -2,7 +2,7 @@ import db from "@models/index";
 import type { Model } from "@/core/db/model";
 import type { Schema } from "@/models/schemas/index";
 
-class UserController implements IBaseController<Schema.User> {
+export class UserController implements IBaseController<Schema.User> {
   private db: Model<Schema.User> = db.users;
 
   // O SELECT * traz a coluna password_hash em runtime (mesmo o tipo sendo
