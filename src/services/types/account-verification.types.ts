@@ -1,4 +1,4 @@
-import type { VerificationContext } from "@db/account-verification-store";
+import type { VerificationContext } from "@/db/repositories/account-verification-store";
 
 export interface BeginVerificationInput {
   name: string | null;

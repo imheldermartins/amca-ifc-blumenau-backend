@@ -1,6 +1,6 @@
 import db from "@models/index";
-import type { Model } from "@/core/db/model";
-import type { Schema } from "@/models/schemas/index";
+import type { Model } from "@/db/repositories/model";
+import type { Schema } from "@/db/schemas/index";
 
 export class UserController implements IBaseController<Schema.User> {
   private db: Model<Schema.User> = db.users;

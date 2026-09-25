@@ -1,7 +1,5 @@
-import { Model } from "@/core/db/model";
-import type { Schema } from "@/models/schemas/index";
-import { SoftDeleteSolution } from "@db/soft-delete-solution";
+import { Model } from "@/db/repositories/model";
+import type { Schema } from "@/db/schemas/index";
+import { schemaRegistry } from '@/db/generated/schema';
 
-export const workspaceMembers = new Model<Schema.WorkspaceMember>("workspace_members", {
-  deleteSolution: new SoftDeleteSolution<Schema.WorkspaceMember>('deleted_at'),
-});
+export const workspaceMembers = new Model<Schema.WorkspaceMember>(schemaRegistry.workspace_members);

@@ -1,0 +1,94 @@
+[
+  {
+    "id": "20260620235322_setup",
+    "checksum": "543e3ec1a97069722a9dbf04fb1756e17df9dd3beb234133547feca3fa3e8706"
+  },
+  {
+    "id": "20260625001901_add_password_hash_to_users",
+    "checksum": "d158c5279c386ceeb901247ed39188f5765dd4a06a5db847145bb8449de1f276"
+  },
+  {
+    "id": "20260712205823_rename_page_hubs_to_page_edges",
+    "checksum": "210d85a4833a3f23486d342e0510eb610d3f88689a3ea1d288aa4cf1a01463f8"
+  },
+  {
+    "id": "20260713185442_rename_page_edges_columns_add_slug",
+    "checksum": "42dce339e95c81715d03bf08b08fe5351d040577c0634e609264e60eac2b098d"
+  },
+  {
+    "id": "20260713221509_rename_page_columns_root_to_parent",
+    "checksum": "ecd871dc45652ce317811a215f0724c95118e0464604846d8808bcb2c295170f"
+  },
+  {
+    "id": "20260713231931_unique_cell_page_columns_values",
+    "checksum": "263c245d5f9423fb0e606cf23caf9bbff7d1e55eb723fe2df87a7c386dcefa86"
+  },
+  {
+    "id": "20260721011919_drop_slug_add_page_users",
+    "checksum": "f5e723dc2ecae488323562fb465b8405f489bacc25faed285f4b7ba2aebed154"
+  },
+  {
+    "id": "20260721013438_rename_page_users_to_page_members",
+    "checksum": "f5251fb4d8e505d6b6fb2ccedfb66e5f4c4c19a0c20cb905a6c87f4f096fc640"
+  },
+  {
+    "id": "20260721175050_rename_page_members_to_page_collaborators",
+    "checksum": "e404e23828974b2176ca746df2e1fb415f0df08d0b5470d5a25efe9409cb6c5e"
+  },
+  {
+    "id": "20260721210000_add_token_version_to_users",
+    "checksum": "9d151fc14129b1d088e2250a4efaaa56141cafff235a52529f8fdacd9d647109"
+  },
+  {
+    "id": "20260907010000_add_soft_delete_to_pages_and_columns",
+    "checksum": "6c8ec8ebe687e4279989ab77059e4ada1770b56d7086a95c6132914ef6f74734"
+  },
+  {
+    "id": "20260908010000_add_workspace_access_flow",
+    "checksum": "5c60ee6f9a336ce5a0d6fe9d7e402b20afc45fcc75de08ac564baf55a5329791"
+  },
+  {
+    "id": "20260908020000_fix_workspace_access_key_identity_index",
+    "checksum": "6fabfec2f983d3332ddb8964667dd24ccacce28de4b3df9b941559b18d484afb"
+  },
+  {
+    "id": "20260908030000_add_workspace_access_key_consumed_identity",
+    "checksum": "538efbae61aa8ffdab130b3c4d01101dc4831424ba1d119750c54438715ee49c"
+  },
+  {
+    "id": "20260908162312_adicionar_indices_de_teste_em_pages",
+    "checksum": "a731e462f657a70a5ee93605e477b0aa481d4cad4fbc22dc05540839b14a1f9a"
+  },
+  {
+    "id": "20260908200757_add_organization_memberships",
+    "checksum": "706f28cffc21a586e4375ec8111d52fb5ebc8fe87891a820cf0894469440baf1"
+  },
+  {
+    "id": "20260912041438_scoped_roles_access_keys_and_membership_requests",
+    "checksum": "59fd0df10dff6aaceeebb38840cb1ad98f13642501150fc3f505deddb903ec5d"
+  },
+  {
+    "id": "20260912114500_verified_accounts_invites_and_soft_delete",
+    "checksum": "91b8906230b5969bf943cc2d6a7c94a8b1639611429c95f8c830b276b91c3723"
+  },
+  {
+    "id": "20260912130000_remove_organization_access_keys",
+    "checksum": "0f861b7cea70e558c491c905d9ab6c7a158c8b6465e0b7e301374e9aa7ec6b14"
+  },
+  {
+    "id": "20260913170000_drop_access_keys",
+    "checksum": "b3b9769c781a3eaa0cff48a7e867e32feafc51e9659f84eb63cb1f508b2dd32f"
+  },
+  {
+    "id": "20260913190000_add_page_database_updated_at",
+    "checksum": "9ef17a08385fbfd943b3a3c0518040f6214f2af26ed66a83a7682b3fb6409460"
+  },
+  {
+    "id": "20260914170000_drop_page_database_updated_at",
+    "checksum": "fc3883fb5e3084ef0b2258a78685b02ec82eaa569cbb972202012b3d92e77c1d"
+  },
+  {
+    "id": "20260920143000_repair_literal_updated_at",
+    "checksum": "c403bb58508c40c43995321e824cd459cf2f2e86d1edd444cc91ba16921af0b8"
+  }
+]

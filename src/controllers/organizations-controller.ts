@@ -1,7 +1,7 @@
 import { ulid } from 'ulid';
-import organizationStore, { type OrganizationSummary } from '@db/organization-store';
-import workspaceStore, { type WorkspaceSummary } from '@db/workspace-store';
-import { ULID_RE } from '@db/scoped-access-store';
+import organizationStore, { type OrganizationSummary } from '@/db/repositories/organization-store';
+import workspaceStore, { type WorkspaceSummary } from '@/db/repositories/workspace-store';
+import { ULID_RE } from '@/utils/ulid';
 import type { OrganizationMutationResult } from '@/controllers/types/organization-controller.types';
 export type { OrganizationMutationResult } from '@/controllers/types/organization-controller.types';
 

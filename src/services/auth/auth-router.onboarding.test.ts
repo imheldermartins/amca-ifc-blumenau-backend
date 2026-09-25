@@ -32,7 +32,7 @@ let server: Server;
 let baseUrl: string;
 
 beforeAll(async () => {
-  const { default: authRouter } = await import("./auth-router.js");
+  const { default: authRouter } = await import("@/routes/auth-route");
   const app = express();
   app.use(express.json());
   app.use("/auth", authRouter);

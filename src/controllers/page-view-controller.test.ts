@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Schema } from "@models/schemas/index";
+import type { Schema } from "@/db/schemas/index";
 
 const mocks = vi.hoisted(() => ({
   pages: {
@@ -24,7 +24,7 @@ vi.mock("@models/index", () => ({
   },
 }));
 
-vi.mock("@/core/db/page-json", () => ({
+vi.mock("@/db/repositories/page-json", () => ({
   commitFilterKeyReconcile: mocks.pageJson.commitFilterKeyReconcile,
   insertPageViewJson: mocks.pageJson.insertPageViewJson,
   updatePageJsonPaths: mocks.pageJson.updatePageJsonPaths,
@@ -32,6 +32,8 @@ vi.mock("@/core/db/page-json", () => ({
 }));
 
 import pageViewController from "./page-view-controller.js";
+import pageFilterKeyReconciliationController from "./page-filter-key-reconciliation-controller.js";
+import pageViewPatchController from "./page-view-patch-controller.js";
 
 const PAGE_ID = "01KXVZ00000000000000000001";
 const VIEW_ID = "01KXVZ00000000000000000002";
@@ -41,8 +43,8 @@ const OWNER_ID = "01KXVZ00000000000000000005";
 const NOW = "2026-09-01T12:34:56.789Z";
 
 const entityDates = {
-  created_at: new Date("2026-08-01T00:00:00.000Z"),
-  updated_at: new Date("2026-08-02T00:00:00.000Z"),
+  created_at: "2026-08-01T00:00:00.000Z",
+  updated_at: "2026-08-02T00:00:00.000Z",
   deleted_at: null,
 };
 
@@ -197,8 +199,8 @@ describe("PageViewController", () => {
     expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledWith(PAGE_ID, [{ path: [VIEW_ID, "deletedAt"], value: NOW }], VIEW_ID);
     expect(await pageViewController.deleteView(PAGE_ID, VIEW_ID)).toMatchObject({ ok: false, reason: "not_found" });
     expect(await pageViewController.duplicateView(PAGE_ID, VIEW_ID)).toMatchObject({ ok: false, reason: "not_found" });
-    expect(await pageViewController.patchView(PAGE_ID, VIEW_ID, { name: "Novo" })).toMatchObject({ ok: false, reason: "not_found" });
-    expect(await pageViewController.updateFilters(PAGE_ID, VIEW_ID, { version: 2, clauses: [], groupBy: [], passthrough: [] }))
+    expect(await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { name: "Novo" })).toMatchObject({ ok: false, reason: "not_found" });
+    expect(await pageViewPatchController.updateFilters(PAGE_ID, VIEW_ID, { version: 2, clauses: [], groupBy: [], passthrough: [] }))
       .toMatchObject({ ok: false, reason: "not_found" });
   });
 
@@ -287,7 +289,7 @@ describe("PageViewController", () => {
     });
     mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
 
-    const result = await pageViewController.updateFilters(PAGE_ID, VIEW_ID, {
+    const result = await pageViewPatchController.updateFilters(PAGE_ID, VIEW_ID, {
       version: 2,
       clauses: [],
       groupBy: ["page_title"],
@@ -309,7 +311,7 @@ describe("PageViewController", () => {
       page({ [VIEW_ID]: { view: "table", name: "Principal" } }),
     );
 
-    const result = await pageViewController.updateFilters(PAGE_ID, VIEW_ID, {
+    const result = await pageViewPatchController.updateFilters(PAGE_ID, VIEW_ID, {
       version: 2,
       updatedAt: "2000-01-01T00:00:00.000Z",
       clauses: [],
@@ -348,7 +350,7 @@ describe("PageViewController", () => {
     });
     mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
 
-    const result = await pageViewController.patchView(PAGE_ID, VIEW_ID, {
+    const result = await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, {
       columnWidths: { [COLUMN_ID]: 320 },
     });
 
@@ -374,7 +376,7 @@ describe("PageViewController", () => {
       });
       mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
 
-      const result = await pageViewController.patchView(PAGE_ID, VIEW_ID, { view });
+      const result = await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { view });
 
       expect(result).toMatchObject({ ok: true, data: { changed: true } });
       expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledWith(
@@ -386,7 +388,7 @@ describe("PageViewController", () => {
   );
 
   it("não deixa o patch genérico sobrescrever filters", async () => {
-    const result = await pageViewController.patchView(PAGE_ID, VIEW_ID, {
+    const result = await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, {
       filters: { version: 2, clauses: [], groupBy: [], passthrough: [] },
     });
 
@@ -435,8 +437,8 @@ describe("PageViewController", () => {
       .mockResolvedValueOnce([reconciledColumn])
       .mockResolvedValueOnce([reconciledColumn]);
 
-    const first = await pageViewController.reconcile(PAGE_ID);
-    const second = await pageViewController.reconcile(PAGE_ID);
+    const first = await pageFilterKeyReconciliationController.reconcile(PAGE_ID);
+    const second = await pageFilterKeyReconciliationController.reconcile(PAGE_ID);
 
     expect(first).toMatchObject({
       ok: true,
@@ -488,7 +490,7 @@ describe("PageViewController", () => {
       .mockResolvedValueOnce([conflicting])
       .mockResolvedValueOnce([reconciled]);
 
-    const result = await pageViewController.reconcile(PAGE_ID);
+    const result = await pageFilterKeyReconciliationController.reconcile(PAGE_ID);
 
     expect(result).toMatchObject({
       ok: true,

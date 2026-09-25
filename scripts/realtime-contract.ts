@@ -5,10 +5,17 @@ import { fileURLToPath } from "node:url";
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const backendRoot = resolve(scriptDirectory, "..");
 const sourcePath = resolve(backendRoot, "src/services/realtime/contracts/realtime-contract-v1.ts");
+const frontendRoot = process.env.CUBS_FRONTEND_ROOT?.trim()
+  ? resolve(process.env.CUBS_FRONTEND_ROOT)
+  : resolve(backendRoot, "../cubs-frontend");
 const targetPath = resolve(
-  backendRoot,
-  "../cubs-frontend/src/services/realtime-contract-v1.ts",
+  frontendRoot,
+  "src/services/realtime-contract-v1.ts",
 );
+
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n/g, "\n");
+}
 
 async function main(): Promise<void> {
   const mode = process.argv[2];
@@ -39,7 +46,7 @@ async function main(): Promise<void> {
     );
   }
 
-  if (generated !== canonical) {
+  if (normalizeLineEndings(generated) !== normalizeLineEndings(canonical)) {
     throw new Error(
       "Contrato realtime v1 divergente entre backend e frontend. " +
         "Rode npm run realtime:contract:sync no cubs-backend e versione a cópia gerada.",

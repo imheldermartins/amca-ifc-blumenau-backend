@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { PageEditChannel } from "@/services/realtime/page-edit-channel";
 import { PageInteractionChannel } from "@/services/realtime/page-interaction-channel";
-import { roomForPage } from "@/services/realtime/page-room";
 import { PageRoomChannel } from "@/services/realtime/page-room-channel";
 import { RealtimeChannelRegistry } from "@/services/realtime/realtime-channel-registry";
 import type { CubsSocket, CubsSocketServer } from "@/services/realtime/types/socket.types";

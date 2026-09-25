@@ -1,5 +1,6 @@
-import { Model } from "@/core/db/model";
-import { type Schema } from "@models/schemas/index";
+import { Model } from "@/db/repositories/model";
+import { type Schema } from "@/db/schemas/index";
+import { schemaRegistry } from '@/db/generated/schema';
 
-const workspaces = new Model<Schema.Workspace>("workspaces", { jsonColumns: ["data"] });
+const workspaces = new Model<Schema.Workspace>(schemaRegistry.workspaces);
 export { workspaces };

@@ -1,5 +1,5 @@
-import type { WorkspaceSummary } from "@db/workspace-store";
-import type { Schema } from "@/models/schemas/index";
+import type { WorkspaceSummary } from "@/db/repositories/workspace-store";
+import type { Schema } from "@/db/schemas/index";
 import type { TokenPair } from "@/services/auth/types/jwt.types";
 
 export interface RegisterInput {

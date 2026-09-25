@@ -1,5 +1,5 @@
-import pageAccessController from "@/controllers/page-access-controller";
-import { readPageLatestUpdatedAt } from '@db/page-activity';
+import pageHierarchyStore from "@/db/repositories/page-hierarchy-store";
+import { readPageLatestUpdatedAt } from '@/db/repositories/page-activity';
 import type { ColumnPayload, RowPayload } from "@/services/realtime/contracts/realtime-contract-v1";
 import {
   pageEditChannel,
@@ -42,7 +42,7 @@ export type {
 export class PageRealtimePublisher {
   constructor(
     private readonly emitter: PageEditEmitter,
-    private readonly parents: ParentPageResolver = pageAccessController,
+    private readonly parents: ParentPageResolver = pageHierarchyStore,
     private readonly factory: RealtimeEventFactory = new RealtimeEventFactory(),
     private readonly log: RealtimePublisherLogger = (message, error) => {
       console.error(`${message}: ${error instanceof Error ? error.message : String(error)}`);

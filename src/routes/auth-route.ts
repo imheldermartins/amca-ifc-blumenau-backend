@@ -14,6 +14,10 @@ import type { TokenPair } from "@/services/auth/types/jwt.types";
 import { StatusCode } from "@/services/http/status-code";
 
 export class AuthRouter extends ApplicationRouter {
+  public constructor() {
+    super();
+  }
+
   protected registerRoutes(): void {
     this.router.post("/register", authRateLimit, this.register.bind(this));
     this.router.post("/verification/resend", authRateLimit, this.resendVerification.bind(this));

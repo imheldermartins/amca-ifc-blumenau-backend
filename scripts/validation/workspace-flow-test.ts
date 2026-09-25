@@ -1,13 +1,13 @@
-import roleStore from "@db/role-store";
+import roleStore from "@/db/repositories/role-store";
 import { fullPermissions } from "@/services/auth/permissions";
 import { ulid } from "ulid";
 import db from "@models/index";
 import authController from "@controllers/auth-controller";
 import workspacesController from "@controllers/workspaces-controller";
 import organizationsController from "@controllers/organizations-controller";
-import workspaceStore from "@db/workspace-store";
-import accessInviteStore from "@db/access-invite-store";
-import type { Schema } from "@/models/schemas/index";
+import workspaceStore from "@/db/repositories/workspace-store";
+import accessInviteStore from "@/db/repositories/access-invite-store";
+import type { Schema } from "@/db/schemas/index";
 import { createOpaqueToken, hashOpaqueToken, opaqueTokenHint } from "@/services/opaque-token";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -15,10 +15,9 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function main(): Promise<void> {
-  const port = process.env.DB_RAFT_PORT;
-  if (!port || port === "8000") {
+  if (process.env.DATABASE_URL !== "http://127.0.0.1:18012") {
     throw new Error(
-      "Este teste cria dados. Execute somente contra um rqlite isolado usando DB_RAFT_PORT diferente de 8000.",
+      "Este teste cria dados. Execute somente contra o rqlite descartável em DATABASE_URL=http://127.0.0.1:18012.",
     );
   }
 
@@ -131,7 +130,7 @@ async function main(): Promise<void> {
   console.log(`  privateVerification=${privateRegistration.email}`);
   console.log(`  workspace=${workspace.id}`);
   console.log(`  creatorRoot=${workspace.pageRootId}`);
-  console.log(`  memberRoot=${joined.data.pageRootId}`);
+  console.log(`  memberRoot=${joined.pageRootId}`);
 }
 
 main().catch((error: unknown) => {

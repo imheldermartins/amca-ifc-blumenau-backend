@@ -314,7 +314,7 @@ seguro para links internos de organização, convites e solicitações. As telas
 ### Config de coluna (`page_columns.data`) e troca de tipo
 
 `data` ACUMULA o config de vários tipos: `options` (select), `format`+`currency`
-(numeric), `mask` (text). Trocar o tipo é **não-destrutivo** — o `buildData`
+(numeric), `mask` (text). Trocar o tipo é **não-destrutivo** — o serviço de configuração
 MESCLA (preserva o config do tipo antigo) e faz **whitelist** (chave desconhecida
 não persiste; no PUT, `null` numa chave a LIMPA). A limpeza total é só o
 `/reset`: volta o `data` à base do tipo e sobrescreve as células cujo valor não
@@ -388,6 +388,11 @@ backend:
 npm run realtime:contract:sync
 npm run realtime:contract:check
 ```
+
+Em uma worktree na qual o frontend não seja a pasta irmã, defina
+`CUBS_FRONTEND_ROOT` com o caminho absoluto do checkout do frontend antes do
+comando. O check normaliza apenas CRLF/LF; qualquer diferença de contrato ainda
+falha.
 
 Roteamento dos fatos duráveis:
 

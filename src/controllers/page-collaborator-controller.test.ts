@@ -8,6 +8,7 @@ const doubles = vi.hoisted(() => ({
   createLink: vi.fn(),
   deleteLink: vi.fn(),
   getWorkspaceMembership: vi.fn(),
+  removeMember: vi.fn(),
 }));
 
 vi.mock("@models/index", () => ({
@@ -22,8 +23,11 @@ vi.mock("@models/index", () => ({
     },
   },
 }));
-vi.mock("@db/workspace-store", () => ({
+vi.mock("@/db/repositories/workspace-store", () => ({
   default: { getMembership: doubles.getWorkspaceMembership },
+}));
+vi.mock("@/db/repositories/role-store", () => ({
+  default: { removeMember: doubles.removeMember },
 }));
 
 import pageCollaboratorController from "./page-collaborator-controller.js";
@@ -58,8 +62,26 @@ describe("PageCollaboratorController", () => {
   });
 
 
-  it("não oferece escrita sem autorização e template de role", () => {
+  it("não oferece entrada direta e delega remoção autorizada ao RoleStore", async () => {
     expect('addCollaborators' in pageCollaboratorController).toBe(false);
-    expect('removeCollaborator' in pageCollaboratorController).toBe(false);
+
+    doubles.removeMember.mockResolvedValue(false);
+    const result = await pageCollaboratorController.removeCollaborator(
+      PAGE_ID,
+      USER_ID,
+      WORKSPACE_ID,
+    );
+
+    expect(doubles.removeMember).toHaveBeenCalledWith(
+      "page",
+      PAGE_ID,
+      USER_ID,
+      WORKSPACE_ID,
+    );
+    expect(result).toEqual({
+      ok: false,
+      reason: "forbidden",
+      message: "Acesso não permitido",
+    });
   });
 });

@@ -1,15 +1,8 @@
 #!/bin/sh
 set -eu
-
-if [ "${WAIT_FOR_DATABASE:-true}" = "true" ]; then
-    echo "[backend] Aguardando conexão com o rqlite..."
-    node dist/core/scripts/wait-for-database.js
-fi
-
-if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
-    echo "[backend] Aplicando migrations pendentes..."
-    node dist/core/scripts/migrate.js
-fi
-
-echo "[backend] Iniciando aplicação..."
+# The package owns migration loading, waiting and artifact readiness.
+rqlite() { /app/node_modules/.bin/rqlite "$@" --config /app/dist/rqlite.config.js --environment production; }
+if [ "${WAIT_FOR_DATABASE:-true}" = "true" ]; then rqlite wait; fi
+if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then rqlite migrate; fi
+rqlite check --database
 exec "$@"

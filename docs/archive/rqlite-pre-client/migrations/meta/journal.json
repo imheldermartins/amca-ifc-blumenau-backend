@@ -1,0 +1,2611 @@
+{
+  "formatVersion": 1,
+  "baseline": {
+    "formatVersion": 1,
+    "tables": [
+      {
+        "name": "access_invite_acceptances",
+        "className": "AccessInviteAcceptanceSchema",
+        "columns": [
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "invite_id",
+            "name": "invite_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "user_id",
+            "name": "user_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "accepted_at",
+            "name": "accepted_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            }
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "user_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "invite_id"
+            ],
+            "table": "access_invites",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [
+          [
+            "invite_id",
+            "user_id"
+          ]
+        ],
+        "legacySql": "CREATE TABLE access_invite_acceptances (\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\n      invite_id TEXT NOT NULL REFERENCES access_invites(id),\n      user_id TEXT NOT NULL REFERENCES users(id),\n      accepted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n      UNIQUE(invite_id, user_id)\n    )"
+      },
+      {
+        "name": "access_invites",
+        "className": "AccessInviteSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "token_hash",
+            "name": "token_hash",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "token_hint",
+            "name": "token_hint",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "scope_type",
+            "name": "scope_type",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "scope_id",
+            "name": "scope_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "role_id",
+            "name": "role_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "recipient_email",
+            "name": "recipient_email",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "author_id",
+            "name": "author_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "status",
+            "name": "status",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "literal",
+              "value": "pending"
+            }
+          },
+          {
+            "property": "expires_at",
+            "name": "expires_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "acceptance_limit",
+            "name": "acceptance_limit",
+            "type": "INTEGER",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "number | null"
+          },
+          {
+            "property": "acceptance_count",
+            "name": "acceptance_count",
+            "type": "INTEGER",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "number",
+            "default": {
+              "kind": "literal",
+              "value": 0
+            }
+          },
+          {
+            "property": "notified_at",
+            "name": "notified_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "author_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [
+          [
+            "token_hash"
+          ]
+        ],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE access_invites (\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\n      token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash) = 64),\n      token_hint TEXT NOT NULL,\n      scope_type TEXT NOT NULL CHECK(scope_type IN ('organization','workspace','page')),\n      scope_id TEXT NOT NULL,\n      role_id TEXT,\n      recipient_email TEXT,\n      author_id TEXT NOT NULL REFERENCES users(id),\n      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','canceled','expired')),\n      expires_at TEXT,\n      acceptance_limit INTEGER CHECK(acceptance_limit IS NULL OR acceptance_limit > 0),\n      acceptance_count INTEGER NOT NULL DEFAULT 0 CHECK(acceptance_count >= 0),\n      notified_at TEXT,\n      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n      deleted_at TEXT\n    )"
+      },
+      {
+        "name": "account_verifications",
+        "className": "AccountVerificationSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "user_id",
+            "name": "user_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "token_hash",
+            "name": "token_hash",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "token_hint",
+            "name": "token_hint",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "invite_id",
+            "name": "invite_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "context",
+            "name": "context",
+            "type": "JSON",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "unknown",
+            "codec": "json",
+            "default": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          {
+            "property": "expires_at",
+            "name": "expires_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "last_sent_at",
+            "name": "last_sent_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            }
+          },
+          {
+            "property": "consumed_at",
+            "name": "consumed_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "invite_id"
+            ],
+            "table": "access_invites",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "user_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [
+          [
+            "token_hash"
+          ]
+        ],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE account_verifications (\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\n      user_id TEXT NOT NULL REFERENCES users(id),\n      token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash) = 64),\n      token_hint TEXT NOT NULL,\n      invite_id TEXT REFERENCES access_invites(id),\n      context JSON NOT NULL DEFAULT '{}' CHECK(json_valid(context)),\n      expires_at TEXT NOT NULL,\n      last_sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n      consumed_at TEXT,\n      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n      deleted_at TEXT\n    )"
+      },
+      {
+        "name": "organization_members",
+        "className": "OrganizationMemberSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "organization_id",
+            "name": "organization_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "user_id",
+            "name": "user_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "organization_member_role_id",
+            "name": "organization_member_role_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "organization_member_role_id",
+              "organization_id"
+            ],
+            "table": "organization_roles",
+            "references": [
+              "id",
+              "organization_id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "user_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "organization_id"
+            ],
+            "table": "organizations",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE \"organization_members\" (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        organization_id TEXT NOT NULL REFERENCES organizations(id),\n        user_id TEXT NOT NULL REFERENCES users(id),\n        organization_member_role_id TEXT,\n        \n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        deleted_at TEXT,\n        FOREIGN KEY(organization_member_role_id, organization_id) REFERENCES organization_roles(id, organization_id)\n      )"
+      },
+      {
+        "name": "organization_pending_requests",
+        "className": "OrganizationPendingRequestSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "organization_id",
+            "name": "organization_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "requester_id",
+            "name": "requester_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "notified_emails",
+            "name": "notified_emails",
+            "type": "JSON",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "unknown",
+            "codec": "json",
+            "default": {
+              "kind": "literal",
+              "value": "[]"
+            }
+          },
+          {
+            "property": "status",
+            "name": "status",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "literal",
+              "value": "pending"
+            }
+          },
+          {
+            "property": "accepted_by",
+            "name": "accepted_by",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "decided_by",
+            "name": "decided_by",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "decided_at",
+            "name": "decided_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "role_id",
+            "name": "role_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "role_id",
+              "organization_id"
+            ],
+            "table": "organization_roles",
+            "references": [
+              "id",
+              "organization_id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "decided_by"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "accepted_by"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "requester_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "organization_id"
+            ],
+            "table": "organizations",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE \"organization_pending_requests\" (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        organization_id TEXT NOT NULL REFERENCES organizations(id),\n        requester_id TEXT NOT NULL REFERENCES users(id),\n        notified_emails JSON NOT NULL DEFAULT '[]' CHECK(json_valid(notified_emails)),\n        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','canceled','expired')),\n        accepted_by TEXT REFERENCES users(id), decided_by TEXT REFERENCES users(id), decided_at TEXT,\n        role_id TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT,\n        FOREIGN KEY(role_id, organization_id) REFERENCES organization_roles(id, organization_id)\n      )"
+      },
+      {
+        "name": "organization_roles",
+        "className": "OrganizationRoleSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "organization_id",
+            "name": "organization_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "name",
+            "name": "name",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "roles",
+            "name": "roles",
+            "type": "JSON",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "unknown",
+            "codec": "json"
+          },
+          {
+            "property": "is_default",
+            "name": "is_default",
+            "type": "INTEGER",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "number",
+            "default": {
+              "kind": "literal",
+              "value": 0
+            }
+          },
+          {
+            "property": "system_key",
+            "name": "system_key",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "organization_id"
+            ],
+            "table": "organizations",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [
+          [
+            "id",
+            "organization_id"
+          ]
+        ],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE organization_roles (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        organization_id TEXT NOT NULL REFERENCES organizations(id),\n        name TEXT NOT NULL,\n        roles JSON NOT NULL CHECK(json_valid(roles)),\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0,1)), system_key TEXT, deleted_at TEXT,\n        UNIQUE(id, organization_id)\n      )"
+      },
+      {
+        "name": "organizations",
+        "className": "OrganizationSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "name",
+            "name": "name",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "data",
+            "name": "data",
+            "type": "JSON",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "unknown",
+            "codec": "json",
+            "default": {
+              "kind": "literal",
+              "value": "{}"
+            }
+          },
+          {
+            "property": "owner_id",
+            "name": "owner_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "owner_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "legacySql": "CREATE TABLE organizations (\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\n      name TEXT NOT NULL,\n      data JSON NOT NULL DEFAULT '{}',\n      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\n    , owner_id TEXT REFERENCES users(id))"
+      },
+      {
+        "name": "page_collaborators",
+        "className": "PageCollaboratorSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "page_id",
+            "name": "page_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "user_id",
+            "name": "user_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "page_member_role_id",
+            "name": "page_member_role_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "page_member_role_id",
+              "page_id"
+            ],
+            "table": "page_roles",
+            "references": [
+              "id",
+              "page_id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "user_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "page_id"
+            ],
+            "table": "pages",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE \"page_collaborators\" (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        page_id TEXT NOT NULL REFERENCES pages(id),\n        user_id TEXT NOT NULL REFERENCES users(id),\n        page_member_role_id TEXT,\n        \n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        deleted_at TEXT,\n        FOREIGN KEY(page_member_role_id, page_id) REFERENCES page_roles(id, page_id)\n      )"
+      },
+      {
+        "name": "page_columns",
+        "className": "PageColumnSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "name",
+            "name": "name",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "type",
+            "name": "type",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "data",
+            "name": "data",
+            "type": "JSON",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "unknown | null",
+            "codec": "json"
+          },
+          {
+            "property": "parent_id",
+            "name": "parent_id",
+            "type": "BLOB",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "literal",
+              "value": null
+            }
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "parent_id"
+            ],
+            "table": "pages",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE page_columns (\n      `id` TEXT PRIMARY KEY CHECK(length(id) = 26),\n      `name` TEXT,\n      `type` TEXT CHECK (type IN ('text', 'numeric', 'select', 'date', 'checkbox')),\n      `data` JSON,\n      \"parent_id\" BLOB,\n      created_at DEFAULT CURRENT_TIMESTAMP,\n      updated_at DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT DEFAULT NULL,\n      FOREIGN KEY(\"parent_id\") REFERENCES pages (id)\n    )"
+      },
+      {
+        "name": "page_columns_values",
+        "className": "PageColumnValueSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "BLOB",
+            "nullable": false,
+            "primaryKey": true,
+            "tsType": "string",
+            "generated": "ulid"
+          },
+          {
+            "property": "data",
+            "name": "data",
+            "type": "JSON",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "page_column_id",
+            "name": "page_column_id",
+            "type": "BLOB",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "page_id",
+            "name": "page_id",
+            "type": "BLOB",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "page_id"
+            ],
+            "table": "pages",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "page_column_id"
+            ],
+            "table": "page_columns",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "legacySql": "CREATE TABLE page_columns_values (\n      id BLOB PRIMARY KEY NOT NULL,\n      `data` JSON,\n      page_column_id BLOB,\n      page_id BLOB,\n      created_at DEFAULT CURRENT_TIMESTAMP,\n      updated_at DEFAULT CURRENT_TIMESTAMP,\n      FOREIGN KEY (page_column_id) REFERENCES page_columns (id),\n      FOREIGN KEY (page_id) REFERENCES pages (id)\n    )"
+      },
+      {
+        "name": "page_edges",
+        "className": "PageEdgeSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "BLOB",
+            "nullable": false,
+            "primaryKey": true,
+            "tsType": "string",
+            "generated": "ulid"
+          },
+          {
+            "property": "parent_id",
+            "name": "parent_id",
+            "type": "BLOB",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "child_id",
+            "name": "child_id",
+            "type": "BLOB",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "child_id"
+            ],
+            "table": "pages",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "parent_id"
+            ],
+            "table": "pages",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [
+          [
+            "parent_id",
+            "child_id"
+          ]
+        ],
+        "legacySql": "CREATE TABLE page_edges (\n      id BLOB PRIMARY KEY NOT NULL,\n      parent_id BLOB NOT NULL,\n      child_id BLOB NOT NULL,\n      created_at DEFAULT CURRENT_TIMESTAMP,\n      updated_at DEFAULT CURRENT_TIMESTAMP,\n      FOREIGN KEY(parent_id) REFERENCES pages (id),\n      FOREIGN KEY(child_id) REFERENCES pages (id),\n      UNIQUE(parent_id, child_id)\n    )"
+      },
+      {
+        "name": "page_pending_requests",
+        "className": "PagePendingRequestSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "page_id",
+            "name": "page_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "requester_id",
+            "name": "requester_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "notified_emails",
+            "name": "notified_emails",
+            "type": "JSON",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "unknown",
+            "codec": "json",
+            "default": {
+              "kind": "literal",
+              "value": "[]"
+            }
+          },
+          {
+            "property": "status",
+            "name": "status",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "literal",
+              "value": "pending"
+            }
+          },
+          {
+            "property": "accepted_by",
+            "name": "accepted_by",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "decided_by",
+            "name": "decided_by",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "decided_at",
+            "name": "decided_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "role_id",
+            "name": "role_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "role_id",
+              "page_id"
+            ],
+            "table": "page_roles",
+            "references": [
+              "id",
+              "page_id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "decided_by"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "accepted_by"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "requester_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "page_id"
+            ],
+            "table": "pages",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE \"page_pending_requests\" (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        page_id TEXT NOT NULL REFERENCES pages(id),\n        requester_id TEXT NOT NULL REFERENCES users(id),\n        notified_emails JSON NOT NULL DEFAULT '[]' CHECK(json_valid(notified_emails)),\n        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','canceled','expired')),\n        accepted_by TEXT REFERENCES users(id), decided_by TEXT REFERENCES users(id), decided_at TEXT,\n        role_id TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT,\n        FOREIGN KEY(role_id, page_id) REFERENCES page_roles(id, page_id)\n      )"
+      },
+      {
+        "name": "page_roles",
+        "className": "PageRoleSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "page_id",
+            "name": "page_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "name",
+            "name": "name",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "roles",
+            "name": "roles",
+            "type": "JSON",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "unknown",
+            "codec": "json"
+          },
+          {
+            "property": "is_default",
+            "name": "is_default",
+            "type": "INTEGER",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "number",
+            "default": {
+              "kind": "literal",
+              "value": 0
+            }
+          },
+          {
+            "property": "system_key",
+            "name": "system_key",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "page_id"
+            ],
+            "table": "pages",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [
+          [
+            "id",
+            "page_id"
+          ]
+        ],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE page_roles (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        page_id TEXT NOT NULL REFERENCES pages(id),\n        name TEXT NOT NULL,\n        roles JSON NOT NULL CHECK(json_valid(roles)),\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0,1)), system_key TEXT, deleted_at TEXT,\n        UNIQUE(id, page_id)\n      )"
+      },
+      {
+        "name": "pages",
+        "className": "PageSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "title",
+            "name": "title",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "data",
+            "name": "data",
+            "type": "JSON",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "unknown | null",
+            "codec": "json"
+          },
+          {
+            "property": "owner_id",
+            "name": "owner_id",
+            "type": "BLOB",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "literal",
+              "value": null
+            }
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "owner_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE pages (\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\n      title TEXT,\n      `data` JSON,\n      owner_id BLOB NOT NULL,\n      created_at DEFAULT CURRENT_TIMESTAMP,\n      updated_at DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT DEFAULT NULL,\n      FOREIGN KEY (owner_id) REFERENCES users (id)\n    )"
+      },
+      {
+        "name": "users",
+        "className": "UserSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "name",
+            "name": "name",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "email",
+            "name": "email",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "password_hash",
+            "name": "password_hash",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "token_version",
+            "name": "token_version",
+            "type": "INTEGER",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "number",
+            "default": {
+              "kind": "literal",
+              "value": 0
+            }
+          },
+          {
+            "property": "email_verified_at",
+            "name": "email_verified_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [],
+        "checks": [],
+        "unique": [
+          [
+            "email"
+          ]
+        ],
+        "legacySql": "CREATE TABLE users (\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\n      name TEXT,\n      email TEXT UNIQUE NOT NULL,\n      created_at DEFAULT CURRENT_TIMESTAMP,\n      updated_at DEFAULT CURRENT_TIMESTAMP\n    , password_hash TEXT, token_version INTEGER NOT NULL DEFAULT 0, email_verified_at TEXT)"
+      },
+      {
+        "name": "workspace_members",
+        "className": "WorkspaceMemberSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "workspace_id",
+            "name": "workspace_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "user_id",
+            "name": "user_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "workspace_member_role_id",
+            "name": "workspace_member_role_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "page_root_id",
+            "name": "page_root_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "workspace_member_role_id",
+              "workspace_id"
+            ],
+            "table": "workspace_roles",
+            "references": [
+              "id",
+              "workspace_id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "page_root_id"
+            ],
+            "table": "pages",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "user_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "workspace_id"
+            ],
+            "table": "workspaces",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [
+          [
+            "page_root_id"
+          ]
+        ],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE \"workspace_members\" (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        workspace_id TEXT NOT NULL REFERENCES workspaces(id),\n        user_id TEXT NOT NULL REFERENCES users(id),\n        workspace_member_role_id TEXT,\n        page_root_id TEXT NOT NULL UNIQUE REFERENCES pages(id),\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        deleted_at TEXT,\n        FOREIGN KEY(workspace_member_role_id, workspace_id) REFERENCES workspace_roles(id, workspace_id)\n      )"
+      },
+      {
+        "name": "workspace_pending_requests",
+        "className": "WorkspacePendingRequestSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "workspace_id",
+            "name": "workspace_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "requester_id",
+            "name": "requester_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "notified_emails",
+            "name": "notified_emails",
+            "type": "JSON",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "unknown",
+            "codec": "json",
+            "default": {
+              "kind": "literal",
+              "value": "[]"
+            }
+          },
+          {
+            "property": "status",
+            "name": "status",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "literal",
+              "value": "pending"
+            }
+          },
+          {
+            "property": "accepted_by",
+            "name": "accepted_by",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "decided_by",
+            "name": "decided_by",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "decided_at",
+            "name": "decided_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "role_id",
+            "name": "role_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "role_id",
+              "workspace_id"
+            ],
+            "table": "workspace_roles",
+            "references": [
+              "id",
+              "workspace_id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "decided_by"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "accepted_by"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "requester_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "workspace_id"
+            ],
+            "table": "workspaces",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE \"workspace_pending_requests\" (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        workspace_id TEXT NOT NULL REFERENCES workspaces(id),\n        requester_id TEXT NOT NULL REFERENCES users(id),\n        notified_emails JSON NOT NULL DEFAULT '[]' CHECK(json_valid(notified_emails)),\n        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','canceled','expired')),\n        accepted_by TEXT REFERENCES users(id), decided_by TEXT REFERENCES users(id), decided_at TEXT,\n        role_id TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT,\n        FOREIGN KEY(role_id, workspace_id) REFERENCES workspace_roles(id, workspace_id)\n      )"
+      },
+      {
+        "name": "workspace_roles",
+        "className": "WorkspaceRoleSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": true,
+            "tsType": "string | null",
+            "generated": "ulid"
+          },
+          {
+            "property": "workspace_id",
+            "name": "workspace_id",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "name",
+            "name": "name",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string"
+          },
+          {
+            "property": "roles",
+            "name": "roles",
+            "type": "JSON",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "unknown",
+            "codec": "json"
+          },
+          {
+            "property": "is_default",
+            "name": "is_default",
+            "type": "INTEGER",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "number",
+            "default": {
+              "kind": "literal",
+              "value": 0
+            }
+          },
+          {
+            "property": "system_key",
+            "name": "system_key",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "deleted_at",
+            "name": "deleted_at",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "workspace_id"
+            ],
+            "table": "workspaces",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [
+          [
+            "id",
+            "workspace_id"
+          ]
+        ],
+        "softDelete": "deleted_at",
+        "legacySql": "CREATE TABLE workspace_roles (\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\n        workspace_id TEXT NOT NULL REFERENCES workspaces(id),\n        name TEXT NOT NULL,\n        roles JSON NOT NULL CHECK(json_valid(roles)),\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0,1)), system_key TEXT, deleted_at TEXT,\n        UNIQUE(id, workspace_id)\n      )"
+      },
+      {
+        "name": "workspaces",
+        "className": "WorkspaceSchema",
+        "columns": [
+          {
+            "property": "created_at",
+            "name": "created_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "created"
+          },
+          {
+            "property": "updated_at",
+            "name": "updated_at",
+            "type": "",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null",
+            "default": {
+              "kind": "expression",
+              "value": "CURRENT_TIMESTAMP"
+            },
+            "managed": "updated"
+          },
+          {
+            "property": "id",
+            "name": "id",
+            "type": "BLOB",
+            "nullable": false,
+            "primaryKey": true,
+            "tsType": "string",
+            "generated": "ulid"
+          },
+          {
+            "property": "name",
+            "name": "name",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "data",
+            "name": "data",
+            "type": "JSON",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "unknown | null",
+            "codec": "json"
+          },
+          {
+            "property": "organization_id",
+            "name": "organization_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          },
+          {
+            "property": "icon",
+            "name": "icon",
+            "type": "TEXT",
+            "nullable": false,
+            "primaryKey": false,
+            "tsType": "string",
+            "default": {
+              "kind": "literal",
+              "value": "lucide:boxes"
+            }
+          },
+          {
+            "property": "created_by_user_id",
+            "name": "created_by_user_id",
+            "type": "TEXT",
+            "nullable": true,
+            "primaryKey": false,
+            "tsType": "string | null"
+          }
+        ],
+        "indexes": [],
+        "foreignKeys": [
+          {
+            "columns": [
+              "created_by_user_id"
+            ],
+            "table": "users",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          },
+          {
+            "columns": [
+              "organization_id"
+            ],
+            "table": "organizations",
+            "references": [
+              "id"
+            ],
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION"
+          }
+        ],
+        "checks": [],
+        "unique": [],
+        "legacySql": "CREATE TABLE workspaces (\n      `id` BLOB PRIMARY KEY NOT NULL,\n      `name` TEXT,\n      `data` JSON,\n      created_at DEFAULT CURRENT_TIMESTAMP,\n      updated_at DEFAULT CURRENT_TIMESTAMP\n    , organization_id TEXT REFERENCES organizations(id), icon TEXT NOT NULL DEFAULT 'lucide:boxes', created_by_user_id TEXT REFERENCES users(id))"
+      }
+    ],
+    "opaque": [
+      {
+        "name": "idx_access_invites_recipient",
+        "type": "index",
+        "sql": "CREATE INDEX idx_access_invites_recipient ON access_invites(lower(trim(recipient_email)))"
+      },
+      {
+        "name": "idx_access_invites_scope",
+        "type": "index",
+        "sql": "CREATE INDEX idx_access_invites_scope ON access_invites(scope_type, scope_id, created_at)"
+      },
+      {
+        "name": "idx_account_verifications_active",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_account_verifications_active\n      ON account_verifications(user_id) WHERE consumed_at IS NULL AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_organization_members_active",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_organization_members_active\n        ON organization_members(organization_id, user_id) WHERE deleted_at IS NULL"
+      },
+      {
+        "name": "idx_organization_members_user",
+        "type": "index",
+        "sql": "CREATE INDEX idx_organization_members_user ON organization_members(user_id)"
+      },
+      {
+        "name": "idx_organization_pending_requests_open",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_organization_pending_requests_open\n        ON organization_pending_requests(organization_id, requester_id)\n        WHERE status = 'pending' AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_organization_roles_default",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_organization_roles_default\n        ON organization_roles(organization_id) WHERE is_default = 1 AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_organization_roles_scope",
+        "type": "index",
+        "sql": "CREATE INDEX idx_organization_roles_scope ON organization_roles(organization_id)"
+      },
+      {
+        "name": "idx_organization_roles_system",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_organization_roles_system\n        ON organization_roles(organization_id, system_key) WHERE system_key IS NOT NULL AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_page_collaborators_active",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_page_collaborators_active\n        ON page_collaborators(page_id, user_id) WHERE deleted_at IS NULL"
+      },
+      {
+        "name": "idx_page_collaborators_user",
+        "type": "index",
+        "sql": "CREATE INDEX idx_page_collaborators_user ON page_collaborators(user_id)"
+      },
+      {
+        "name": "idx_page_columns_parent_deleted_at",
+        "type": "index",
+        "sql": "CREATE INDEX idx_page_columns_parent_deleted_at ON page_columns (parent_id, deleted_at)"
+      },
+      {
+        "name": "idx_page_columns_values_cell",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_page_columns_values_cell\n      ON page_columns_values (page_id, page_column_id)"
+      },
+      {
+        "name": "idx_page_edges_parent_id",
+        "type": "index",
+        "sql": "CREATE INDEX idx_page_edges_parent_id\n       ON page_edges (parent_id)"
+      },
+      {
+        "name": "idx_page_pending_requests_open",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_page_pending_requests_open\n        ON page_pending_requests(page_id, requester_id)\n        WHERE status = 'pending' AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_page_roles_default",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_page_roles_default\n        ON page_roles(page_id) WHERE is_default = 1 AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_page_roles_scope",
+        "type": "index",
+        "sql": "CREATE INDEX idx_page_roles_scope ON page_roles(page_id)"
+      },
+      {
+        "name": "idx_page_roles_system",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_page_roles_system\n        ON page_roles(page_id, system_key) WHERE system_key IS NOT NULL AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_pages_deleted_at",
+        "type": "index",
+        "sql": "CREATE INDEX idx_pages_deleted_at ON pages (deleted_at)"
+      },
+      {
+        "name": "idx_pages_owner_id",
+        "type": "index",
+        "sql": "CREATE INDEX idx_pages_owner_id\n       ON pages (owner_id)"
+      },
+      {
+        "name": "idx_users_email",
+        "type": "index",
+        "sql": "CREATE INDEX idx_users_email ON users(email)"
+      },
+      {
+        "name": "idx_workspace_members_active",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_workspace_members_active\n        ON workspace_members(workspace_id, user_id) WHERE deleted_at IS NULL"
+      },
+      {
+        "name": "idx_workspace_members_user",
+        "type": "index",
+        "sql": "CREATE INDEX idx_workspace_members_user ON workspace_members(user_id)"
+      },
+      {
+        "name": "idx_workspace_pending_requests_open",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_workspace_pending_requests_open\n        ON workspace_pending_requests(workspace_id, requester_id)\n        WHERE status = 'pending' AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_workspace_roles_default",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_workspace_roles_default\n        ON workspace_roles(workspace_id) WHERE is_default = 1 AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_workspace_roles_scope",
+        "type": "index",
+        "sql": "CREATE INDEX idx_workspace_roles_scope ON workspace_roles(workspace_id)"
+      },
+      {
+        "name": "idx_workspace_roles_system",
+        "type": "index",
+        "sql": "CREATE UNIQUE INDEX idx_workspace_roles_system\n        ON workspace_roles(workspace_id, system_key) WHERE system_key IS NOT NULL AND deleted_at IS NULL"
+      },
+      {
+        "name": "idx_workspaces_organization_id",
+        "type": "index",
+        "sql": "CREATE INDEX idx_workspaces_organization_id\n      ON workspaces(organization_id)"
+      }
+    ]
+  },
+  "baselineCatalog": "[{\"name\":\"access_invite_acceptances\",\"type\":\"table\",\"tbl_name\":\"access_invite_acceptances\",\"sql\":\"CREATE TABLE access_invite_acceptances (\\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n      invite_id TEXT NOT NULL REFERENCES access_invites(id),\\n      user_id TEXT NOT NULL REFERENCES users(id),\\n      accepted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n      UNIQUE(invite_id, user_id)\\n    )\"},{\"name\":\"access_invites\",\"type\":\"table\",\"tbl_name\":\"access_invites\",\"sql\":\"CREATE TABLE access_invites (\\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n      token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash) = 64),\\n      token_hint TEXT NOT NULL,\\n      scope_type TEXT NOT NULL CHECK(scope_type IN ('organization','workspace','page')),\\n      scope_id TEXT NOT NULL,\\n      role_id TEXT,\\n      recipient_email TEXT,\\n      author_id TEXT NOT NULL REFERENCES users(id),\\n      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','canceled','expired')),\\n      expires_at TEXT,\\n      acceptance_limit INTEGER CHECK(acceptance_limit IS NULL OR acceptance_limit > 0),\\n      acceptance_count INTEGER NOT NULL DEFAULT 0 CHECK(acceptance_count >= 0),\\n      notified_at TEXT,\\n      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n      deleted_at TEXT\\n    )\"},{\"name\":\"account_verifications\",\"type\":\"table\",\"tbl_name\":\"account_verifications\",\"sql\":\"CREATE TABLE account_verifications (\\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n      user_id TEXT NOT NULL REFERENCES users(id),\\n      token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash) = 64),\\n      token_hint TEXT NOT NULL,\\n      invite_id TEXT REFERENCES access_invites(id),\\n      context JSON NOT NULL DEFAULT '{}' CHECK(json_valid(context)),\\n      expires_at TEXT NOT NULL,\\n      last_sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n      consumed_at TEXT,\\n      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n      deleted_at TEXT\\n    )\"},{\"name\":\"idx_access_invites_recipient\",\"type\":\"index\",\"tbl_name\":\"access_invites\",\"sql\":\"CREATE INDEX idx_access_invites_recipient ON access_invites(lower(trim(recipient_email)))\"},{\"name\":\"idx_access_invites_scope\",\"type\":\"index\",\"tbl_name\":\"access_invites\",\"sql\":\"CREATE INDEX idx_access_invites_scope ON access_invites(scope_type, scope_id, created_at)\"},{\"name\":\"idx_account_verifications_active\",\"type\":\"index\",\"tbl_name\":\"account_verifications\",\"sql\":\"CREATE UNIQUE INDEX idx_account_verifications_active\\n      ON account_verifications(user_id) WHERE consumed_at IS NULL AND deleted_at IS NULL\"},{\"name\":\"idx_organization_members_active\",\"type\":\"index\",\"tbl_name\":\"organization_members\",\"sql\":\"CREATE UNIQUE INDEX idx_organization_members_active\\n        ON organization_members(organization_id, user_id) WHERE deleted_at IS NULL\"},{\"name\":\"idx_organization_members_user\",\"type\":\"index\",\"tbl_name\":\"organization_members\",\"sql\":\"CREATE INDEX idx_organization_members_user ON organization_members(user_id)\"},{\"name\":\"idx_organization_pending_requests_open\",\"type\":\"index\",\"tbl_name\":\"organization_pending_requests\",\"sql\":\"CREATE UNIQUE INDEX idx_organization_pending_requests_open\\n        ON organization_pending_requests(organization_id, requester_id)\\n        WHERE status = 'pending' AND deleted_at IS NULL\"},{\"name\":\"idx_organization_roles_default\",\"type\":\"index\",\"tbl_name\":\"organization_roles\",\"sql\":\"CREATE UNIQUE INDEX idx_organization_roles_default\\n        ON organization_roles(organization_id) WHERE is_default = 1 AND deleted_at IS NULL\"},{\"name\":\"idx_organization_roles_scope\",\"type\":\"index\",\"tbl_name\":\"organization_roles\",\"sql\":\"CREATE INDEX idx_organization_roles_scope ON organization_roles(organization_id)\"},{\"name\":\"idx_organization_roles_system\",\"type\":\"index\",\"tbl_name\":\"organization_roles\",\"sql\":\"CREATE UNIQUE INDEX idx_organization_roles_system\\n        ON organization_roles(organization_id, system_key) WHERE system_key IS NOT NULL AND deleted_at IS NULL\"},{\"name\":\"idx_page_collaborators_active\",\"type\":\"index\",\"tbl_name\":\"page_collaborators\",\"sql\":\"CREATE UNIQUE INDEX idx_page_collaborators_active\\n        ON page_collaborators(page_id, user_id) WHERE deleted_at IS NULL\"},{\"name\":\"idx_page_collaborators_user\",\"type\":\"index\",\"tbl_name\":\"page_collaborators\",\"sql\":\"CREATE INDEX idx_page_collaborators_user ON page_collaborators(user_id)\"},{\"name\":\"idx_page_columns_parent_deleted_at\",\"type\":\"index\",\"tbl_name\":\"page_columns\",\"sql\":\"CREATE INDEX idx_page_columns_parent_deleted_at ON page_columns (parent_id, deleted_at)\"},{\"name\":\"idx_page_columns_values_cell\",\"type\":\"index\",\"tbl_name\":\"page_columns_values\",\"sql\":\"CREATE UNIQUE INDEX idx_page_columns_values_cell\\n      ON page_columns_values (page_id, page_column_id)\"},{\"name\":\"idx_page_edges_parent_id\",\"type\":\"index\",\"tbl_name\":\"page_edges\",\"sql\":\"CREATE INDEX idx_page_edges_parent_id\\n       ON page_edges (parent_id)\"},{\"name\":\"idx_page_pending_requests_open\",\"type\":\"index\",\"tbl_name\":\"page_pending_requests\",\"sql\":\"CREATE UNIQUE INDEX idx_page_pending_requests_open\\n        ON page_pending_requests(page_id, requester_id)\\n        WHERE status = 'pending' AND deleted_at IS NULL\"},{\"name\":\"idx_page_roles_default\",\"type\":\"index\",\"tbl_name\":\"page_roles\",\"sql\":\"CREATE UNIQUE INDEX idx_page_roles_default\\n        ON page_roles(page_id) WHERE is_default = 1 AND deleted_at IS NULL\"},{\"name\":\"idx_page_roles_scope\",\"type\":\"index\",\"tbl_name\":\"page_roles\",\"sql\":\"CREATE INDEX idx_page_roles_scope ON page_roles(page_id)\"},{\"name\":\"idx_page_roles_system\",\"type\":\"index\",\"tbl_name\":\"page_roles\",\"sql\":\"CREATE UNIQUE INDEX idx_page_roles_system\\n        ON page_roles(page_id, system_key) WHERE system_key IS NOT NULL AND deleted_at IS NULL\"},{\"name\":\"idx_pages_deleted_at\",\"type\":\"index\",\"tbl_name\":\"pages\",\"sql\":\"CREATE INDEX idx_pages_deleted_at ON pages (deleted_at)\"},{\"name\":\"idx_pages_owner_id\",\"type\":\"index\",\"tbl_name\":\"pages\",\"sql\":\"CREATE INDEX idx_pages_owner_id\\n       ON pages (owner_id)\"},{\"name\":\"idx_users_email\",\"type\":\"index\",\"tbl_name\":\"users\",\"sql\":\"CREATE INDEX idx_users_email ON users(email)\"},{\"name\":\"idx_workspace_members_active\",\"type\":\"index\",\"tbl_name\":\"workspace_members\",\"sql\":\"CREATE UNIQUE INDEX idx_workspace_members_active\\n        ON workspace_members(workspace_id, user_id) WHERE deleted_at IS NULL\"},{\"name\":\"idx_workspace_members_user\",\"type\":\"index\",\"tbl_name\":\"workspace_members\",\"sql\":\"CREATE INDEX idx_workspace_members_user ON workspace_members(user_id)\"},{\"name\":\"idx_workspace_pending_requests_open\",\"type\":\"index\",\"tbl_name\":\"workspace_pending_requests\",\"sql\":\"CREATE UNIQUE INDEX idx_workspace_pending_requests_open\\n        ON workspace_pending_requests(workspace_id, requester_id)\\n        WHERE status = 'pending' AND deleted_at IS NULL\"},{\"name\":\"idx_workspace_roles_default\",\"type\":\"index\",\"tbl_name\":\"workspace_roles\",\"sql\":\"CREATE UNIQUE INDEX idx_workspace_roles_default\\n        ON workspace_roles(workspace_id) WHERE is_default = 1 AND deleted_at IS NULL\"},{\"name\":\"idx_workspace_roles_scope\",\"type\":\"index\",\"tbl_name\":\"workspace_roles\",\"sql\":\"CREATE INDEX idx_workspace_roles_scope ON workspace_roles(workspace_id)\"},{\"name\":\"idx_workspace_roles_system\",\"type\":\"index\",\"tbl_name\":\"workspace_roles\",\"sql\":\"CREATE UNIQUE INDEX idx_workspace_roles_system\\n        ON workspace_roles(workspace_id, system_key) WHERE system_key IS NOT NULL AND deleted_at IS NULL\"},{\"name\":\"idx_workspaces_organization_id\",\"type\":\"index\",\"tbl_name\":\"workspaces\",\"sql\":\"CREATE INDEX idx_workspaces_organization_id\\n      ON workspaces(organization_id)\"},{\"name\":\"organization_members\",\"type\":\"table\",\"tbl_name\":\"organization_members\",\"sql\":\"CREATE TABLE \\\"organization_members\\\" (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        organization_id TEXT NOT NULL REFERENCES organizations(id),\\n        user_id TEXT NOT NULL REFERENCES users(id),\\n        organization_member_role_id TEXT,\\n        \\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        deleted_at TEXT,\\n        FOREIGN KEY(organization_member_role_id, organization_id) REFERENCES organization_roles(id, organization_id)\\n      )\"},{\"name\":\"organization_pending_requests\",\"type\":\"table\",\"tbl_name\":\"organization_pending_requests\",\"sql\":\"CREATE TABLE \\\"organization_pending_requests\\\" (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        organization_id TEXT NOT NULL REFERENCES organizations(id),\\n        requester_id TEXT NOT NULL REFERENCES users(id),\\n        notified_emails JSON NOT NULL DEFAULT '[]' CHECK(json_valid(notified_emails)),\\n        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','canceled','expired')),\\n        accepted_by TEXT REFERENCES users(id), decided_by TEXT REFERENCES users(id), decided_at TEXT,\\n        role_id TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT,\\n        FOREIGN KEY(role_id, organization_id) REFERENCES organization_roles(id, organization_id)\\n      )\"},{\"name\":\"organization_roles\",\"type\":\"table\",\"tbl_name\":\"organization_roles\",\"sql\":\"CREATE TABLE organization_roles (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        organization_id TEXT NOT NULL REFERENCES organizations(id),\\n        name TEXT NOT NULL,\\n        roles JSON NOT NULL CHECK(json_valid(roles)),\\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0,1)), system_key TEXT, deleted_at TEXT,\\n        UNIQUE(id, organization_id)\\n      )\"},{\"name\":\"organizations\",\"type\":\"table\",\"tbl_name\":\"organizations\",\"sql\":\"CREATE TABLE organizations (\\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n      name TEXT NOT NULL,\\n      data JSON NOT NULL DEFAULT '{}',\\n      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\\n    , owner_id TEXT REFERENCES users(id))\"},{\"name\":\"page_collaborators\",\"type\":\"table\",\"tbl_name\":\"page_collaborators\",\"sql\":\"CREATE TABLE \\\"page_collaborators\\\" (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        page_id TEXT NOT NULL REFERENCES pages(id),\\n        user_id TEXT NOT NULL REFERENCES users(id),\\n        page_member_role_id TEXT,\\n        \\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        deleted_at TEXT,\\n        FOREIGN KEY(page_member_role_id, page_id) REFERENCES page_roles(id, page_id)\\n      )\"},{\"name\":\"page_columns\",\"type\":\"table\",\"tbl_name\":\"page_columns\",\"sql\":\"CREATE TABLE page_columns (\\n      `id` TEXT PRIMARY KEY CHECK(length(id) = 26),\\n      `name` TEXT,\\n      `type` TEXT CHECK (type IN ('text', 'numeric', 'select', 'date', 'checkbox')),\\n      `data` JSON,\\n      \\\"parent_id\\\" BLOB,\\n      created_at DEFAULT CURRENT_TIMESTAMP,\\n      updated_at DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT DEFAULT NULL,\\n      FOREIGN KEY(\\\"parent_id\\\") REFERENCES pages (id)\\n    )\"},{\"name\":\"page_columns_values\",\"type\":\"table\",\"tbl_name\":\"page_columns_values\",\"sql\":\"CREATE TABLE page_columns_values (\\n      id BLOB PRIMARY KEY NOT NULL,\\n      `data` JSON,\\n      page_column_id BLOB,\\n      page_id BLOB,\\n      created_at DEFAULT CURRENT_TIMESTAMP,\\n      updated_at DEFAULT CURRENT_TIMESTAMP,\\n      FOREIGN KEY (page_column_id) REFERENCES page_columns (id),\\n      FOREIGN KEY (page_id) REFERENCES pages (id)\\n    )\"},{\"name\":\"page_edges\",\"type\":\"table\",\"tbl_name\":\"page_edges\",\"sql\":\"CREATE TABLE page_edges (\\n      id BLOB PRIMARY KEY NOT NULL,\\n      parent_id BLOB NOT NULL,\\n      child_id BLOB NOT NULL,\\n      created_at DEFAULT CURRENT_TIMESTAMP,\\n      updated_at DEFAULT CURRENT_TIMESTAMP,\\n      FOREIGN KEY(parent_id) REFERENCES pages (id),\\n      FOREIGN KEY(child_id) REFERENCES pages (id),\\n      UNIQUE(parent_id, child_id)\\n    )\"},{\"name\":\"page_pending_requests\",\"type\":\"table\",\"tbl_name\":\"page_pending_requests\",\"sql\":\"CREATE TABLE \\\"page_pending_requests\\\" (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        page_id TEXT NOT NULL REFERENCES pages(id),\\n        requester_id TEXT NOT NULL REFERENCES users(id),\\n        notified_emails JSON NOT NULL DEFAULT '[]' CHECK(json_valid(notified_emails)),\\n        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','canceled','expired')),\\n        accepted_by TEXT REFERENCES users(id), decided_by TEXT REFERENCES users(id), decided_at TEXT,\\n        role_id TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT,\\n        FOREIGN KEY(role_id, page_id) REFERENCES page_roles(id, page_id)\\n      )\"},{\"name\":\"page_roles\",\"type\":\"table\",\"tbl_name\":\"page_roles\",\"sql\":\"CREATE TABLE page_roles (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        page_id TEXT NOT NULL REFERENCES pages(id),\\n        name TEXT NOT NULL,\\n        roles JSON NOT NULL CHECK(json_valid(roles)),\\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0,1)), system_key TEXT, deleted_at TEXT,\\n        UNIQUE(id, page_id)\\n      )\"},{\"name\":\"pages\",\"type\":\"table\",\"tbl_name\":\"pages\",\"sql\":\"CREATE TABLE pages (\\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n      title TEXT,\\n      `data` JSON,\\n      owner_id BLOB NOT NULL,\\n      created_at DEFAULT CURRENT_TIMESTAMP,\\n      updated_at DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT DEFAULT NULL,\\n      FOREIGN KEY (owner_id) REFERENCES users (id)\\n    )\"},{\"name\":\"users\",\"type\":\"table\",\"tbl_name\":\"users\",\"sql\":\"CREATE TABLE users (\\n      id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n      name TEXT,\\n      email TEXT UNIQUE NOT NULL,\\n      created_at DEFAULT CURRENT_TIMESTAMP,\\n      updated_at DEFAULT CURRENT_TIMESTAMP\\n    , password_hash TEXT, token_version INTEGER NOT NULL DEFAULT 0, email_verified_at TEXT)\"},{\"name\":\"workspace_members\",\"type\":\"table\",\"tbl_name\":\"workspace_members\",\"sql\":\"CREATE TABLE \\\"workspace_members\\\" (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        workspace_id TEXT NOT NULL REFERENCES workspaces(id),\\n        user_id TEXT NOT NULL REFERENCES users(id),\\n        workspace_member_role_id TEXT,\\n        page_root_id TEXT NOT NULL UNIQUE REFERENCES pages(id),\\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        deleted_at TEXT,\\n        FOREIGN KEY(workspace_member_role_id, workspace_id) REFERENCES workspace_roles(id, workspace_id)\\n      )\"},{\"name\":\"workspace_pending_requests\",\"type\":\"table\",\"tbl_name\":\"workspace_pending_requests\",\"sql\":\"CREATE TABLE \\\"workspace_pending_requests\\\" (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        workspace_id TEXT NOT NULL REFERENCES workspaces(id),\\n        requester_id TEXT NOT NULL REFERENCES users(id),\\n        notified_emails JSON NOT NULL DEFAULT '[]' CHECK(json_valid(notified_emails)),\\n        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','canceled','expired')),\\n        accepted_by TEXT REFERENCES users(id), decided_by TEXT REFERENCES users(id), decided_at TEXT,\\n        role_id TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT,\\n        FOREIGN KEY(role_id, workspace_id) REFERENCES workspace_roles(id, workspace_id)\\n      )\"},{\"name\":\"workspace_roles\",\"type\":\"table\",\"tbl_name\":\"workspace_roles\",\"sql\":\"CREATE TABLE workspace_roles (\\n        id TEXT PRIMARY KEY CHECK(length(id) = 26),\\n        workspace_id TEXT NOT NULL REFERENCES workspaces(id),\\n        name TEXT NOT NULL,\\n        roles JSON NOT NULL CHECK(json_valid(roles)),\\n        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\\n        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0,1)), system_key TEXT, deleted_at TEXT,\\n        UNIQUE(id, workspace_id)\\n      )\"},{\"name\":\"workspaces\",\"type\":\"table\",\"tbl_name\":\"workspaces\",\"sql\":\"CREATE TABLE workspaces (\\n      `id` BLOB PRIMARY KEY NOT NULL,\\n      `name` TEXT,\\n      `data` JSON,\\n      created_at DEFAULT CURRENT_TIMESTAMP,\\n      updated_at DEFAULT CURRENT_TIMESTAMP\\n    , organization_id TEXT REFERENCES organizations(id), icon TEXT NOT NULL DEFAULT 'lucide:boxes', created_by_user_id TEXT REFERENCES users(id))\"}]",
+  "legacy": [
+    {
+      "id": "20260620235322_setup",
+      "checksum": "543e3ec1a97069722a9dbf04fb1756e17df9dd3beb234133547feca3fa3e8706"
+    },
+    {
+      "id": "20260625001901_add_password_hash_to_users",
+      "checksum": "d158c5279c386ceeb901247ed39188f5765dd4a06a5db847145bb8449de1f276"
+    },
+    {
+      "id": "20260712205823_rename_page_hubs_to_page_edges",
+      "checksum": "210d85a4833a3f23486d342e0510eb610d3f88689a3ea1d288aa4cf1a01463f8"
+    },
+    {
+      "id": "20260713185442_rename_page_edges_columns_add_slug",
+      "checksum": "42dce339e95c81715d03bf08b08fe5351d040577c0634e609264e60eac2b098d"
+    },
+    {
+      "id": "20260713221509_rename_page_columns_root_to_parent",
+      "checksum": "ecd871dc45652ce317811a215f0724c95118e0464604846d8808bcb2c295170f"
+    },
+    {
+      "id": "20260713231931_unique_cell_page_columns_values",
+      "checksum": "263c245d5f9423fb0e606cf23caf9bbff7d1e55eb723fe2df87a7c386dcefa86"
+    },
+    {
+      "id": "20260721011919_drop_slug_add_page_users",
+      "checksum": "f5e723dc2ecae488323562fb465b8405f489bacc25faed285f4b7ba2aebed154"
+    },
+    {
+      "id": "20260721013438_rename_page_users_to_page_members",
+      "checksum": "f5251fb4d8e505d6b6fb2ccedfb66e5f4c4c19a0c20cb905a6c87f4f096fc640"
+    },
+    {
+      "id": "20260721175050_rename_page_members_to_page_collaborators",
+      "checksum": "e404e23828974b2176ca746df2e1fb415f0df08d0b5470d5a25efe9409cb6c5e"
+    },
+    {
+      "id": "20260721210000_add_token_version_to_users",
+      "checksum": "9d151fc14129b1d088e2250a4efaaa56141cafff235a52529f8fdacd9d647109"
+    },
+    {
+      "id": "20260907010000_add_soft_delete_to_pages_and_columns",
+      "checksum": "6c8ec8ebe687e4279989ab77059e4ada1770b56d7086a95c6132914ef6f74734"
+    },
+    {
+      "id": "20260908010000_add_workspace_access_flow",
+      "checksum": "5c60ee6f9a336ce5a0d6fe9d7e402b20afc45fcc75de08ac564baf55a5329791"
+    },
+    {
+      "id": "20260908020000_fix_workspace_access_key_identity_index",
+      "checksum": "6fabfec2f983d3332ddb8964667dd24ccacce28de4b3df9b941559b18d484afb"
+    },
+    {
+      "id": "20260908030000_add_workspace_access_key_consumed_identity",
+      "checksum": "538efbae61aa8ffdab130b3c4d01101dc4831424ba1d119750c54438715ee49c"
+    },
+    {
+      "id": "20260908162312_adicionar_indices_de_teste_em_pages",
+      "checksum": "a731e462f657a70a5ee93605e477b0aa481d4cad4fbc22dc05540839b14a1f9a"
+    },
+    {
+      "id": "20260908200757_add_organization_memberships",
+      "checksum": "706f28cffc21a586e4375ec8111d52fb5ebc8fe87891a820cf0894469440baf1"
+    },
+    {
+      "id": "20260912041438_scoped_roles_access_keys_and_membership_requests",
+      "checksum": "59fd0df10dff6aaceeebb38840cb1ad98f13642501150fc3f505deddb903ec5d"
+    },
+    {
+      "id": "20260912114500_verified_accounts_invites_and_soft_delete",
+      "checksum": "91b8906230b5969bf943cc2d6a7c94a8b1639611429c95f8c830b276b91c3723"
+    },
+    {
+      "id": "20260912130000_remove_organization_access_keys",
+      "checksum": "0f861b7cea70e558c491c905d9ab6c7a158c8b6465e0b7e301374e9aa7ec6b14"
+    },
+    {
+      "id": "20260913170000_drop_access_keys",
+      "checksum": "b3b9769c781a3eaa0cff48a7e867e32feafc51e9659f84eb63cb1f508b2dd32f"
+    },
+    {
+      "id": "20260913190000_add_page_database_updated_at",
+      "checksum": "9ef17a08385fbfd943b3a3c0518040f6214f2af26ed66a83a7682b3fb6409460"
+    },
+    {
+      "id": "20260914170000_drop_page_database_updated_at",
+      "checksum": "fc3883fb5e3084ef0b2258a78685b02ec82eaa569cbb972202012b3d92e77c1d"
+    },
+    {
+      "id": "20260920143000_repair_literal_updated_at",
+      "checksum": "c403bb58508c40c43995321e824cd459cf2f2e86d1edd444cc91ba16921af0b8"
+    },
+    {
+      "id": "20260924000000_rqlite_orm_metadata",
+      "checksum": "fa9b1657e076fa80da4a666fd2d5d577eb549ad3545c6a733bda15bd4f15e857"
+    }
+  ],
+  "entries": []
+}

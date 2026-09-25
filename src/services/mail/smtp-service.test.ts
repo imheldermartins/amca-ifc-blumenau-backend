@@ -1,22 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
-import { readSmtpConfiguration, SmtpService } from "./smtp-service.js";
+import { SmtpService, type SmtpConfiguration } from "./smtp-service.js";
 import { accountVerificationEmail } from "./account-verification-email.js";
 
 const env = { SMTP_HOST: "smtp.example.com", SMTP_FROM_EMAIL: "cubs@example.com" };
-const invitation = () => accountVerificationEmail({
+const smtpConfiguration: SmtpConfiguration = {
+  host: env.SMTP_HOST,
+  port: 587,
+  secure: false,
+  requireTLS: true,
+  from: { name: "Cub's", address: env.SMTP_FROM_EMAIL },
+};
+const invitation = () => accountVerificationEmail.create({
   name: "Ana <Admin>", email: "ana@example.com",
   verificationUrl: "https://cubs.example.com/pt-br/verify-email/cubs_verify_v1_test",
 });
 
 describe("SmtpService", () => {
   it("exige configuração completa e protege TLS em produção", () => {
-    expect(() => readSmtpConfiguration({})).toThrow("SMTP_HOST");
-    expect(() => readSmtpConfiguration({ ...env, SMTP_USER: "user" })).toThrow("juntos");
-    expect(() => readSmtpConfiguration({ ...env, SMTP_PORT: "NaN" })).toThrow("SMTP_PORT");
-    expect(() => readSmtpConfiguration({ ...env, SMTP_SECURE: "typo" })).toThrow("SMTP_SECURE");
-    expect(() => readSmtpConfiguration({ ...env, SMTP_REQUIRE_TLS: "false" })).toThrow("TLS");
-    expect(readSmtpConfiguration(env)).toMatchObject({ port: 587, secure: false, requireTLS: true });
-    expect(readSmtpConfiguration({ ...env, SMTP_PORT: "465" })).toMatchObject({ port: 465, secure: true });
+    expect(() => SmtpService.fromEnvironment({})).toThrow("SMTP_HOST");
+    expect(() => SmtpService.fromEnvironment({ ...env, SMTP_USER: "user" })).toThrow("juntos");
+    expect(() => SmtpService.fromEnvironment({ ...env, SMTP_PORT: "NaN" })).toThrow("SMTP_PORT");
+    expect(() => SmtpService.fromEnvironment({ ...env, SMTP_SECURE: "typo" })).toThrow("SMTP_SECURE");
+    expect(() => SmtpService.fromEnvironment({ ...env, SMTP_REQUIRE_TLS: "false" })).toThrow("TLS");
+    expect(() => SmtpService.fromEnvironment(env)).not.toThrow();
+    expect(() => SmtpService.fromEnvironment({ ...env, SMTP_PORT: "465" })).not.toThrow();
   });
 
   it("envia HTML e texto ao destinatário e só confirma aceitação pelo SMTP", async () => {
@@ -24,7 +31,7 @@ describe("SmtpService", () => {
       sendMail: vi.fn().mockResolvedValue({ accepted: ["ana@example.com"], rejected: [], messageId: "mail-1" }),
       verify: vi.fn().mockResolvedValue(true), close: vi.fn(),
     };
-    const smtp = new SmtpService(readSmtpConfiguration(env), transport);
+    const smtp = new SmtpService(smtpConfiguration, transport);
     await expect(smtp.send(invitation())).resolves.toEqual({ messageId: "mail-1" });
     expect(transport.sendMail).toHaveBeenCalledWith(expect.objectContaining({
       from: { name: "Cub's", address: "cubs@example.com" },
@@ -43,7 +50,7 @@ describe("SmtpService", () => {
 
   it("recusa destinatário inválido antes de chamar o transporte e não expõe falhas de conexão", async () => {
     const transport = { sendMail: vi.fn(), verify: vi.fn().mockRejectedValue(new Error("secret")), close: vi.fn() };
-    const smtp = new SmtpService(readSmtpConfiguration(env), transport);
+    const smtp = new SmtpService(smtpConfiguration, transport);
     await expect(smtp.send({ ...invitation(), to: { name: "Ana", email: "a@example.com,b@example.com" } })).rejects.toThrow("inválido");
     expect(transport.sendMail).not.toHaveBeenCalled();
     await expect(smtp.verify()).rejects.toThrow("Não foi possível conectar ao SMTP");
@@ -63,16 +70,16 @@ describe("accountVerificationEmail", () => {
 
   it("recusa links inseguros", () => {
     const input = { name: "Ana", email: "ana@example.com", verificationUrl: "javascript:alert(1)" };
-    expect(() => accountVerificationEmail(input)).toThrow("URL");
-    expect(() => accountVerificationEmail({ ...input, verificationUrl: "http://example.com" })).toThrow("HTTPS");
-    expect(() => accountVerificationEmail({
+    expect(() => accountVerificationEmail.create(input)).toThrow("URL");
+    expect(() => accountVerificationEmail.create({ ...input, verificationUrl: "http://example.com" })).toThrow("HTTPS");
+    expect(() => accountVerificationEmail.create({
       ...input,
       verificationUrl: "https://cubs.example.com/pt-br/verify-email/token?redirect=https%3A%2F%2Fevil.example",
     })).toThrow("URL");
   });
 
   it("aceita somente o retorno conhecido para criar organização", () => {
-    const message = accountVerificationEmail({
+    const message = accountVerificationEmail.create({
       name: "Ana",
       email: "ana@example.com",
       verificationUrl: "http://localhost:5173/pt-br/verify-email/token?returnTo=%2Fpt-br%2Forganizations%2Fnew",

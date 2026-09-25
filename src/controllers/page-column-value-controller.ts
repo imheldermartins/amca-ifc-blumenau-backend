@@ -1,87 +1,27 @@
-import db from "@models/index";
-import type { Model } from "@/core/db/model";
-import type { Schema } from "@/models/schemas/index";
-import type { Input } from "@/models/schemas/inputs";
-import { VALUE_CODECS } from "@/services/value-codec";
-import { pageActivityTouchStatement } from '@db/page-activity';
-
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : "Erro no servidor";
+import pageCellStore from "@/db/repositories/page-cell-store";
+import type { PageCellStoreContract } from "@/db/types/page-cell-store.types";
+import type {
+  ServiceFailure,
+  ServiceResult,
+} from "@/controllers/types/service-result.types";
+import type { Input } from "@/db/schemas/inputs";
+import type { Schema } from "@/db/schemas/index";
+import pageCellValueMapper from "@/services/page-cell-value-mapper";
+import type { PageCellValueMapperContract } from "@/services/types/page-cell-value-mapper.types";
 
 /**
- * page_columns_values: este controller é a camada de service (padrão do repo) e
- * concentra TODA a transformação via ColumnValueCodec. O cliente envia/recebe o
- * valor "nu"; o banco guarda o envelope `{"value":<T>}` como string.
+ * Casos de uso da célula identificada por (page_id, page_column_id).
  *
- * A CÉLULA (page_id, page_column_id) tem no máximo UM valor — UNIQUE no banco.
- * As variantes *Value (createValue/getValue/updateValue/deleteValue) endereçam
- * a célula por esse par e devolvem o shape decodificado em ServiceResult (a
- * rota mapeia reason -> StatusCode; célula já preenchida no create -> conflict).
- * Os métodos do IBaseController são acesso BRUTO (não passam pelo codec) e
- * existem só para satisfazer o contrato -- a rota usa as variantes.
+ * O controller coordena a ordem das invariantes e traduz falhas para o contrato
+ * da aplicação. Relação row/column e transações ficam no PageCellStore; a
+ * transformação entre payload, codec e resposta fica no PageCellValueMapper.
+ * Não há CRUD bruto capaz de ignorar essas duas fronteiras.
  */
-export class PageColumnValueController implements IBaseController<Schema.PageColumnValue> {
-  private db: Model<Schema.PageColumnValue> = db.pageColumnValues;
-
-  // --- IBaseController (acesso bruto; a rota usa as variantes com codec) ---
-
-  async all(lookup?: LookupsConfig<Schema.PageColumnValue>) {
-    try {
-      const rows = await this.db.findAll(lookup);
-      if (!rows) throw new Error("No page column values found");
-      return rows;
-    } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return null;
-    }
-  }
-
-  async get(lookup: LookupValues<Schema.PageColumnValue>) {
-    try {
-      const row = await this.db.find(lookup);
-      if (!row) throw new Error("Page column value not found");
-      return row;
-    } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return null;
-    }
-  }
-
-  async create(data: CreateValues<Schema.PageColumnValue>) {
-    try {
-      const created = await this.db.create(data);
-      if (!created) throw new Error("Failed to create page column value");
-      return created;
-    } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return null;
-    }
-  }
-
-  async update(lookup: LookupValues<Schema.PageColumnValue>, data: UpdateValues<Schema.PageColumnValue>) {
-    try {
-      const updated = await this.db.update(data, lookup);
-      if (!updated) throw new Error("Failed to update page column value");
-      const row = await this.db.find(lookup);
-      return row ?? null;
-    } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return null;
-    }
-  }
-
-  async delete(lookup: LookupValues<Schema.PageColumnValue>) {
-    try {
-      const deleted = await this.db.delete(lookup);
-      if (!deleted) throw new Error("Failed to delete page column value");
-      return deleted;
-    } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return false;
-    }
-  }
-
-  // --- Variantes com codec (usadas pela rota; retornam o valor decodificado) ---
+export class PageColumnValueController {
+  public constructor(
+    private readonly cells: PageCellStoreContract = pageCellStore,
+    private readonly values: PageCellValueMapperContract = pageCellValueMapper,
+  ) {}
 
   async createValue(input: Input.CreatePageColumnValue): Promise<ServiceResult<Schema.DecodedColumnValue>> {
     if (!input?.page_column_id) {
@@ -91,116 +31,104 @@ export class PageColumnValueController implements IBaseController<Schema.PageCol
       return { ok: false, reason: "validation", message: "page_id é obrigatório" };
     }
 
-    const column = await this.findColumnForCell(input.page_id, input.page_column_id);
-    if (!column) {
-      return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
-    }
-
-    const codec = VALUE_CODECS[column.type];
-    if (!codec) {
-      return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
-    }
-
-    // Célula já preenchida: o valor é único por (página, coluna) -- use PUT.
-    const occupied = await this.findCell(input.page_id, input.page_column_id);
-    if (occupied) {
-      return { ok: false, reason: "conflict", message: "Valor já existe para esta coluna nesta página" };
-    }
-
-    let typed: unknown;
     try {
-      typed = codec.validate(this.resolveRawValue(column, input), column);
-    } catch (error) {
-      return { ok: false, reason: "validation", message: messageOf(error) };
-    }
+      const column = await this.cells.findColumnForCell(input.page_id, input.page_column_id);
+      if (!column) {
+        return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
+      }
+      if (!this.values.supports(column)) {
+        return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
+      }
 
-    try {
-      const data = codec.encode(typed);
-      const created = await this.db.create({
-        page_id: input.page_id,
-        page_column_id: input.page_column_id,
+      // A célula é única por (página, coluna); criação nunca substitui valor.
+      const occupied = await this.cells.findCell(input.page_id, input.page_column_id);
+      if (occupied) {
+        return { ok: false, reason: "conflict", message: "Valor já existe para esta coluna nesta página" };
+      }
+
+      let data: string;
+      try {
+        data = this.values.encode(column, input);
+      } catch (error) {
+        return this.validationFailure(error);
+      }
+
+      const created = await this.cells.createCell({
+        pageId: input.page_id,
+        columnId: input.page_column_id,
         data,
-      } as unknown as CreateValues<Schema.PageColumnValue>, {
-        after: [pageActivityTouchStatement(input.page_id)],
       });
-
       if (!created) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
-      return { ok: true, data: this.toDecoded(created, column) };
+      return { ok: true, data: this.values.decode(created, column) };
     } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      return this.serverFailure(error);
     }
   }
 
   async updateValue(
-    pageId: string,
-    columnId: string,
+    pageId: NonEmptyString,
+    columnId: NonEmptyString,
     input: Input.UpdatePageColumnValue,
   ): Promise<ServiceResult<Schema.DecodedColumnValue>> {
-    const existing = await this.findCell(pageId, columnId);
-    if (!existing) {
-      return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
-    }
-
-    const column = await this.findColumnForCell(pageId, columnId);
-    if (!column) {
-      return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
-    }
-
-    const codec = VALUE_CODECS[column.type];
-    if (!codec) {
-      return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
-    }
-
-    let typed: unknown;
     try {
-      typed = codec.validate(this.resolveRawValue(column, input), column);
-    } catch (error) {
-      return { ok: false, reason: "validation", message: messageOf(error) };
-    }
+      const existing = await this.cells.findCell(pageId, columnId);
+      if (!existing) {
+        return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
+      }
 
-    try {
-      const payload = { data: codec.encode(typed) } as unknown as UpdateValues<Schema.PageColumnValue>;
-      const lookup = { id: existing.id } as LookupValues<Schema.PageColumnValue>;
+      const column = await this.cells.findColumnForCell(pageId, columnId);
+      if (!column) {
+        return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
+      }
+      if (!this.values.supports(column)) {
+        return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
+      }
 
-      const updated = await this.db.update(payload, lookup, {
-        after: [pageActivityTouchStatement(pageId)],
+      let data: string;
+      try {
+        data = this.values.encode(column, input);
+      } catch (error) {
+        return this.validationFailure(error);
+      }
+
+      const updated = await this.cells.updateCell({
+        cellId: existing.id,
+        pageId,
+        data,
       });
       if (!updated) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
-      const row = await this.db.find(lookup);
-      if (!row) return { ok: false, reason: "server_error", message: "Erro no servidor" };
-
-      return { ok: true, data: this.toDecoded(row, column) };
+      return { ok: true, data: this.values.decode(updated, column) };
     } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      return this.serverFailure(error);
     }
   }
 
-  async getValue(pageId: string, columnId: string): Promise<ServiceResult<Schema.DecodedColumnValue>> {
+  async getValue(
+    pageId: NonEmptyString,
+    columnId: NonEmptyString,
+  ): Promise<ServiceResult<Schema.DecodedColumnValue>> {
     try {
-      const row = await this.findCell(pageId, columnId);
+      const row = await this.cells.findCell(pageId, columnId);
       if (!row) {
         return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
       }
 
-      const column = await this.findColumnForCell(pageId, columnId);
-      if (!column || !VALUE_CODECS[column.type]) {
+      const column = await this.cells.findColumnForCell(pageId, columnId);
+      if (!column || !this.values.supports(column)) {
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
 
-      return { ok: true, data: this.toDecoded(row, column) };
+      return { ok: true, data: this.values.decode(row, column) };
     } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      return this.serverFailure(error);
     }
   }
 
-  async deleteValue(pageId: string, columnId: string): Promise<ServiceResult<null>> {
+  async deleteValue(pageId: NonEmptyString, columnId: NonEmptyString): Promise<ServiceResult<null>> {
     try {
-      const row = await this.findCell(pageId, columnId);
+      const row = await this.cells.findCell(pageId, columnId);
       if (!row) {
         return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
       }
@@ -208,88 +136,32 @@ export class PageColumnValueController implements IBaseController<Schema.PageCol
       // A coluna precisa pertencer à parent DIRETA da página-linha. Sem esta
       // checagem, qualquer columnId conhecido podia ser combinado com uma row
       // acessível e apagar uma célula cruzada entre duas databases.
-      const column = await this.findColumnForCell(pageId, columnId);
+      const column = await this.cells.findColumnForCell(pageId, columnId);
       if (!column) {
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
 
-      const deleted = await this.db.delete(
-        { id: row.id } as LookupValues<Schema.PageColumnValue>,
-        { after: [pageActivityTouchStatement(pageId)] },
-      );
+      const deleted = await this.cells.deleteCell(row.id, pageId);
       if (!deleted) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
       return { ok: true, data: null };
     } catch (error) {
-      if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
-      return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      return this.serverFailure(error);
     }
   }
 
-  // A célula é o par (page_id, page_column_id) -- único no banco.
-  private async findCell(pageId: string | null | undefined, columnId: string | null | undefined) {
-    if (!pageId || !columnId) return null;
-    return this.db.find(
-      { page_id: pageId, page_column_id: columnId } as LookupValues<Schema.PageColumnValue>,
-    );
-  }
-
-  /**
-   * Resolve a coluna somente quando ela pertence à parent DIRETA da row.
-   *
-   * `page_columns.parent_id` define a database dona da coluna e `page_edges`
-   * liga essa parent à página-filha usada como linha. Validar apenas a
-   * existência isolada dos dois ids aceitava combinações entre databases.
-   * O mesmo 404 de coluna cobre ausência e relação inválida, sem revelar ids.
-   */
-  private async findColumnForCell(
-    pageId: string | null | undefined,
-    columnId: string | null | undefined,
-  ): Promise<Schema.PageColumn | null> {
-    if (!pageId || !columnId) return null;
-
-    const column = await db.pageColumns.find(
-      { id: columnId } as LookupValues<Schema.PageColumn>,
-    );
-    if (!column?.parent_id) return null;
-
-    const edge = await db.pageEdges.find({
-      parent_id: column.parent_id,
-      child_id: pageId,
-    } as LookupValues<Schema.PageEdge>);
-
-    return edge ? column : null;
-  }
-
-  // Resolve o valor "nu" do payload dinâmico: coluna `date` aceita
-  // { startDate, endDate } (vira "start@end"), só startDate (data única) ou { value };
-  // os demais tipos usam sempre `value`.
-  private resolveRawValue(
-    column: Schema.PageColumn,
-    input: { value?: unknown; startDate?: string; endDate?: string },
-  ): unknown {
-    if (column.type !== "date") return input.value;
-
-    const { startDate, endDate, value } = input;
-    if (startDate !== undefined && endDate !== undefined) return `${startDate}@${endDate}`;
-    if (startDate !== undefined) return startDate;
-    if (endDate !== undefined) return endDate;
-    return value;
-  }
-
-  // Monta a resposta decodificada (sem envelope) a partir do row + a coluna dona.
-  private toDecoded(row: Schema.PageColumnValue, column: Schema.PageColumn): Schema.DecodedColumnValue {
-    const codec = VALUE_CODECS[column.type];
+  private validationFailure(error: unknown): ServiceFailure {
     return {
-      id: row.id,
-      page_id: row.page_id,
-      page_column_id: row.page_column_id,
-      type: column.type,
-      // `data` não passa por jsonColumns: chega como string crua -> codec decodifica.
-      value: codec.decode(row.data as unknown as string),
+      ok: false,
+      reason: "validation",
+      message: error instanceof Error ? error.message : "Erro no servidor",
     };
   }
 
+  private serverFailure(error: unknown): ServiceFailure {
+    if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
+    return { ok: false, reason: "server_error", message: "Erro no servidor" };
+  }
 }
 
 // Singleton: as rotas importam direto, sem conhecer req/res.

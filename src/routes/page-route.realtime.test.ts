@@ -10,24 +10,29 @@ const COLUMN_ID = "01KXDN4B3X8J9NXGSTMK8PRFMF";
 const VIEW_ID = "01KXVVKQ5DC06250MCYVHMJP1V";
 
 const doubles = vi.hoisted(() => ({
-  readPageLatestUpdatedAt: vi.fn(),
   page: {
     all: vi.fn(),
     get: vi.fn(),
+    latestUpdatedAt: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+  },
+  hierarchy: {
     createChild: vi.fn(),
     getDataset: vi.fn(),
     getBreadcrumb: vi.fn(),
+    getParentId: vi.fn(),
   },
   column: {
     all: vi.fn(),
     get: vi.fn(),
     createColumn: vi.fn(),
     updateColumn: vi.fn(),
-    resetColumn: vi.fn(),
     deleteColumn: vi.fn(),
+  },
+  columnReset: {
+    resetColumn: vi.fn(),
   },
   value: {
     createValue: vi.fn(),
@@ -45,14 +50,20 @@ const doubles = vi.hoisted(() => ({
     createView: vi.fn(),
     duplicateView: vi.fn(),
     deleteView: vi.fn(),
+    reorderViews: vi.fn(),
+  },
+  viewPatch: {
     updateFilters: vi.fn(),
     patchView: vi.fn(),
-    reorderViews: vi.fn(),
+  },
+  filterKeys: {
+    inspect: vi.fn(),
     reconcile: vi.fn(),
   },
   access: {
     canAccessPage: vi.fn(),
-    getParentId: vi.fn(),
+    canUpdatePage: vi.fn(),
+    canReadSubpages: vi.fn(),
     listSharedPages: vi.fn(),
   },
   publisher: {
@@ -67,15 +78,20 @@ const doubles = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@db/scoped-access-store", async (load) => ({...await load<object>(),default:{can: (_scope:string,id:string,userId:string) => doubles.access.canAccessPage(userId,id)}}));
+vi.mock("@/db/repositories/scoped-access-store", async (load) => ({...await load<object>(),default:{can: (_scope:string,id:string,userId:string) => doubles.access.canAccessPage(userId,id)}}));
 vi.mock("@/controllers/page-controller", () => ({ default: doubles.page }));
-vi.mock('@db/page-activity', () => ({ readPageLatestUpdatedAt: doubles.readPageLatestUpdatedAt }));
+vi.mock("@/controllers/page-hierarchy-controller", () => ({ default: doubles.hierarchy }));
 vi.mock("@/controllers/page-column-controller", () => ({ default: doubles.column }));
+vi.mock("@/controllers/page-column-reset-controller", () => ({ default: doubles.columnReset }));
 vi.mock("@/controllers/page-column-value-controller", () => ({ default: doubles.value }));
 vi.mock("@/controllers/page-collaborator-controller", () => ({
   default: doubles.collaborators,
 }));
 vi.mock("@/controllers/page-view-controller", () => ({ default: doubles.view }));
+vi.mock("@/controllers/page-view-patch-controller", () => ({ default: doubles.viewPatch }));
+vi.mock("@/controllers/page-filter-key-reconciliation-controller", () => ({
+  default: doubles.filterKeys,
+}));
 vi.mock("@/controllers/page-access-controller", () => ({ default: doubles.access }));
 vi.mock("@/services/realtime/page-realtime-publisher", () => ({ default: doubles.publisher }));
 vi.mock("@/services/auth/middleware", () => ({
@@ -110,7 +126,8 @@ afterAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   doubles.access.canAccessPage.mockResolvedValue(true);
-  doubles.access.getParentId.mockResolvedValue(PARENT_ID);
+  doubles.access.canUpdatePage.mockResolvedValue(true);
+  doubles.hierarchy.getParentId.mockResolvedValue(PARENT_ID);
 });
 
 async function request(
@@ -131,7 +148,7 @@ async function request(
 describe("PageRouter: publicação realtime somente pós-commit", () => {
   it('retorna a última edição calculada em GET sem coluna persistida', async () => {
     doubles.page.get.mockResolvedValueOnce({ id: PAGE_ID, title: 'Base', updated_at: '2026-09-14 10:00:00' });
-    doubles.readPageLatestUpdatedAt.mockResolvedValueOnce('2026-09-14 11:30:00');
+    doubles.page.latestUpdatedAt.mockResolvedValueOnce('2026-09-14 11:30:00');
 
     const response = await request(`/pages/${PAGE_ID}`, 'GET');
     expect(response.status).toBe(200);
@@ -139,7 +156,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
       id: PAGE_ID,
       latest_updated_at: '2026-09-14 11:30:00',
     });
-    expect(doubles.readPageLatestUpdatedAt).toHaveBeenCalledWith(PAGE_ID);
+    expect(doubles.page.latestUpdatedAt).toHaveBeenCalledWith(PAGE_ID);
   });
 
   it("publica o resultado autoritativo de title/data uma vez e não publica em falha", async () => {
@@ -169,13 +186,13 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
   });
 
   it("produz uma notificação estrutural por criação/exclusão confirmada", async () => {
-    doubles.page.createChild.mockResolvedValueOnce({ id: ROW_ID, title: null, data: {} });
+    doubles.hierarchy.createChild.mockResolvedValueOnce({ id: ROW_ID, title: null, data: {} });
     expect((await request(`/pages/${PAGE_ID}/page`, "POST", {})).status).toBe(201);
     expect(doubles.publisher.rowCreated).toHaveBeenCalledOnce();
 
     doubles.page.delete.mockResolvedValueOnce(true);
     expect((await request(`/pages/${ROW_ID}`, "DELETE")).status).toBe(204);
-    expect(doubles.access.getParentId).toHaveBeenCalledWith(ROW_ID);
+    expect(doubles.hierarchy.getParentId).toHaveBeenCalledWith(ROW_ID);
     expect(doubles.publisher.rowDeleted).toHaveBeenCalledOnce();
 
     const column = { id: COLUMN_ID, parent_id: PAGE_ID, name: "Nova", type: "text", data: {} };
@@ -222,7 +239,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
       { rowId: PAGE_ID, value: 0 },
       { rowId: PARENT_ID, value: "" },
     ];
-    doubles.column.resetColumn.mockResolvedValueOnce({
+    doubles.columnReset.resetColumn.mockResolvedValueOnce({
       ok: true,
       data: { column, resetCells },
     });
@@ -312,7 +329,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
       passthrough: [],
     };
     const data = { [VIEW_ID]: { view: "table", name: "Tabela", filters } };
-    doubles.view.updateFilters.mockResolvedValueOnce({
+    doubles.viewPatch.updateFilters.mockResolvedValueOnce({
       ok: true,
       data: { viewId: VIEW_ID, filters, data },
     });
@@ -333,7 +350,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
     });
 
     doubles.publisher.pageChanged.mockClear();
-    doubles.view.updateFilters.mockResolvedValueOnce({
+    doubles.viewPatch.updateFilters.mockResolvedValueOnce({
       ok: false,
       reason: "validation",
       message: "inválido",
@@ -349,7 +366,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
   it("patch atômico e reconcile emitem apenas os fatos efetivamente alterados", async () => {
     const view = { view: "table", name: "Tabela", columnWidths: { [COLUMN_ID]: 320 } };
     const data = { [VIEW_ID]: view };
-    doubles.view.patchView.mockResolvedValueOnce({
+    doubles.viewPatch.patchView.mockResolvedValueOnce({
       ok: true,
       data: { viewId: VIEW_ID, view, data, changed: true },
     });
@@ -361,7 +378,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
     expect(doubles.publisher.pageChanged).toHaveBeenCalledOnce();
 
     vi.clearAllMocks();
-    doubles.view.patchView.mockResolvedValueOnce({
+    doubles.viewPatch.patchView.mockResolvedValueOnce({
       ok: true,
       data: { viewId: VIEW_ID, view, data, changed: false },
     });
@@ -370,7 +387,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
     expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
 
     const column = { id: COLUMN_ID, parent_id: PAGE_ID, name: "Área", type: "text", data: {} };
-    doubles.view.reconcile.mockResolvedValueOnce({
+    doubles.filterKeys.reconcile.mockResolvedValueOnce({
       ok: true,
       data: {
         pageId: PAGE_ID,
@@ -387,7 +404,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
 
     doubles.publisher.columnUpdated.mockClear();
     doubles.publisher.pageChanged.mockClear();
-    doubles.view.reconcile.mockResolvedValueOnce({
+    doubles.filterKeys.reconcile.mockResolvedValueOnce({
       ok: true,
       data: {
         pageId: PAGE_ID,
@@ -489,7 +506,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
   });
 
   it("não publica patch ou reconcile quando o commit é recusado", async () => {
-    doubles.view.patchView.mockResolvedValueOnce({
+    doubles.viewPatch.patchView.mockResolvedValueOnce({
       ok: false,
       reason: "not_found",
       message: "View não encontrada",
@@ -500,7 +517,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
       { columnWidths: { [COLUMN_ID]: 320 } },
     )).status).toBe(404);
 
-    doubles.view.reconcile.mockResolvedValueOnce({
+    doubles.filterKeys.reconcile.mockResolvedValueOnce({
       ok: false,
       reason: "server_error",
       message: "Erro no servidor",
@@ -523,7 +540,7 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
 
     expect(response.status).toBe(403);
     expect(doubles.access.canAccessPage).toHaveBeenCalledWith(USER_ID, PAGE_ID);
-    expect(doubles.view.updateFilters).not.toHaveBeenCalled();
+    expect(doubles.viewPatch.updateFilters).not.toHaveBeenCalled();
     expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
   });
 });

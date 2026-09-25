@@ -1,4 +1,4 @@
-import type { Schema } from "@/models/schemas/index";
+import type { Schema } from "@/db/schemas/index";
 
 export type PublicKeyFallback = "coluna" | "opcao" | "view";
 

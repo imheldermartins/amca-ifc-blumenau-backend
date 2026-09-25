@@ -3,9 +3,10 @@ import db from "@models/index";
 import workspaceStore, {
   type WorkspaceMemberSummary,
   type WorkspaceSummary,
-} from "@db/workspace-store";
-import accessStore, { ULID_RE } from "@db/scoped-access-store";
-import type { Schema } from "@/models/schemas/index";
+} from "@/db/repositories/workspace-store";
+import accessStore from "@/db/repositories/scoped-access-store";
+import { ULID_RE } from "@/utils/ulid";
+import type { Schema } from "@/db/schemas/index";
 import { isWorkspaceIcon } from "@/services/workspace-icon";
 import type { WorkspaceMutationResult } from "@/controllers/types/workspace-controller.types";
 export type { WorkspaceMutationResult } from "@/controllers/types/workspace-controller.types";

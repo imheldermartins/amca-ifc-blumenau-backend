@@ -1,8 +1,8 @@
-import roleStore from "@db/role-store";
+import roleStore from "@/db/repositories/role-store";
 import bcrypt from "bcryptjs";
 import { ulid } from "ulid";
 import db from "@models/index";
-import type { Schema } from "@/models/schemas/index";
+import type { Schema } from "@/db/schemas/index";
 import { VALUE_CODECS } from "@/services/value-codec";
 import type { SeedProfessor } from "@/core/scripts/types/seed.types";
 

@@ -5,6 +5,10 @@ import middleware from "@/services/auth/middleware";
 import { StatusCode } from "@/services/http/status-code";
 
 export class InviteRouter extends ApplicationRouter {
+  public constructor() {
+    super();
+  }
+
   protected registerRoutes(): void {
     this.router.get("/:token", this.preview.bind(this));
     this.router.post("/:token/accept", middleware.handle, this.accept.bind(this));

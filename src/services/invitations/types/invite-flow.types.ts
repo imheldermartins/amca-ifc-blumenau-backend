@@ -1,4 +1,4 @@
-import type { InviteRecord } from "@db/access-invite-store";
+import type { InviteRecord } from "@/db/repositories/access-invite-store";
 
 export interface SendInviteInput {
   scopeId: string;

@@ -1,8 +1,8 @@
 import { ulid } from 'ulid';
-import accessInviteStore from '@db/access-invite-store';
-import roleStore from '@db/role-store';
-import scopedAccess from '@db/scoped-access-store';
-import { SystemRoleFactory } from '@db/system-role-factory';
+import accessInviteStore from '@/db/repositories/access-invite-store';
+import roleStore from '@/db/repositories/role-store';
+import scopedAccess from '@/db/repositories/scoped-access-store';
+import { SystemRoleFactory } from '@/db/repositories/system-role-factory';
 import { canDelegate, type AccessScope } from '@/services/auth/permissions';
 import { SmtpService } from '@/services/mail/smtp-service';
 import { accessInviteEmail } from '@/services/mail/access-invite-email';
@@ -30,6 +30,19 @@ export abstract class InviteFlow {
       if (target.isMember || target.user?.id === grant.ownerId) return { ok: false, reason: 'already_member' };
     }
     const token = createOpaqueToken('cubs_invite_v1_');
+    const origin = process.env.APP_PUBLIC_URL?.trim();
+    let inviteUrl: string | null = null;
+    try {
+      inviteUrl = origin
+        ? new URL(`/pt-br/invite/${encodeURIComponent(token)}`, origin).toString()
+        : null;
+    } catch {
+      inviteUrl = null;
+    }
+    // Um convite genérico só pode ser consumido pelo link; sem URL ele seria
+    // persistido sem qualquer forma de entrega ou recuperação do token.
+    if (!recipientEmail && !inviteUrl) return { ok: false, reason: 'failed' };
+
     const id = ulid();
     const created = await accessInviteStore.create({
       id,
@@ -47,10 +60,6 @@ export abstract class InviteFlow {
     const invite = await accessInviteStore.getById(id);
     if (!invite) return { ok: false, reason: 'failed' };
 
-    const origin = process.env.APP_PUBLIC_URL;
-    const inviteUrl = origin
-      ? new URL(`/pt-br/invite/${encodeURIComponent(token)}`, origin).toString()
-      : null;
     if (!recipientEmail) {
       return { ok: true, invite, inviteUrl, notificationPending: false };
     }

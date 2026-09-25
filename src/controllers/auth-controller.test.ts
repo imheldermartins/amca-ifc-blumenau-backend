@@ -6,14 +6,14 @@ const doubles = vi.hoisted(() => ({
   compare: vi.fn(),
   issueTokenPair: vi.fn(),
   findUserByCanonicalEmail: vi.fn(),
-  getInviteByTokenHash: vi.fn(),
+  resolveInviteForRegistration: vi.fn(),
   beginVerification: vi.fn(),
   previewVerification: vi.fn(),
   resendVerification: vi.fn(),
   completeVerification: vi.fn(),
 }));
 
-vi.mock("@/core/db/model", () => ({
+vi.mock("@/db/repositories/model", () => ({
   Model: class {
     find = doubles.usersFind;
     update = doubles.usersUpdate;
@@ -21,11 +21,11 @@ vi.mock("@/core/db/model", () => ({
 }));
 vi.mock("bcryptjs", () => ({ default: { compare: doubles.compare } }));
 vi.mock("@/services/auth/jwt-service", () => ({ default: { issueTokenPair: doubles.issueTokenPair } }));
-vi.mock("@db/auth-onboarding-store", () => ({
+vi.mock("@/db/repositories/auth-onboarding-store", () => ({
   default: { findUserByCanonicalEmail: doubles.findUserByCanonicalEmail },
 }));
-vi.mock("@db/access-invite-store", () => ({
-  default: { getByTokenHash: doubles.getInviteByTokenHash },
+vi.mock("@/services/invitations/invite-token-service", () => ({
+  default: { resolveForRegistration: doubles.resolveInviteForRegistration },
 }));
 vi.mock("@/services/account-verification", () => ({
   default: {
@@ -45,8 +45,8 @@ const user = {
   password_hash: "bcrypt-hash",
   email_verified_at: "2026-09-12T12:00:00.000Z",
   token_version: 0,
-  created_at: new Date(),
-  updated_at: new Date(),
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
 };
 const verificationStarted = {
   ok: true as const,
@@ -89,6 +89,45 @@ describe("AuthController onboarding", () => {
       .resolves.toEqual({ ok: false, reason: "validation" });
 
     expect(doubles.findUserByCanonicalEmail).not.toHaveBeenCalled();
+    expect(doubles.beginVerification).not.toHaveBeenCalled();
+  });
+
+  it("resolve o convite pelo serviço e vincula seu id à verificação", async () => {
+    doubles.findUserByCanonicalEmail.mockResolvedValueOnce(null);
+    doubles.resolveInviteForRegistration.mockResolvedValueOnce({
+      valid: true,
+      inviteId: "01KXDN4AXN6QJBTZTCWP1JWVW5",
+    });
+    doubles.beginVerification.mockResolvedValueOnce(verificationStarted);
+
+    await expect(authController.register({
+      name: "Helder da Silva",
+      email: "HELDER@IFC.ESTUDANTES.EDU.BR",
+      inviteToken: "cubs_invite_v1_token-validado-pelo-servico-0000000000000000000000",
+    })).resolves.toMatchObject({ ok: true, verificationRequired: true });
+
+    expect(doubles.resolveInviteForRegistration).toHaveBeenCalledWith(
+      "cubs_invite_v1_token-validado-pelo-servico-0000000000000000000000",
+      "helder@ifc.estudantes.edu.br",
+    );
+    expect(doubles.beginVerification).toHaveBeenCalledWith({
+      name: "Helder da Silva",
+      email: "helder@ifc.estudantes.edu.br",
+      inviteId: "01KXDN4AXN6QJBTZTCWP1JWVW5",
+      context: { kind: "invite" },
+    });
+  });
+
+  it("rejeita um convite que o serviço não resolve para o e-mail", async () => {
+    doubles.findUserByCanonicalEmail.mockResolvedValueOnce(null);
+    doubles.resolveInviteForRegistration.mockResolvedValueOnce({ valid: false });
+
+    await expect(authController.register({
+      name: "Helder da Silva",
+      email: "helder@ifc.estudantes.edu.br",
+      inviteToken: "convite-invalido",
+    })).resolves.toEqual({ ok: false, reason: "invalid_invite" });
+
     expect(doubles.beginVerification).not.toHaveBeenCalled();
   });
 

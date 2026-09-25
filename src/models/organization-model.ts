@@ -1,6 +1,5 @@
-import { Model } from "@/core/db/model";
-import type { Schema } from "@/models/schemas/index";
+import { Model } from "@/db/repositories/model";
+import type { Schema } from "@/db/schemas/index";
+import { schemaRegistry } from '@/db/generated/schema';
 
-export const organizations = new Model<Schema.Organization>("organizations", {
-  jsonColumns: ["data"],
-});
+export const organizations = new Model<Schema.Organization>(schemaRegistry.organizations);

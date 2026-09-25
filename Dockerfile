@@ -16,6 +16,7 @@ FROM node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e
 WORKDIR /app
 COPY --from=build-dependencies /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
+COPY rqlite.config.ts ./
 COPY scripts/copy-mail-templates.mjs ./scripts/copy-mail-templates.mjs
 COPY src ./src
 RUN npm run build

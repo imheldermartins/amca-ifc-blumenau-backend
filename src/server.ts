@@ -1,4 +1,5 @@
 import HttpServer from "@/services/http/http-server";
+import {db} from '@/db/client-db';
 import authRouter from "@routes/auth-route";
 import userRouter from "@routes/user-route";
 import pageRouter from "@routes/page-route";
@@ -17,4 +18,6 @@ const server = new HttpServer([
   { path: "/auth", router: authRouter },
 ]);
 
+await db.waitForDatabase();
+await db.assertReady();
 server.start();

@@ -1,11 +1,9 @@
 import type { Request, Response } from "express";
 import { ApplicationRouter } from "@routes/application-router";
-import databaseHealthService, {
-  type DatabaseHealthService,
-} from "@/services/http/database-health-service";
+import {db} from '@/db/client-db';
 
 export class HealthRouter extends ApplicationRouter {
-  public constructor(private readonly databaseHealth: DatabaseHealthService = databaseHealthService) {
+  public constructor(private readonly databaseHealth: Pick<typeof db, 'isReady'> = db) {
     super();
   }
 

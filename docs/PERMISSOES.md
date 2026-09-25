@@ -153,10 +153,18 @@ devem ser atualizados juntos.
 
 ## Validação
 
-`npm test` cobre contratos, SMTP com transporte injetado, templates, migração com
-dados legados e autorização. Para integração com uma base descartável, publique
-rqlite em `127.0.0.1:18012`, aplique migrations e execute
-`RUN_RQLITE_INTEGRATION=1 DB_RAFT_PORT=18012 npm test -- src/core/db/scoped-access.integration.test.ts`
-(em PowerShell, defina as duas variáveis com `$env:` antes do comando).
-O script recusa outra porta. Não execute seed sobre a base de desenvolvimento
-para testar a migração.
+`npm test` cobre contratos, SMTP com transporte injetado, templates e
+autorização. Para integração com uma base descartável, use o Compose de testes,
+aplique a migration inicial do cliente e execute:
+
+```powershell
+docker compose -p cubs-rqlite-test -f docker/docker-compose.rqlite-test.yml up -d
+npx rqlite migrate --environment test
+$env:RUN_RQLITE_INTEGRATION = '1'
+npm test -- src/db/repositories/scoped-access.integration.test.ts
+Remove-Item Env:RUN_RQLITE_INTEGRATION
+```
+
+O teste exige `DATABASE_URL=http://127.0.0.1:18012`, configurado em
+`vitest.config.ts`. Não execute seed na base de desenvolvimento para testar
+esse fluxo.

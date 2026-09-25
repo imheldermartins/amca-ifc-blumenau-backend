@@ -1,13 +1,12 @@
-import { Model } from '@/core/db/model';
+import { Model } from '@/db/repositories/model';
 import bcrypt from 'bcryptjs';
-import type { Schema } from '@/models/schemas/index';
+import type { Schema } from '@/db/schemas/index';
 import jwtService from '@/services/auth/jwt-service';
 import type { TokenPair } from '@/services/auth/types/jwt.types';
-import authOnboardingStore from '@db/auth-onboarding-store';
-import accessInviteStore from '@db/access-invite-store';
+import authOnboardingStore from '@/db/repositories/auth-onboarding-store';
 import accountVerification from '@/services/account-verification';
+import inviteTokenService from '@/services/invitations/invite-token-service';
 import type { BeginVerificationResult, VerificationPreview } from '@/services/types/account-verification.types';
-import { hashOpaqueToken, isOpaqueToken } from '@/services/opaque-token';
 import type {
   LoginInput,
   LoginResult,
@@ -39,13 +38,9 @@ export class AuthController {
       if (existing?.email_verified_at) return { ok: false, reason: 'email_taken' };
       let inviteId: string | null = null;
       if (input.inviteToken !== undefined) {
-        if (!isOpaqueToken(input.inviteToken, 'cubs_invite_v1_')) return { ok: false, reason: 'invalid_invite' };
-        const invite = await accessInviteStore.getByTokenHash(hashOpaqueToken(input.inviteToken));
-        if (!invite || invite.status !== 'pending'
-          || (invite.recipientEmail && invite.recipientEmail !== values.email)) {
-          return { ok: false, reason: 'invalid_invite' };
-        }
-        inviteId = invite.id;
+        const invite = await inviteTokenService.resolveForRegistration(input.inviteToken, values.email);
+        if (!invite.valid) return { ok: false, reason: 'invalid_invite' };
+        inviteId = invite.inviteId;
       }
       const returnTo = this.cleanReturnTo(input.returnTo);
       return this.mapBegin(await accountVerification.begin({

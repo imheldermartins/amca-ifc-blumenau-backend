@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Schema } from "@models/schemas/index";
+import type { Schema } from "@/db/schemas/index";
 
 const db = vi.hoisted(() => ({
   columns: {
@@ -35,8 +35,8 @@ const OTHER_COLUMN_ID = "01KXVZ00000000000000000003";
 const OPTION_ID = "01KXVZ00000000000000000004";
 const NEW_OPTION_ID = "01KXVZ00000000000000000005";
 const dates = {
-  created_at: new Date("2026-08-01T00:00:00.000Z"),
-  updated_at: new Date("2026-08-02T00:00:00.000Z"),
+  created_at: "2026-08-01T00:00:00.000Z",
+  updated_at: "2026-08-02T00:00:00.000Z",
   deleted_at: null,
 };
 

@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "baseline": {
+    "formatVersion": 1,
+    "tables": [],
+    "opaque": []
+  },
+  "baselineCatalog": "[]",
+  "legacy": [],
+  "entries": [
+    {
+      "id": "20260924235507356_619638ca_initial_schema_from_decorators",
+      "file": "20260924235507356_619638ca_initial_schema_from_decorators.ts",
+      "snapshot": "20260924235507356_619638ca_initial_schema_from_decorators.snapshot.json",
+      "checksum": "cc48d9bc1173779614ffaa2fcce8b8c22d957c34647d9df398e8a0dc7ae571fb"
+    }
+  ]
+}

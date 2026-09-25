@@ -1,9 +1,6 @@
-import { Model } from "@/core/db/model";
-import { SoftDeleteSolution } from "@db/soft-delete-solution";
-import { type Schema } from "@models/schemas/index";
+import { Model } from "@/db/repositories/model";
+import { schemaRegistry } from '@/db/generated/schema';
+import { type Schema } from "@/db/schemas/index";
 
-const pages = new Model<Schema.Page>("pages", {
-  jsonColumns: ["data"],
-  deleteSolution: new SoftDeleteSolution<Schema.Page>("deleted_at"),
-});
+const pages = new Model<Schema.Page>(schemaRegistry.pages);
 export { pages };

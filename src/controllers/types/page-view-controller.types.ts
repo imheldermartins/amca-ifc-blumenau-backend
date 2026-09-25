@@ -1,17 +1,19 @@
-import type { Schema } from "@/models/schemas/index";
+import type {
+  ServiceFailure,
+  ServiceResult,
+} from "@/controllers/types/service-result.types";
+import type { JsonRecord } from "@/services/types/json.types";
 
-export type JsonRecord = Record<string, unknown>;
-
-export interface PageViewPatchResult {
-  viewId: string;
-  view: JsonRecord;
-  data: JsonRecord;
-  changed: boolean;
-}
+export type { JsonRecord } from "@/services/types/json.types";
 
 export interface PageViewCreateResult {
   viewId: string;
   view: JsonRecord;
+  data: JsonRecord;
+}
+
+export interface PageViewDeleteResult {
+  viewId: string;
   data: JsonRecord;
 }
 
@@ -21,33 +23,5 @@ export interface PageViewOrderResult {
   changed: boolean;
 }
 
-export interface FilterWriteResult {
-  viewId: string;
-  filters: Schema.ViewFiltersV2;
-  data: JsonRecord;
-}
-
-export interface FilterKeyCatalog {
-  views: Array<{ id: string; urlKey: Schema.PublicKeyMetadata }>;
-  columns: Array<{
-    id: string;
-    publicKey: Schema.PublicKeyMetadata;
-    options: Array<{ id: string; publicKey: Schema.PublicKeyMetadata }>;
-  }>;
-}
-
-export interface FilterKeyReconcileResult {
-  pageId: string;
-  data: JsonRecord;
-  columns: Schema.PageColumn[];
-  catalog: FilterKeyCatalog;
-  changedPage: boolean;
-  changedColumnIds: string[];
-}
-
-export type PageViewFailure = {
-  ok: false;
-  reason: "not_found" | "validation" | "conflict" | "server_error";
-  message: string;
-};
-export type PageViewResult<T> = { ok: true; data: T } | PageViewFailure;
+export type PageViewFailure = ServiceFailure;
+export type PageViewResult<T> = ServiceResult<T>;

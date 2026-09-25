@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import workspacesController from "@/controllers/workspaces-controller";
 import type { WorkspaceMutationResult } from "@/controllers/types/workspace-controller.types";
-import type { Input } from "@/models/schemas/inputs";
+import type { Input } from "@/db/schemas/inputs";
 import { ApplicationRouter } from "@/routes/application-router";
 import middleware from "@/services/auth/middleware";
 import { requireWorkspaceAbility } from "@/services/auth/workspace-access-middleware";

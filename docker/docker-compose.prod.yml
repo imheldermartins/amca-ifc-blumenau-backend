@@ -32,8 +32,8 @@ services:
       context: ..
     container_name: cubs-backend
     env_file: ./backend.prod.env
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       rqlite:
         condition: service_healthy

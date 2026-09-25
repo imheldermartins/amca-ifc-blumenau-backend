@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import userController from "@/controllers/user-controller";
-import type { Schema } from "@/models/schemas/index";
-import type { Input } from "@/models/schemas/inputs";
+import type { Schema } from "@/db/schemas/index";
+import type { Input } from "@/db/schemas/inputs";
 import { BaseRouter } from "@routes/base-router";
 import type { RouteOperation } from "@/routes/types/router.types";
 import middleware from "@/services/auth/middleware";

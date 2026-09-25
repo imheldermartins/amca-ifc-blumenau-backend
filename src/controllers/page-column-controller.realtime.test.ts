@@ -19,8 +19,8 @@ vi.mock("@models/index", () => ({
   },
 }));
 
-import pageColumnController from "@controllers/page-column-controller";
-import type { Schema } from "@models/schemas/index";
+import pageColumnResetController from "@controllers/page-column-reset-controller";
+import type { Schema } from "@/db/schemas/index";
 
 const PAGE_ID = "01KXDN4B182DJGAKPX0940H54N";
 const ROW_ID = "01KXDN4B7A7MYYCTQS1K452QKW";
@@ -36,7 +36,7 @@ beforeEach(() => {
   dbMocks.values.delete.mockResolvedValue(true);
 });
 
-describe("PageColumnController: resultado autoritativo do reset", () => {
+describe("PageColumnResetController: resultado autoritativo do reset", () => {
   it.each([
     ["text", ""],
     ["numeric", 0],
@@ -46,8 +46,8 @@ describe("PageColumnController: resultado autoritativo do reset", () => {
   ] as const)("expõe o valor persistido para reset de %s", async (type, expectedValue) => {
     const existing = {
       id: COLUMN_ID,
-      created_at: new Date("2026-08-15T19:00:00.000Z"),
-      updated_at: new Date("2026-08-15T20:00:00.000Z"),
+      created_at: "2026-08-15T19:00:00.000Z",
+      updated_at: "2026-08-15T20:00:00.000Z",
       deleted_at: null,
       parent_id: PAGE_ID,
       name: "Coluna",
@@ -71,7 +71,7 @@ describe("PageColumnController: resultado autoritativo do reset", () => {
       },
     ]);
 
-    const result = await pageColumnController.resetColumn({
+    const result = await pageColumnResetController.resetColumn({
       id: COLUMN_ID,
       parent_id: PAGE_ID,
     });

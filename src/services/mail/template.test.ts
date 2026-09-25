@@ -15,7 +15,7 @@ describe("Template", () => {
   });
 
   it("gera a solicitação com os dados do solicitante e um link para revisão", () => {
-    const message = membershipRequestEmail({
+    const message = membershipRequestEmail.create({
       recipient: { name: "Ana", email: "ana@example.com" },
       requester: { name: "Bia <Equipe>", email: "bia@example.com" },
       scopeName: "Pesquisa", scopeType: "Workspace",

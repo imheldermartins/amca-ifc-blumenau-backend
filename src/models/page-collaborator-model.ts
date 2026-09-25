@@ -1,8 +1,6 @@
-import { Model } from "@/core/db/model";
-import { type Schema } from "@models/schemas/index";
-import { SoftDeleteSolution } from "@db/soft-delete-solution";
+import { Model } from "@/db/repositories/model";
+import { type Schema } from "@/db/schemas/index";
+import { schemaRegistry } from '@/db/generated/schema';
 
-const pageCollaborators = new Model<Schema.PageCollaborator>("page_collaborators", {
-  deleteSolution: new SoftDeleteSolution<Schema.PageCollaborator>('deleted_at'),
-});
+const pageCollaborators = new Model<Schema.PageCollaborator>(schemaRegistry.page_collaborators);
 export { pageCollaborators };

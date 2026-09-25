@@ -4,8 +4,12 @@ import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ulid } from 'ulid';
+import db from '@models/index';
+import jwtService from '@/services/auth/jwt-service';
+import bcrypt from 'bcryptjs';
+import type { Schema } from '@/db/schemas/index';
 
-if (process.env.DB_RAFT_PORT !== '18012') throw new Error('Use exclusivamente DB_RAFT_PORT=18012.');
+if (process.env.DATABASE_URL !== 'http://127.0.0.1:18012') throw new Error('Use exclusivamente DATABASE_URL=http://127.0.0.1:18012.');
 const origin = 'http://127.0.0.1:3008/api/v1';
 async function call(method: string, path: string, token?: string, body?: unknown, expected = 200) {
   const response = await fetch(origin + path, {
@@ -19,15 +23,30 @@ async function call(method: string, path: string, token?: string, body?: unknown
 const suffix = ulid().toLowerCase();
 const password = 'Cubs-test-2026!only-local';
 const ownerEmail = 'owner-' + suffix + '@example.test', readerEmail = 'reader-' + suffix + '@example.test';
-const owner = await call('POST','/auth/register',undefined,{name:'Owner de validação',email:ownerEmail,password},201);
-const reader = await call('POST','/auth/register',undefined,{name:'Pessoa leitora',email:readerEmail,password},201);
+// Registration now requires email verification. Access smoke uses explicit verified fixtures;
+// the onboarding suite separately covers registration and verification without sending mail.
+async function verifiedUser(name: string, email: string) {
+  const user = await db.users.create({name,email,email_verified_at:new Date().toISOString(),
+    password_hash:await bcrypt.hash(password,10)} as CreateValues<Schema.UserCredentials>);
+  assert.ok(user);
+  return {user,accessToken:jwtService.signAccessToken({sub:user.id})};
+}
+const owner = await verifiedUser('Owner de validação',ownerEmail);
+const reader = await verifiedUser('Pessoa leitora',readerEmail);
 const organization = await call('POST','/organizations',owner.accessToken,{name:'Cub • Validação'},201);
 assert.equal(organization.ownerId,owner.user.id);
 assert.equal(organization.isOwner,true);
 const workspace = await call('POST','/workspaces',owner.accessToken,{name:'Pesquisa',organizationId:organization.id},201);
 const pendingWorkspace = await call('POST','/workspaces',owner.accessToken,{name:'Operações',organizationId:organization.id},201);
 const organizationRole = await call('POST',`/access/organization/${organization.id}/roles`,owner.accessToken,{name:'Catálogo',roles:{read:['view','workspaces'],write:[]}});
-await call('POST',`/access/organization/${organization.id}/members`,owner.accessToken,{email:readerEmail,roleId:organizationRole.id});
+async function acceptInvite(scope: string, scopeId: string, roleId: string) {
+  const issued = await call('POST',`/access/${scope}/${scopeId}/invites`,owner.accessToken,
+    {roleId,expiresAt:new Date(Date.now()+3600000).toISOString(),acceptanceLimit:1},201);
+  assert.equal(typeof issued.inviteUrl,'string');
+  const token = new URL(issued.inviteUrl).pathname.split('/').at(-1);
+  await call('POST',`/invites/${token}/accept`,reader.accessToken);
+}
+await acceptInvite('organization',organization.id,organizationRole.id);
 const catalog = await call('GET',`/organizations/${organization.id}/workspaces`,reader.accessToken);
 assert.equal(catalog.length,2);
 assert.ok(catalog.every((row: {canEnter:boolean})=>!row.canEnter));
@@ -47,7 +66,7 @@ const admitted = await call('GET',`/workspaces/${workspace.id}`,reader.accessTok
 assert.notEqual(admitted.pageRootId,workspace.id);
 await call('PUT',`/workspaces/${workspace.id}`,reader.accessToken,{name:'Sem permissão',icon:'lucide:box'},403);
 const pageRole = await call('POST',`/access/page/${workspace.id}/roles`,owner.accessToken,{name:'Leitura da base',roles:{read:['view','subpages','members'],write:[]}});
-await call('POST',`/access/page/${workspace.id}/members`,owner.accessToken,{email:readerEmail,roleId:pageRole.id});
+await acceptInvite('page',workspace.id,pageRole.id);
 await call('GET',`/pages/${workspace.id}/page`,reader.accessToken);
 await call('PUT',`/pages/${workspace.id}`,reader.accessToken,{title:'Tentativa sem edição'},403);
 await call('PUT',`/access/organization/${organization.id}/member/${owner.user.id}`,owner.accessToken,{roleId:organizationRole.id},403);

@@ -22,7 +22,6 @@ export default defineConfig({
     alias: {
       "@models": path.resolve(src, "models"),
       "@controllers": path.resolve(src, "controllers"),
-      "@db": path.resolve(src, "core/db"),
       "@routes": path.resolve(src, "routes"),
       "@": src,
     },
@@ -30,5 +29,6 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    env: {DATABASE_URL: "http://127.0.0.1:18012"},
   },
 });

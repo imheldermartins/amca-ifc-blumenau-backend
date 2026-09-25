@@ -1,0 +1,37 @@
+# Disposable rqlite-client validation only. No production or development volumes are mounted.
+services:
+  baseline:
+    entrypoint: ["rqlited"]
+    image: rqlite/rqlite:10.3.3@sha256:d333ab884b9451aecb12e29fbc2dfbb013d9f582763f288d79dcac5f20bfc312
+    command: ["-node-id", "rqlite-baseline", "-http-addr", "0.0.0.0:4001", "-http-adv-addr", "baseline:4001", "-raft-addr", "0.0.0.0:4002", "-raft-adv-addr", "baseline:4002", "/rqlite/file"]
+    ports: ["127.0.0.1:18012:4001"]
+    tmpfs: ["/rqlite/file:uid=1000,gid=1000"]
+  upgrade:
+    entrypoint: ["rqlited"]
+    image: rqlite/rqlite:10.3.3@sha256:d333ab884b9451aecb12e29fbc2dfbb013d9f582763f288d79dcac5f20bfc312
+    command: ["-node-id", "rqlite-upgrade", "-http-addr", "0.0.0.0:4001", "-http-adv-addr", "upgrade:4001", "-raft-addr", "0.0.0.0:4002", "-raft-adv-addr", "upgrade:4002", "/rqlite/file"]
+    ports: ["127.0.0.1:18013:4001"]
+    tmpfs: ["/rqlite/file:uid=1000,gid=1000"]
+  foreign-keys:
+    entrypoint: ["rqlited"]
+    image: rqlite/rqlite:10.3.3@sha256:d333ab884b9451aecb12e29fbc2dfbb013d9f582763f288d79dcac5f20bfc312
+    command: ["-fk", "-node-id", "rqlite-fk", "-http-addr", "0.0.0.0:4001", "-http-adv-addr", "foreign-keys:4001", "-raft-addr", "0.0.0.0:4002", "-raft-adv-addr", "foreign-keys:4002", "/rqlite/file"]
+    ports: ["127.0.0.1:18014:4001"]
+    tmpfs: ["/rqlite/file:uid=1000,gid=1000"]
+  package:
+    entrypoint: ["rqlited"]
+    image: rqlite/rqlite:10.3.3@sha256:d333ab884b9451aecb12e29fbc2dfbb013d9f582763f288d79dcac5f20bfc312
+    command: ["-node-id", "rqlite-package", "-http-addr", "0.0.0.0:4001", "-http-adv-addr", "package:4001", "-raft-addr", "0.0.0.0:4002", "-raft-adv-addr", "package:4002", "/rqlite/file"]
+    ports: ["127.0.0.1:18015:4001"]
+    tmpfs: ["/rqlite/file:uid=1000,gid=1000"]
+  consumer:
+    image: rqlite/rqlite:10.3.3@sha256:d333ab884b9451aecb12e29fbc2dfbb013d9f582763f288d79dcac5f20bfc312
+    entrypoint: ["rqlited"]
+    command: ["-node-id", "rqlite-consumer", "-http-addr", "0.0.0.0:4001", "-http-adv-addr", "consumer:4001", "-raft-addr", "0.0.0.0:4002", "-raft-adv-addr", "consumer:4002", "/rqlite/file"]
+    ports: ["127.0.0.1:18016:4001"]
+    tmpfs: ["/rqlite/file:uid=1000,gid=1000"]
+  production:
+    image: rqlite/rqlite:10.3.3@sha256:d333ab884b9451aecb12e29fbc2dfbb013d9f582763f288d79dcac5f20bfc312
+    entrypoint: ["rqlited"]
+    command: ["-fk", "-node-id", "rqlite-production", "-http-addr", "0.0.0.0:4001", "-http-adv-addr", "production:4001", "-raft-addr", "0.0.0.0:4002", "-raft-adv-addr", "production:4002", "/rqlite/file"]
+    tmpfs: ["/rqlite/file:uid=1000,gid=1000"]

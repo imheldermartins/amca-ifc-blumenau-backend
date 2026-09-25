@@ -1,0 +1,208 @@
+import { rqlite } from "../shared.js";
+import type { PageColumnJsonUpdate, PageJsonPathUpdate } from "@/db/types/page-json.types";
+export type { PageColumnJsonUpdate, PageJsonPathUpdate } from "@/db/types/page-json.types";
+
+const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
+
+function wire(statement: SqlStatement): RqliteStatement {
+  return [statement.text, ...statement.values];
+}
+
+/**
+ * Guard transacional: quando o alvo desapareceu entre leitura e commit, tenta
+ * inserir uma página deliberadamente inválida. O erro de constraint faz o
+ * rqlite reverter o batch inteiro; quando o alvo existe, o SELECT não produz
+ * linhas e nada é escrito.
+ */
+function existenceGuard(whereSql: string, values: readonly unknown[]): RqliteStatement {
+  return [
+    "INSERT INTO pages (id, owner_id) SELECT '!', NULL WHERE NOT EXISTS (" + whereSql + ")",
+    ...values,
+  ];
+}
+
+function jsonPath(segments: readonly string[]): string {
+  if (segments.length === 0 || segments.some((segment) => !/^[A-Za-z0-9_-]+$/.test(segment))) {
+    throw new Error("Invalid JSON path");
+  }
+  return `$.${segments
+    .map((segment, index) => (index === 0 ? `\"${segment}\"` : segment))
+    .join(".")}`;
+}
+
+/**
+ * Atualiza somente os caminhos informados em `pages.data`. Paths e valores
+ * viajam como binds; a lista de chamadas `json_set` é montada apenas com
+ * placeholders, nunca com ids ou conteúdo fornecido pelo cliente.
+ */
+export function buildUpdatePageJsonPathsStatement(
+  pageId: string,
+  patches: readonly PageJsonPathUpdate[],
+  requiredViewId?: string | readonly string[],
+  expectedData?: Record<string, unknown>,
+): SqlStatement {
+  if (!ULID_RE.test(pageId) || patches.length === 0) {
+    throw new Error("Invalid page id or empty JSON patch");
+  }
+  const requiredViewIds = requiredViewId === undefined
+    ? []
+    : typeof requiredViewId === "string"
+      ? [requiredViewId]
+      : [...requiredViewId];
+  if (requiredViewIds.some((viewId) => !ULID_RE.test(viewId))) {
+    throw new Error("Invalid view id");
+  }
+
+  const pairs = patches.flatMap((patch) => [jsonPath(patch.path), JSON.stringify(patch.value)]);
+  const setters = patches.map(() => "?, json(?)").join(", ");
+  const values: unknown[] = [...pairs, pageId];
+  let where = "WHERE id = ? AND deleted_at IS NULL";
+  for (const viewId of requiredViewIds) {
+    where += " AND json_type(data, ?) = 'object' AND json_extract(data, ?) IS NULL";
+    values.push(jsonPath([viewId]), jsonPath([viewId, "deletedAt"]));
+  }
+  if (expectedData !== undefined) {
+    where += " AND CASE WHEN json_valid(data) THEN json(data) ELSE NULL END = json(?)";
+    values.push(JSON.stringify(expectedData));
+  }
+
+  return {
+    text:
+      "UPDATE pages " +
+      `SET data = json_set(CASE WHEN json_valid(data) THEN data ELSE '{}' END, ${setters}), ` +
+      "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') " +
+      where,
+    values,
+  };
+}
+
+/**
+ * Statement parametrizado que altera SOMENTE filters da view. O path tambem
+ * viaja como bind; nenhum id vindo da URL e concatenado no SQL.
+ */
+export function buildUpdatePageViewFiltersStatement(
+  pageId: string,
+  viewId: string,
+  filters: Record<string, unknown>,
+): SqlStatement {
+  if (!ULID_RE.test(pageId) || !ULID_RE.test(viewId)) {
+    throw new Error("Invalid page or view id");
+  }
+
+  return buildUpdatePageJsonPathsStatement(
+    pageId,
+    [{ path: [viewId, "filters"], value: filters }],
+    viewId,
+  );
+}
+
+export async function updatePageViewFiltersJson(
+  pageId: string,
+  viewId: string,
+  filters: Record<string, unknown>,
+): Promise<boolean> {
+  const [updated] = await rqlite(
+    [wire(buildUpdatePageViewFiltersStatement(pageId, viewId, filters))],
+    "execute",
+  );
+  return updated === true;
+}
+
+export async function updatePageJsonPaths(
+  pageId: string,
+  patches: readonly PageJsonPathUpdate[],
+  requiredViewId?: string | readonly string[],
+  expectedData?: Record<string, unknown>,
+): Promise<boolean> {
+  const [updated] = await rqlite(
+    [wire(buildUpdatePageJsonPathsStatement(pageId, patches, requiredViewId, expectedData))],
+    "execute",
+  );
+  return updated === true;
+}
+
+/** Insere uma view sem substituir o snapshot nem sobrescrever um id existente. */
+export function buildInsertPageViewStatement(
+  pageId: string,
+  viewId: string,
+  view: Record<string, unknown>,
+  sourceViewId?: string,
+): SqlStatement {
+  if (!ULID_RE.test(pageId) || !ULID_RE.test(viewId) || (sourceViewId !== undefined && !ULID_RE.test(sourceViewId))) {
+    throw new Error("Invalid page or view id");
+  }
+  const path = jsonPath([viewId]);
+  return {
+    text:
+      "UPDATE pages SET data = json_insert(CASE WHEN json_valid(data) THEN data ELSE '{}' END, ?, json(?)), " +
+      "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND deleted_at IS NULL " +
+      "AND json_type(CASE WHEN json_valid(data) THEN data ELSE '{}' END, ?) IS NULL" +
+      (sourceViewId ? " AND json_type(data, ?) = 'object' AND json_extract(data, ?) IS NULL" : ""),
+    values: [path, JSON.stringify(view), pageId, path,
+      ...(sourceViewId ? [jsonPath([sourceViewId]), jsonPath([sourceViewId, "deletedAt"])] : [])],
+  };
+}
+
+export async function insertPageViewJson(
+  pageId: string,
+  viewId: string,
+  view: Record<string, unknown>,
+  sourceViewId?: string,
+): Promise<boolean> {
+  const [inserted] = await rqlite([wire(buildInsertPageViewStatement(pageId, viewId, view, sourceViewId))], "execute");
+  return inserted === true;
+}
+
+/**
+ * Persiste todo o reparo do reconcile em uma unica transacao rqlite. So os
+ * registros que realmente mudaram entram no batch, portanto uma segunda
+ * execucao idempotente nao recarimba timestamps.
+ */
+export async function commitFilterKeyReconcile(input: {
+  pageId: string;
+  pagePatches: readonly PageJsonPathUpdate[];
+  columns: readonly PageColumnJsonUpdate[];
+}): Promise<boolean> {
+  if (!ULID_RE.test(input.pageId)) throw new Error("Invalid page id");
+
+  const writes: RqliteStatement[] = [];
+  if (input.pagePatches.length > 0) {
+    writes.push(wire(buildUpdatePageJsonPathsStatement(input.pageId, input.pagePatches)));
+  }
+
+  for (const column of input.columns) {
+    if (!ULID_RE.test(column.id)) throw new Error("Invalid column id");
+    writes.push([
+      "UPDATE page_columns SET data = json(?), updated_at = CURRENT_TIMESTAMP " +
+      "WHERE id = ? AND parent_id = ? AND deleted_at IS NULL",
+      JSON.stringify(column.data),
+      column.id,
+      input.pageId,
+    ]);
+  }
+
+  if (writes.length > 0 && input.pagePatches.length === 0) {
+    writes.push([
+      "UPDATE pages SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND deleted_at IS NULL",
+      input.pageId,
+    ]);
+  }
+
+  if (writes.length === 0) return true;
+  const guards: RqliteStatement[] = [
+    existenceGuard(
+      "SELECT 1 FROM pages WHERE id = ? AND deleted_at IS NULL",
+      [input.pageId],
+    ),
+    ...input.columns.map((column) =>
+      existenceGuard(
+        "SELECT 1 FROM page_columns WHERE id = ? AND parent_id = ? AND deleted_at IS NULL",
+        [column.id, input.pageId],
+      ),
+    ),
+  ];
+  const statements = [...guards, ...writes];
+  const results = await rqlite(statements, "execute", { transaction: true });
+  const writeResults = results.slice(guards.length);
+  return results.length === statements.length && writeResults.length === writes.length && writeResults.every(Boolean);
+}

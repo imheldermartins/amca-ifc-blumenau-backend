@@ -7,12 +7,3 @@ interface IBaseController<T> {
   update(lookup: LookupValues<T>, data: UpdateValues<T>): BaseControllerDefaultResponse<T>;
   delete(lookup: LookupValues<T>): Promise<boolean>;
 }
-
-/**
- * Resultado de operação que pode falhar de formas distinguíveis (mesma ideia do
- * `{ ok, reason }` do auth-controller). A rota mapeia `reason` -> StatusCode e
- * devolve `message` (pt-BR) tal como veio do domínio/codec.
- */
-type ServiceFailureReason = "not_found" | "validation" | "conflict" | "server_error";
-type ServiceFailure = { ok: false; reason: ServiceFailureReason; message: string };
-type ServiceResult<T> = { ok: true; data: T } | ServiceFailure;

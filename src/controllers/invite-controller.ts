@@ -1,38 +1,13 @@
-import accessInviteStore from '@db/access-invite-store';
-import { inviteFlowRegistry } from '@/services/invitations/invite-flow';
-import { hashOpaqueToken, isOpaqueToken } from '@/services/opaque-token';
+import inviteTokenService from '@/services/invitations/invite-token-service';
+import type { InviteTokenPreview } from '@/services/invitations/types/invite-token-service.types';
 
 export class InviteController {
-  async preview(token: unknown) {
-    try {
-      if (!isOpaqueToken(token, 'cubs_invite_v1_')) return { valid: false } as const;
-      const invite = await accessInviteStore.getByTokenHash(hashOpaqueToken(token));
-      if (!invite || invite.status !== 'pending') return { valid: false } as const;
-      return {
-        valid: true,
-        scopeType: invite.scopeType,
-        scopeId: invite.scopeId,
-        scopeName: invite.scopeName,
-        roleName: invite.roleName,
-        authorName: invite.authorName,
-        recipientEmail: invite.recipientEmail,
-        expiresAt: invite.expiresAt,
-        acceptanceLimit: invite.acceptanceLimit,
-        acceptanceCount: invite.acceptanceCount,
-      } as const;
-    } catch {
-      return { valid: false } as const;
-    }
+  public preview(token: unknown): Promise<InviteTokenPreview> {
+    return inviteTokenService.preview(token);
   }
 
-  async accept(token: unknown, userId: string): Promise<boolean> {
-    try {
-      if (!isOpaqueToken(token, 'cubs_invite_v1_')) return false;
-      const invite = await accessInviteStore.getByTokenHash(hashOpaqueToken(token));
-      return Boolean(invite && await inviteFlowRegistry.for(invite.scopeType).accept(token, userId));
-    } catch {
-      return false;
-    }
+  public accept(token: unknown, userId: string): Promise<boolean> {
+    return inviteTokenService.accept(token, userId);
   }
 }
 

@@ -1,4 +1,4 @@
-import access from "@db/scoped-access-store";
+import access from "@/db/repositories/scoped-access-store";
 import { pageRoom, type PageRoom } from "@/services/realtime/rooms/page-room";
 import type { ServerToClientEvents } from "@/services/realtime/contracts/realtime-contract-v1";
 import type { CubsSocketServer } from "@/services/realtime/types/socket.types";

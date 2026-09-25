@@ -78,8 +78,9 @@ npm run realtime:contract:sync
 npm run realtime:contract:check
 ```
 
-`check` compara os arquivos byte a byte e falha se nomes, direções, payloads ou
-inventários divergirem.
+Em worktrees sem o frontend na pasta irmã, `CUBS_FRONTEND_ROOT` aponta para o
+checkout que deve ser validado. `check` normaliza somente CRLF/LF e falha se
+nomes, direções, payloads ou inventários divergirem.
 
 ### Client → server
 

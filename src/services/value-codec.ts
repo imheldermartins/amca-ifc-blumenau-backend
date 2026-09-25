@@ -1,4 +1,4 @@
-import { type Schema } from "@models/schemas/index";
+import { type Schema } from "@/db/schemas/index";
 
 /**
  * Codec central dos valores de célula (page_columns_values.data).

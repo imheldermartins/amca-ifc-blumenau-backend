@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { RealtimeChannel } from "@/services/realtime/realtime-channel";
+import type { RealtimeChannel } from "@/services/realtime/types/realtime-channel.types";
 import { RealtimeChannelRegistry } from "@/services/realtime/realtime-channel-registry";
 import type { CubsSocket, CubsSocketServer } from "@/services/realtime/types/socket.types";
 

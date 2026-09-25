@@ -1,7 +1,7 @@
-import { SQLBuilder } from "@db/sql-builder";
-import { Model } from "@/core/db/model";
+import { SQLBuilder } from "@cubs/rqlite-client/compat";
+import { Model } from "@/db/repositories/model";
 import db from "@models/index";
-import type { Schema } from "@/models/schemas/index";
+import type { Schema } from "@/db/schemas/index";
 
 /**
  * Teste de SQL injection do Cub's — demonstra que a camada de dados (Model /
@@ -10,7 +10,8 @@ import type { Schema } from "@/models/schemas/index";
  *
  * Roda de forma NÃO-DESTRUTIVA: as provas de leitura usam `find` (SELECT) e a
  * prova de escrita usa uma tabela descartável `injection_probe`, criada e
- * apagada pelo próprio teste. Exige o rqlite dev de pé (npm run migrate feito).
+ * apagada pelo próprio teste. Exige o rqlite dev de pé (npx rqlite migrate
+ * --env-file .env.development --environment development executado antes).
  *
  * Execução: npm run test:sql-injection
  */

@@ -1,13 +1,13 @@
 import bcrypt from 'bcryptjs';
 import { ulid } from 'ulid';
-import accountVerificationStore from '@db/account-verification-store';
-import accessInviteStore from '@db/access-invite-store';
-import authOnboardingStore from '@db/auth-onboarding-store';
-import workspaceStore, { type WorkspaceSummary } from '@db/workspace-store';
+import accountVerificationStore from '@/db/repositories/account-verification-store';
+import authOnboardingStore from '@/db/repositories/auth-onboarding-store';
+import workspaceStore, { type WorkspaceSummary } from '@/db/repositories/workspace-store';
+import inviteTokenService from '@/services/invitations/invite-token-service';
 import { accountVerificationEmail } from '@/services/mail/account-verification-email';
 import { SmtpService } from '@/services/mail/smtp-service';
 import { createOpaqueToken, hashOpaqueToken, isOpaqueToken, opaqueTokenHint } from './opaque-token.js';
-import type { Schema } from '@/models/schemas/index';
+import type { Schema } from '@/db/schemas/index';
 import type { BeginVerificationInput, BeginVerificationResult, VerificationPreview } from '@/services/types/account-verification.types';
 export type { BeginVerificationInput, BeginVerificationResult, VerificationPreview } from '@/services/types/account-verification.types';
 
@@ -52,7 +52,7 @@ export class AccountVerificationService {
     if (!isOpaqueToken(token, 'cubs_verify_v1_')) return { valid: false };
     const record = await accountVerificationStore.preview(hashOpaqueToken(token));
     if (!record) return { valid: false };
-    const invite = record.inviteId ? await accessInviteStore.getById(record.inviteId) : null;
+    const invite = record.inviteId ? await inviteTokenService.previewById(record.inviteId) : null;
     return {
       valid: true,
       email: record.email,
@@ -100,8 +100,7 @@ export class AccountVerificationService {
     if (!completed) return null;
     let inviteAccepted: boolean | null = null;
     if (completed.inviteId) {
-      try { inviteAccepted = await accessInviteStore.acceptById(completed.inviteId, completed.userId); }
-      catch { inviteAccepted = false; }
+      inviteAccepted = await inviteTokenService.acceptById(completed.inviteId, completed.userId);
     }
     const user = await authOnboardingStore.findUserById(completed.userId);
     const workspace = await workspaceStore.getForUser(completed.workspaceId, completed.userId);

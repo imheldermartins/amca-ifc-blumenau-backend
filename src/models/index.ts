@@ -1,4 +1,4 @@
-import { Model } from "@/core/db/model";
+import { Model } from "@/db/repositories/model";
 import { users } from "@models/user-model";
 import { workspaces } from "@models/workspace-model";
 import { pages } from "@models/page-model";

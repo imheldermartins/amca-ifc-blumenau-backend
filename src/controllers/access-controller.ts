@@ -1,12 +1,11 @@
-import access, { ULID_RE } from '@db/scoped-access-store';
-import roleStore from '@db/role-store';
-import requestStore from '@db/membership-request-store';
+import access from '@/db/repositories/scoped-access-store';
+import roleStore from '@/db/repositories/role-store';
+import requestStore from '@/db/repositories/membership-request-store';
 import { allows, canDelegate, parsePermissions, ROLE_MANAGEMENT_PERMISSION, type AccessScope } from '@/services/auth/permissions';
-import { SmtpService } from '@/services/mail/smtp-service';
-import { membershipRequestEmail } from '@/services/mail/membership-request-email';
-import accessInviteStore from '@db/access-invite-store';
-import { inviteFlowRegistry } from '@/services/invitations/invite-flow';
+import inviteApplicationService from '@/services/invitations/invite-application-service';
+import membershipRequestService from '@/services/membership-requests/membership-request-service';
 import type { AccessResult } from '@/controllers/types/access-controller.types';
+import { ULID_RE } from '@/utils/ulid';
 export type { AccessResult } from '@/controllers/types/access-controller.types';
 
 const denied = { ok: false, reason: 'forbidden', message: 'Acesso não permitido' } as const;
@@ -62,22 +61,7 @@ export class AccessController {
     });
   }
   addMember(scope: AccessScope, id: string, actor: string, body: Record<string, unknown>) {
-    return this.run(async () => {
-      const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-        || (body.roleId !== undefined && (typeof body.roleId !== 'string' || !ULID_RE.test(body.roleId)))) return invalid;
-      const result = await inviteFlowRegistry.for(scope).sendInvite({
-        scopeId: id,
-        actorId: actor,
-        roleId: body.roleId as string | undefined,
-        recipientEmail: email,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        acceptanceLimit: 1,
-      });
-      if (!result.ok) return result.reason === 'forbidden' ? denied
-        : result.reason === 'already_member' ? conflict : invalid;
-      return { ok: true, data: result };
-    });
+    return this.run(() => inviteApplicationService.inviteMember(scope, id, actor, body));
   }
   removeMember(scope: AccessScope, id: string, actor: string, target: string) {
     return this.run(async () => await roleStore.removeMember(scope, id, actor, target) ? { ok: true, data: { saved: true } } : denied);
@@ -87,34 +71,9 @@ export class AccessController {
   }
   request(scope: AccessScope, id: string, actor: string) {
     return this.run(async () => {
-      const result = await requestStore.create(scope, id, actor);
+      const result = await membershipRequestService.create(scope, id, actor);
       if (!result) return conflict;
-      let notificationPending = false;
-      if (result.created) {
-        let smtp: SmtpService | undefined;
-        try {
-          const origin = process.env.APP_PUBLIC_URL;
-          if (!origin) throw new Error('APP_PUBLIC_URL não configurada');
-          smtp = SmtpService.fromEnvironment();
-          const context = await requestStore.notificationContext(scope, id, actor);
-          if (!context.requester || !context.approvers.length) throw new Error('Destinatários indisponíveis');
-          for (const person of context.approvers) {
-            try {
-              // Uma revogação antes do envio também remove o destinatário.
-              if (!await access.can(scope, id, person.id, 'write', 'add_members')) continue;
-              await smtp.send(membershipRequestEmail.create({
-                recipient: { name: person.name || person.email, email: person.email },
-                requester: { name: context.requester.name || context.requester.email, email: context.requester.email },
-                scopeName: context.scopeName, scopeType: { organization: 'Organização', workspace: 'Workspace', page: 'Página' }[scope] as 'Organização' | 'Workspace' | 'Página',
-                reviewUrl: new URL('/pt-br/access/' + scope + '/' + id + '/requests/' + result.request.id, origin).toString(),
-              }));
-              await requestStore.recordNotification(scope, result.request.id, person.email);
-            } catch { notificationPending = true; }
-          }
-        } catch { notificationPending = true; }
-        finally { smtp?.close(); }
-      }
-      return { ok: true, data: { request: result.request, notificationPending } };
+      return { ok: true, data: result };
     });
   }
   decide(scope: AccessScope, id: string, actor: string, requestId: string, body: Record<string, unknown>) {
@@ -127,59 +86,19 @@ export class AccessController {
   }
 
   searchEmail(scope: AccessScope, id: string, actor: string, emailValue: unknown) {
-    return this.run(async () => {
-      if (!await access.can(scope, id, actor, 'write', 'add_members')) return denied;
-      const email = typeof emailValue === 'string' ? emailValue.trim().toLowerCase() : '';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return invalid;
-      return { ok: true, data: await accessInviteStore.exactEmail(email, scope, id) };
-    });
+    return this.run(() => inviteApplicationService.searchRecipient(scope, id, actor, emailValue));
   }
 
   invites(scope: AccessScope, id: string, actor: string) {
-    return this.run(async () => {
-      const grant = await access.get(scope, id, actor);
-      if (!allows(grant, 'read', 'members') && !allows(grant, 'write', 'add_members')) return denied;
-      return { ok: true, data: await accessInviteStore.list(scope, id) };
-    });
+    return this.run(() => inviteApplicationService.list(scope, id, actor));
   }
 
   createInvite(scope: AccessScope, id: string, actor: string, body: Record<string, unknown>) {
-    return this.run(async () => {
-      const recipientEmail = typeof body.recipientEmail === 'string'
-        ? body.recipientEmail.trim().toLowerCase()
-        : null;
-      if (recipientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) return invalid;
-      if (body.roleId !== undefined && body.roleId !== null
-        && (typeof body.roleId !== 'string' || !ULID_RE.test(body.roleId))) return invalid;
-      const expiresIn = body.expiresIn ?? '24h';
-      if (!['24h', '7d', 'never'].includes(expiresIn as string)) return invalid;
-      const acceptanceLimit = body.acceptanceLimit === undefined || body.acceptanceLimit === null
-        ? null
-        : Number(body.acceptanceLimit);
-      if (acceptanceLimit !== null && (!Number.isInteger(acceptanceLimit) || acceptanceLimit < 1 || acceptanceLimit > 100_000)) return invalid;
-      const expiresAt = expiresIn === 'never' ? null
-        : new Date(Date.now() + (expiresIn === '7d' ? 7 : 1) * 24 * 60 * 60 * 1000).toISOString();
-      const result = await inviteFlowRegistry.for(scope).sendInvite({
-        scopeId: id,
-        actorId: actor,
-        roleId: body.roleId as string | null | undefined,
-        recipientEmail,
-        expiresAt,
-        acceptanceLimit,
-      });
-      if (!result.ok) return result.reason === 'forbidden' ? denied
-        : result.reason === 'already_member' ? conflict : invalid;
-      return { ok: true, data: result };
-    });
+    return this.run(() => inviteApplicationService.createInvite(scope, id, actor, body));
   }
 
   removeInvite(scope: AccessScope, id: string, actor: string, inviteId: string) {
-    return this.run(async () => {
-      if (!ULID_RE.test(inviteId)) return invalid;
-      if (!await access.can(scope, id, actor, 'write', 'add_members')) return denied;
-      return await accessInviteStore.remove(inviteId, scope, id)
-        ? { ok: true, data: { expired: true } } : conflict;
-    });
+    return this.run(() => inviteApplicationService.revoke(scope, id, actor, inviteId));
   }
 
   removeRole(scope: AccessScope, id: string, actor: string, roleId: string) {
