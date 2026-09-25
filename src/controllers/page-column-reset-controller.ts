@@ -1,7 +1,7 @@
 import db from "@models/index";
 import type { Schema } from "@/db/schemas/index";
-import { pageActivityTouchStatement } from "@/db/repositories/page-activity";
-import { pageColumnResetStatements } from "@/db/repositories/page-column-reset";
+import { pageActivityTouchStatement } from "@/repositories/page-activity";
+import { pageColumnResetStatements } from "@/repositories/page-column-reset";
 import pageColumnConfigurationService, {
   type PageColumnConfigurationService,
 } from "@/services/pages/columns/page-column-configuration-service";

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { MembershipRequest } from '@/db/repositories/membership-request-store';
+import type { MembershipRequest } from '@/repositories/membership-request-repository';
 import { MembershipRequestService } from './membership-request-service.js';
 
 const request: MembershipRequest = {

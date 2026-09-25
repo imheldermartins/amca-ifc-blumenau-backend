@@ -23,10 +23,10 @@ vi.mock("@models/index", () => ({
     },
   },
 }));
-vi.mock("@/db/repositories/workspace-store", () => ({
+vi.mock("@/repositories/workspace-repository", () => ({
   default: { getMembership: doubles.getWorkspaceMembership },
 }));
-vi.mock("@/db/repositories/role-store", () => ({
+vi.mock("@/repositories/role-repository", () => ({
   default: { removeMember: doubles.removeMember },
 }));
 

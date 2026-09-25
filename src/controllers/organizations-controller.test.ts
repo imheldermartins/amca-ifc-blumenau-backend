@@ -1,7 +1,7 @@
 import {beforeEach,describe,it,expect,vi} from 'vitest';
 const store=vi.hoisted(()=>({create:vi.fn(),getForUser:vi.fn(),linkWorkspace:vi.fn(),listForUser:vi.fn(),catalog:vi.fn()}));
-vi.mock('@/db/repositories/organization-store',()=>({default:store}));
-vi.mock('@/db/repositories/workspace-store',()=>({default:{getForUser:vi.fn()}}));
+vi.mock('@/repositories/organization-repository',()=>({default:store}));
+vi.mock('@/repositories/workspace-repository',()=>({default:{getForUser:vi.fn()}}));
 import controller from './organizations-controller.js';
 const id='01KXDN4AXN6QJBTZTCWP1JWVW4';
 beforeEach(()=>vi.clearAllMocks());

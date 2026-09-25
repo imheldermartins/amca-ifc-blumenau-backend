@@ -161,7 +161,7 @@ aplique a migration inicial do cliente e execute:
 docker compose -p cubs-rqlite-test -f docker/docker-compose.rqlite-test.yml up -d
 npx rqlite migrate --environment test
 $env:RUN_RQLITE_INTEGRATION = '1'
-npm test -- src/db/repositories/scoped-access.integration.test.ts
+npm test -- src/repositories/scoped-access.integration.test.ts
 Remove-Item Env:RUN_RQLITE_INTEGRATION
 ```
 

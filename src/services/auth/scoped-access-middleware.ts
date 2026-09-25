@@ -1,6 +1,6 @@
 import { StatusCode } from "@/services/http/status-code";
 import type { Request, Response, NextFunction } from "express";
-import scopedAccessStore from "@/db/repositories/scoped-access-store";
+import scopedAccessStore from "@/repositories/scoped-access-repository";
 import type { AccessScope, PermissionKind } from "./permissions.js";
 
 export function requireScopedPermission(scope: AccessScope, kind: PermissionKind, action: string, param = "id") {

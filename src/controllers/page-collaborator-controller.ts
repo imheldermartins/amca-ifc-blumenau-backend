@@ -1,8 +1,8 @@
 import type { Schema } from "@/db/schemas/index";
 import type { ServiceResult } from "@/controllers/types/service-result.types";
-import pageCollaboratorStore from "@/db/repositories/page-collaborator-store";
-import type { PageCollaboratorStoreContract } from "@/db/types/page-collaborator-store.types";
-import roleStore, { type RoleStore } from "@/db/repositories/role-store";
+import pageCollaboratorStore from "@/repositories/page-collaborator-repository";
+import type { PageCollaboratorStoreContract } from "@/repositories/types/page-collaborator-repository.types";
+import roleStore, { type RoleStore } from "@/repositories/role-repository";
 
 // ULID (26 chars, alfabeto Crockford) -- mesmo guarda usado no page-controller.
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;

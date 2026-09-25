@@ -1,6 +1,6 @@
-import accessStore from "@/db/repositories/scoped-access-store";
-import pageAccessStore from "@/db/repositories/page-access-store";
-import type { PageAccessStore } from "@/db/repositories/page-access-store";
+import accessStore from "@/repositories/scoped-access-repository";
+import pageAccessStore from "@/repositories/page-access-repository";
+import type { PageAccessStore } from "@/repositories/page-access-repository";
 import type { SharedPage } from "@/controllers/types/page-access-controller.types";
 import type { PermissionKind } from "@/services/auth/permissions";
 export type { SharedPage } from "@/controllers/types/page-access-controller.types";

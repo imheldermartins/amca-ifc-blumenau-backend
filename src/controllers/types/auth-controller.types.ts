@@ -1,4 +1,4 @@
-import type { WorkspaceSummary } from "@/db/repositories/workspace-store";
+import type { WorkspaceSummary } from "@/repositories/workspace-repository";
 import type { Schema } from "@/db/schemas/index";
 import type { TokenPair } from "@/services/auth/types/jwt.types";
 

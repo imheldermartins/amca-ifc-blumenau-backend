@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {writeFileSync,mkdirSync} from 'node:fs';
 import {createClient} from '@cubs/rqlite-client';
-import {schema} from '../../src/db/generated/schema.js';
+import {schema} from '../../src/db/rqlite.generated.js';
 const port=process.argv[2]??'18012';
 if(!['18012','18014'].includes(port))throw new Error('Disposable validation targets only');
 const client=createClient({schema,connection:{url:`http://127.0.0.1:${port}`},migrations:{directory:'src/db/migrations'}});

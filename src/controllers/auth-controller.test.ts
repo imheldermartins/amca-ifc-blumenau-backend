@@ -13,7 +13,7 @@ const doubles = vi.hoisted(() => ({
   completeVerification: vi.fn(),
 }));
 
-vi.mock("@/db/repositories/model", () => ({
+vi.mock("@/repositories/model", () => ({
   Model: class {
     find = doubles.usersFind;
     update = doubles.usersUpdate;
@@ -21,7 +21,7 @@ vi.mock("@/db/repositories/model", () => ({
 }));
 vi.mock("bcryptjs", () => ({ default: { compare: doubles.compare } }));
 vi.mock("@/services/auth/jwt-service", () => ({ default: { issueTokenPair: doubles.issueTokenPair } }));
-vi.mock("@/db/repositories/auth-onboarding-store", () => ({
+vi.mock("@/repositories/auth-onboarding-repository", () => ({
   default: { findUserByCanonicalEmail: doubles.findUserByCanonicalEmail },
 }));
 vi.mock("@/services/invitations/invite-token-service", () => ({

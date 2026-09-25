@@ -1,4 +1,4 @@
-import requestStore from '@/db/repositories/membership-request-store';
+import requestStore from '@/repositories/membership-request-repository';
 import type { AccessScope } from '@/services/auth/permissions';
 import membershipRequestNotification from '@/services/membership-requests/membership-request-notification';
 import type { MembershipRequestNotifier } from '@/services/membership-requests/types/membership-request-notification.types';

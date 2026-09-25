@@ -1,7 +1,7 @@
 import db from "@models/index";
 import type { Schema } from "@/db/schemas/index";
 import type { Input } from "@/db/schemas/inputs";
-import { buildUpdatePageJsonPathsStatement } from "@/db/repositories/page-json";
+import { buildUpdatePageJsonPathsStatement } from "@/repositories/page-json";
 import {
   FILTER_KEY_REGISTRY_DATA_KEY,
   appendDeletedColumnKeys,
@@ -13,7 +13,7 @@ import {
   normalizePublicKey,
   reconcilePublicKeyMetadata,
 } from "@/services/public-key";
-import { pageActivityTouchStatement } from "@/db/repositories/page-activity";
+import { pageActivityTouchStatement } from "@/repositories/page-activity";
 import type { ServiceResult } from "@/controllers/types/service-result.types";
 import pageColumnConfigurationService, {
   type PageColumnConfigurationService,

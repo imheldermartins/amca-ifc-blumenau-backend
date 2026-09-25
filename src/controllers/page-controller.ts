@@ -1,8 +1,8 @@
 import db from "@models/index";
-import type { Model } from "@/db/repositories/model";
+import type { Model } from "@/repositories/model";
 import type { Schema } from "@/db/schemas/index";
-import { SystemRoleFactory } from "@/db/repositories/system-role-factory";
-import { pageActivityTouchStatement, readPageLatestUpdatedAt } from '@/db/repositories/page-activity';
+import { SystemRoleFactory } from "@/repositories/system-role-factory";
+import { pageActivityTouchStatement, readPageLatestUpdatedAt } from '@/repositories/page-activity';
 import { ulid } from "ulid";
 
 export class PageController implements IBaseController<Schema.Page> {

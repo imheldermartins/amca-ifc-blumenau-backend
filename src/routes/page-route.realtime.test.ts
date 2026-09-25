@@ -78,7 +78,7 @@ const doubles = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/db/repositories/scoped-access-store", async (load) => ({...await load<object>(),default:{can: (_scope:string,id:string,userId:string) => doubles.access.canAccessPage(userId,id)}}));
+vi.mock("@/repositories/scoped-access-repository", async (load) => ({...await load<object>(),default:{can: (_scope:string,id:string,userId:string) => doubles.access.canAccessPage(userId,id)}}));
 vi.mock("@/controllers/page-controller", () => ({ default: doubles.page }));
 vi.mock("@/controllers/page-hierarchy-controller", () => ({ default: doubles.hierarchy }));
 vi.mock("@/controllers/page-column-controller", () => ({ default: doubles.column }));

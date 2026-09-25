@@ -1,5 +1,5 @@
 import db from "@models/index";
-import type { Model } from "@/db/repositories/model";
+import type { Model } from "@/repositories/model";
 import type { Schema } from "@/db/schemas/index";
 
 export class UserController implements IBaseController<Schema.User> {

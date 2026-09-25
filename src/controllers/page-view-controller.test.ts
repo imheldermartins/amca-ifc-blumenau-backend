@@ -24,7 +24,7 @@ vi.mock("@models/index", () => ({
   },
 }));
 
-vi.mock("@/db/repositories/page-json", () => ({
+vi.mock("@/repositories/page-json", () => ({
   commitFilterKeyReconcile: mocks.pageJson.commitFilterKeyReconcile,
   insertPageViewJson: mocks.pageJson.insertPageViewJson,
   updatePageJsonPaths: mocks.pageJson.updatePageJsonPaths,

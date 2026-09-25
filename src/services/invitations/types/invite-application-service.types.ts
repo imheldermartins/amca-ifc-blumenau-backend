@@ -1,4 +1,4 @@
-import type { InviteRecord } from "@/db/repositories/access-invite-store";
+import type { InviteRecord } from "@/repositories/access-invite-repository";
 import type { ScopeAccess } from "@/services/auth/permissions";
 import type { AccessScope } from "@/services/auth/permissions";
 import type {

@@ -42,7 +42,7 @@ export class AuthRouter extends ApplicationRouter {
   }
 
   private async previewVerification(req: Request, res: Response): Promise<Response> {
-    res.set("Cache-Control", "no-store");
+    res.set("Cache-Control", "no-repository");
     return res.status(StatusCode.OK).json(await authController.previewVerification(req.params.token));
   }
 

@@ -10,8 +10,8 @@
 !src/**
 # Testes e scripts operacionais/de desenvolvimento não pertencem ao runtime.
 src/**/*.test.ts
-src/core/scripts/**
 !scripts
+!scripts/clean-build.mjs
 !scripts/copy-mail-templates.mjs
 !docker
 !docker/backend

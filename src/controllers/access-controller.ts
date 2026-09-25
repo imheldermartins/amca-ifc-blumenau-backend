@@ -1,6 +1,6 @@
-import access from '@/db/repositories/scoped-access-store';
-import roleStore from '@/db/repositories/role-store';
-import requestStore from '@/db/repositories/membership-request-store';
+import access from '@/repositories/scoped-access-repository';
+import roleStore from '@/repositories/role-repository';
+import requestStore from '@/repositories/membership-request-repository';
 import { allows, canDelegate, parsePermissions, ROLE_MANAGEMENT_PERMISSION, type AccessScope } from '@/services/auth/permissions';
 import inviteApplicationService from '@/services/invitations/invite-application-service';
 import membershipRequestService from '@/services/membership-requests/membership-request-service';

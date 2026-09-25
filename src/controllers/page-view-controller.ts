@@ -2,7 +2,7 @@ import {
   insertPageViewJson,
   updatePageJsonPaths,
   type PageJsonPathUpdate,
-} from "@/db/repositories/page-json";
+} from "@/repositories/page-json";
 import type {
   PageViewCreateResult,
   PageViewDeleteResult,

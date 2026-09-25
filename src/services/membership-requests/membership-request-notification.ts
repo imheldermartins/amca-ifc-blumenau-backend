@@ -1,5 +1,5 @@
-import requestStore from '@/db/repositories/membership-request-store';
-import access from '@/db/repositories/scoped-access-store';
+import requestStore from '@/repositories/membership-request-repository';
+import access from '@/repositories/scoped-access-repository';
 import type { AccessScope } from '@/services/auth/permissions';
 import { membershipRequestEmail } from '@/services/mail/membership-request-email';
 import { SmtpService } from '@/services/mail/smtp-service';

@@ -1,1 +1,1 @@
-export type { SharedPage } from "@/db/types/page-access-store.types";
+export type { SharedPage } from "@/repositories/types/page-access-repository.types";

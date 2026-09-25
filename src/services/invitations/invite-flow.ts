@@ -1,8 +1,8 @@
 import { ulid } from 'ulid';
-import accessInviteStore from '@/db/repositories/access-invite-store';
-import roleStore from '@/db/repositories/role-store';
-import scopedAccess from '@/db/repositories/scoped-access-store';
-import { SystemRoleFactory } from '@/db/repositories/system-role-factory';
+import accessInviteStore from '@/repositories/access-invite-repository';
+import roleStore from '@/repositories/role-repository';
+import scopedAccess from '@/repositories/scoped-access-repository';
+import { SystemRoleFactory } from '@/repositories/system-role-factory';
 import { canDelegate, type AccessScope } from '@/services/auth/permissions';
 import { SmtpService } from '@/services/mail/smtp-service';
 import { accessInviteEmail } from '@/services/mail/access-invite-email';

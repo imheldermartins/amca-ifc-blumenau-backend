@@ -5,7 +5,7 @@ import type {
 import type { RealtimeChannel } from "@/services/realtime/types/realtime-channel.types";
 import { pageRoom, type PageRoom } from "@/services/realtime/rooms/page-room";
 import type { CubsSocket, CubsSocketServer } from "@/services/realtime/types/socket.types";
-import access from '@/db/repositories/scoped-access-store';
+import access from '@/repositories/scoped-access-repository';
 
 export class PageInteractionChannel implements RealtimeChannel {
   readonly id = "page-interaction";

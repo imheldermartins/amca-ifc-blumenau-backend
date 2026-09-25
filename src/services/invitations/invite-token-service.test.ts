@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { InviteRecord } from "@/db/repositories/access-invite-store";
+import type { InviteRecord } from "@/repositories/access-invite-repository";
 import { createOpaqueToken, hashOpaqueToken } from "@/services/opaque-token";
 import { InviteTokenService } from "@/services/invitations/invite-token-service";
 import type { InviteTokenStore } from "@/services/invitations/types/invite-token-service.types";

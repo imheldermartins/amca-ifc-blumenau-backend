@@ -13,7 +13,7 @@ const doubles = vi.hoisted(() => ({
 vi.mock("@models/index", () => ({
   default: { users: { find: doubles.usersFind } },
 }));
-vi.mock("@/db/repositories/workspace-store", () => ({
+vi.mock("@/repositories/workspace-repository", () => ({
   default: {
     createInOrganization: doubles.createInOrganization,
     getForUser: doubles.getForUser,
@@ -22,7 +22,7 @@ vi.mock("@/db/repositories/workspace-store", () => ({
     listMembers: doubles.listMembers,
   },
 }));
-vi.mock("@/db/repositories/scoped-access-store", async (load) => ({ ...await load<object>(), default: { can: doubles.can } }));
+vi.mock("@/repositories/scoped-access-repository", async (load) => ({ ...await load<object>(), default: { can: doubles.can } }));
 
 import workspacesController from "./workspaces-controller.js";
 

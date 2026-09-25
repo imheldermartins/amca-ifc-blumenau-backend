@@ -1,9 +1,9 @@
-import { Model } from '@/db/repositories/model';
+import { Model } from '@/repositories/model';
 import bcrypt from 'bcryptjs';
 import type { Schema } from '@/db/schemas/index';
 import jwtService from '@/services/auth/jwt-service';
 import type { TokenPair } from '@/services/auth/types/jwt.types';
-import authOnboardingStore from '@/db/repositories/auth-onboarding-store';
+import authOnboardingStore from '@/repositories/auth-onboarding-repository';
 import accountVerification from '@/services/account-verification';
 import inviteTokenService from '@/services/invitations/invite-token-service';
 import type { BeginVerificationResult, VerificationPreview } from '@/services/types/account-verification.types';

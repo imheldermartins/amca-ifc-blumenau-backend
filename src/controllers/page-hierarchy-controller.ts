@@ -1,5 +1,5 @@
 import type { Input } from "@/db/schemas/inputs";
-import pageHierarchyStore, { PageHierarchyStore } from "@/db/repositories/page-hierarchy-store";
+import pageHierarchyStore, { PageHierarchyStore } from "@/repositories/page-hierarchy-repository";
 import { isUlid } from "@/utils/ulid";
 
 /** Regras de entrada e tratamento de falhas para a árvore de páginas. */

@@ -1,7 +1,7 @@
 import {
   updatePageJsonPaths,
   updatePageViewFiltersJson,
-} from "@/db/repositories/page-json";
+} from "@/repositories/page-json";
 import type { ServiceResult } from "@/controllers/types/service-result.types";
 import type {
   FilterWriteResult,

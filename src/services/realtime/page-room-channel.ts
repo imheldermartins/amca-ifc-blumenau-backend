@@ -1,4 +1,4 @@
-import accessStore from '@/db/repositories/scoped-access-store';
+import accessStore from '@/repositories/scoped-access-repository';
 import { pageRoom, type PageRoom } from "@/services/realtime/rooms/page-room";
 import type { RealtimeChannel } from "@/services/realtime/types/realtime-channel.types";
 import type { CubsSocket, CubsSocketServer } from "@/services/realtime/types/socket.types";

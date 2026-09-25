@@ -3,8 +3,8 @@ import db from "@models/index";
 import workspaceStore, {
   type WorkspaceMemberSummary,
   type WorkspaceSummary,
-} from "@/db/repositories/workspace-store";
-import accessStore from "@/db/repositories/scoped-access-store";
+} from "@/repositories/workspace-repository";
+import accessStore from "@/repositories/scoped-access-repository";
 import { ULID_RE } from "@/utils/ulid";
 import type { Schema } from "@/db/schemas/index";
 import { isWorkspaceIcon } from "@/services/workspace-icon";

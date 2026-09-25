@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = vi.hoisted(() => ({ can: vi.fn() }));
-vi.mock("@/db/repositories/scoped-access-store", () => ({ default: store }));
+vi.mock("@/repositories/scoped-access-repository", () => ({ default: store }));
 
 import { requireWorkspaceAbility } from "./workspace-access-middleware.js";
 

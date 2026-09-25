@@ -5,8 +5,8 @@ const env={...process.env,DATABASE_URL:'http://127.0.0.1:18012',RUN_RQLITE_INTEG
 env.APP_PUBLIC_URL='http://127.0.0.1:3008';
 async function run(args){await new Promise((resolve,reject)=>{const child=spawn(process.execPath,args,{stdio:'inherit',env});child.once('error',reject);child.once('exit',code=>code===0?resolve():reject(new Error(args.join(' ')+' exited '+code)));});}
 if(!process.argv.includes('--http-only')){
-  await run(['node_modules/vitest/vitest.mjs','run','src/db/repositories/scoped-access.integration.test.ts']);
-  await run(['--import','tsx','src/core/scripts/sql-injection-test.ts']);
+  await run(['node_modules/vitest/vitest.mjs','run','src/repositories/scoped-access.integration.test.ts']);
+  await run(['--import','tsx','scripts/validation/sql-injection-test.ts']);
   await run(['--import','tsx','scripts/validation/workspace-flow-test.ts']);
 }
 const server=spawn(process.execPath,['--import','tsx','src/server.ts'],{stdio:['ignore','pipe','pipe'],env});

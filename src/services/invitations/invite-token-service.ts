@@ -1,4 +1,4 @@
-import accessInviteStore from "@/db/repositories/access-invite-store";
+import accessInviteStore from "@/repositories/access-invite-repository";
 import { hashOpaqueToken, isOpaqueToken } from "@/services/opaque-token";
 import type {
   InviteContextPreview,

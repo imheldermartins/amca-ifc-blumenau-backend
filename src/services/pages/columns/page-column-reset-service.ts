@@ -1,5 +1,5 @@
 import type { Schema } from "@/db/schemas/index";
-import type { CellResetWrite } from "@/db/types/page-column-reset.types";
+import type { CellResetWrite } from "@/repositories/types/page-column-reset.types";
 import { VALUE_CODECS } from "@/services/value-codec";
 import { optionTombstones } from "@/services/filter-key-registry";
 import {

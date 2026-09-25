@@ -1,5 +1,5 @@
-import pageCellStore from "@/db/repositories/page-cell-store";
-import type { PageCellStoreContract } from "@/db/types/page-cell-store.types";
+import pageCellStore from "@/repositories/page-cell-repository";
+import type { PageCellStoreContract } from "@/repositories/types/page-cell-repository.types";
 import type {
   ServiceFailure,
   ServiceResult,

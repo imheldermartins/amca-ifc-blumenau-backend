@@ -1,4 +1,4 @@
-import type { MembershipRequest } from '@/db/repositories/membership-request-store';
+import type { MembershipRequest } from '@/repositories/membership-request-repository';
 import type { AccessScope } from '@/services/auth/permissions';
 
 export interface StoredMembershipRequest {

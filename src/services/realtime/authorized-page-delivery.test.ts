@@ -1,6 +1,6 @@
 import {beforeEach,describe,it,expect,vi} from 'vitest';
 const access=vi.hoisted(()=>({can:vi.fn()}));
-vi.mock('@/db/repositories/scoped-access-store',()=>({default:access}));
+vi.mock('@/repositories/scoped-access-repository',()=>({default:access}));
 import {AuthorizedPageDelivery} from './authorized-page-delivery.js';
 import type {CubsSocketServer} from './types/socket.types.js';
 describe('entrega de eventos após mudança de permissões',()=>{

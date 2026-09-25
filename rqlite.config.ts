@@ -2,11 +2,11 @@ import {defineConfig} from '@cubs/rqlite-client/config';
 
 export default defineConfig({
   schemas: ['src/db/schemas'],
-  output: 'src/db/generated/schema.ts',
+  output: 'src/db/rqlite.generated.ts',
   migrations: 'src/db/migrations',
   build: {
     config: 'dist/rqlite.config.js',
-    client: 'dist/db/generated/schema.js',
+    client: 'dist/db/rqlite.generated.js',
     migrations: 'dist/db/migrations',
   },
   environments: {

@@ -1,8 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { ulid } from 'ulid';
-import accountVerificationStore from '@/db/repositories/account-verification-store';
-import authOnboardingStore from '@/db/repositories/auth-onboarding-store';
-import workspaceStore, { type WorkspaceSummary } from '@/db/repositories/workspace-store';
+import accountVerificationStore from '@/repositories/account-verification-repository';
+import authOnboardingStore from '@/repositories/auth-onboarding-repository';
+import workspaceStore, { type WorkspaceSummary } from '@/repositories/workspace-repository';
 import inviteTokenService from '@/services/invitations/invite-token-service';
 import { accountVerificationEmail } from '@/services/mail/account-verification-email';
 import { SmtpService } from '@/services/mail/smtp-service';

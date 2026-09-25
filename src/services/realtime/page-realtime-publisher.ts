@@ -1,5 +1,5 @@
-import pageHierarchyStore from "@/db/repositories/page-hierarchy-store";
-import { readPageLatestUpdatedAt } from '@/db/repositories/page-activity';
+import pageHierarchyStore from "@/repositories/page-hierarchy-repository";
+import { readPageLatestUpdatedAt } from '@/repositories/page-activity';
 import type { ColumnPayload, RowPayload } from "@/services/realtime/contracts/realtime-contract-v1";
 import {
   pageEditChannel,

@@ -7,17 +7,30 @@ schemas, migrations, CLI e health. O código-fonte da biblioteca fica no reposit
 suas regras de domínio. Código, exemplos e instruções de instalação estão no
 [repositório público](https://github.com/imheldermartins/rqlite-client).
 Versão publicada: [@cubs/rqlite-client@1.0.0](https://www.npmjs.com/package/@cubs/rqlite-client).
+Como o pacote possui escopo npm, sua instalação local fica em
+`node_modules/@cubs/rqlite-client`, e não em `node_modules/rqlite-client`.
 
 ## Estrutura e conexão
 
 - `rqlite.config.ts`: fontes dos schemas, saída gerada, histórico e ambientes.
 - `src/db/schemas/`: as 19 tabelas decoradas, tipos de domínio e inputs.
 - `src/db/migrations/`: journal e migrations append-only do Cub's.
-- `src/db/generated/`: descritores e tipos inferidos; atualizados pelo CLI.
+- `src/db/rqlite.generated.ts`: descritores e tipos inferidos; atualizado pelo CLI.
 - `src/db/client-db.ts`: singleton `db = createClient({schema, connection,
   migrations})`, usando `DATABASE_URL`.
-- `src/db/repositories/`: consultas, regras de acesso e guardas transacionais
+- `src/repositories/`: consultas, regras de acesso e guardas transacionais
   próprias do Cub's. O pacote não conhece tabelas nem políticas do produto.
+- `scripts/`: seed e validações manuais; não faz parte da aplicação compilada.
+
+`src/db/rqlite.generated.ts` é necessário porque o TypeScript apaga decorators e
+tipos durante a compilação. O comando `rqlite generate` transforma os schemas
+em descritores usados pelo `createClient` em runtime e em tipos estáticos para o
+editor. Ele não contém SQL manual nem regra do Cub's e nunca deve ser editado.
+
+Os repositories não são uma segunda biblioteca. Eles contêm operações que só
+fazem sentido no produto, como autorizar um usuário, aceitar um convite e gravar
+várias tabelas na mesma transação. Por isso ficam fora de `schemas`,
+`migrations` e do pacote npm.
 
 `DATABASE_URL` é obrigatório. Em dev, o Compose expõe
 `http://127.0.0.1:8000`; no Compose de produção o backend usa

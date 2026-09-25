@@ -10,20 +10,20 @@ const doubles = vi.hoisted(() => ({
   ensureDefault: vi.fn(),
 }));
 
-vi.mock("@/db/repositories/access-invite-store", () => ({
+vi.mock("@/repositories/access-invite-repository", () => ({
   default: {
     exactEmail: doubles.exactEmail,
     create: doubles.create,
     getById: doubles.getById,
   },
 }));
-vi.mock("@/db/repositories/role-store", () => ({
+vi.mock("@/repositories/role-repository", () => ({
   default: { get: doubles.getRole },
 }));
-vi.mock("@/db/repositories/scoped-access-store", () => ({
+vi.mock("@/repositories/scoped-access-repository", () => ({
   default: { get: doubles.getAccess, can: doubles.canAccess },
 }));
-vi.mock("@/db/repositories/system-role-factory", () => ({
+vi.mock("@/repositories/system-role-factory", () => ({
   SystemRoleFactory: { ensureDefault: doubles.ensureDefault },
 }));
 

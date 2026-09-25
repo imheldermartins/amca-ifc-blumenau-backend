@@ -1,12 +1,12 @@
-import roleStore from "@/db/repositories/role-store";
+import roleStore from "@/repositories/role-repository";
 import { fullPermissions } from "@/services/auth/permissions";
 import { ulid } from "ulid";
 import db from "@models/index";
 import authController from "@controllers/auth-controller";
 import workspacesController from "@controllers/workspaces-controller";
 import organizationsController from "@controllers/organizations-controller";
-import workspaceStore from "@/db/repositories/workspace-store";
-import accessInviteStore from "@/db/repositories/access-invite-store";
+import workspaceStore from "@/repositories/workspace-repository";
+import accessInviteStore from "@/repositories/access-invite-repository";
 import type { Schema } from "@/db/schemas/index";
 import { createOpaqueToken, hashOpaqueToken, opaqueTokenHint } from "@/services/opaque-token";
 

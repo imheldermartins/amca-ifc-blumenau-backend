@@ -2,7 +2,7 @@ import type { Schema } from "@/db/schemas/index";
 import type {
   PageColumnJsonUpdate,
   PageJsonPathUpdate,
-} from "@/db/types/page-json.types";
+} from "@/repositories/types/page-json.types";
 import type { JsonRecord } from "@/services/types/json.types";
 import type { PageViewSnapshot } from "@/services/pages/views/page-view-snapshot";
 

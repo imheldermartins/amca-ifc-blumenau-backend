@@ -1,6 +1,6 @@
-import accessInviteStore from "@/db/repositories/access-invite-store";
-import type { InviteRecord } from "@/db/repositories/access-invite-store";
-import scopedAccess from "@/db/repositories/scoped-access-store";
+import accessInviteStore from "@/repositories/access-invite-repository";
+import type { InviteRecord } from "@/repositories/access-invite-repository";
+import scopedAccess from "@/repositories/scoped-access-repository";
 import { allows, type AccessScope } from "@/services/auth/permissions";
 import { inviteFlowRegistry } from "@/services/invitations/invite-flow";
 import inviteInputParser from "@/services/invitations/invite-input-parser";

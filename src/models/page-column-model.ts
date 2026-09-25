@@ -1,5 +1,5 @@
-import { Model } from "@/db/repositories/model";
-import { schemaRegistry } from '@/db/generated/schema';
+import { Model } from "@/repositories/model";
+import { schemaRegistry } from '@/db/rqlite.generated';
 import { type Schema } from "@/db/schemas/index";
 
 // `data` é a config da coluna (ex.: options do select) -> objeto na leitura.

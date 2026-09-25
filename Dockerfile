@@ -17,7 +17,7 @@ WORKDIR /app
 COPY --from=build-dependencies /app/node_modules ./node_modules
 COPY package.json tsconfig.json ./
 COPY rqlite.config.ts ./
-COPY scripts/copy-mail-templates.mjs ./scripts/copy-mail-templates.mjs
+COPY scripts/clean-build.mjs scripts/copy-mail-templates.mjs ./scripts/
 COPY src ./src
 RUN npm run build
 

@@ -15,7 +15,7 @@ export class InviteRouter extends ApplicationRouter {
   }
 
   private async preview(req: Request, res: Response): Promise<Response> {
-    res.set("Cache-Control", "no-store");
+    res.set("Cache-Control", "no-repository");
     return res.status(StatusCode.OK).json(await inviteController.preview(req.params.token));
   }
 
