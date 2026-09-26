@@ -12,7 +12,25 @@ RAFT_ADDR="0.0.0.0:4002"
 
 HTTP_ADV_ADDR="${ADV_IP}:${HTTP_ADV_PORT}"
 RAFT_ADV_ADDR="${ADV_IP}:4002"
+,,
+,,,
+,
 
+
+
+
+
+,
+,
+,,
+,
+,
+,
+,
+,
+,
+,
+,,
 # Build arguments list
 ARGS="-node-id ${NODE_ID} -http-addr ${HTTP_ADDR} -raft-addr ${RAFT_ADDR} -http-adv-addr ${HTTP_ADV_ADDR} -raft-adv-addr ${RAFT_ADV_ADDR}"
 

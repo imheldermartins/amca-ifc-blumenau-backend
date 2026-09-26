@@ -17,7 +17,7 @@ services:
       # restrição de acesso (CORS só instrui browsers). Para permitir outro
       # host/cluster multi-máquina, defina RQLITE_ALLOWED_HOST (ex.: 0.0.0.0
       # ou o IP da interface desejada).
-      - "${RQLITE_ALLOWED_HOST:-127.0.0.1}:8000:4001" # API HTTP
+      - "${RQLITE_ALLOWED_HOST:-127.0.0.1}:4001:4001" # API HTTP
       - "${RQLITE_ALLOWED_HOST:-127.0.0.1}:4002:4002" # Raft Cluster
     environment:
       - NODE_ID=${NODE_ID:-1}

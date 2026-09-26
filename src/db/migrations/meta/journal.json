@@ -13,6 +13,12 @@
       "file": "20260924235507356_619638ca_initial_schema_from_decorators.ts",
       "snapshot": "20260924235507356_619638ca_initial_schema_from_decorators.snapshot.json",
       "checksum": "cc48d9bc1173779614ffaa2fcce8b8c22d957c34647d9df398e8a0dc7ae571fb"
+    },
+    {
+      "id": "20260926211058243_9a36cd7b_repair_literal_updated_at",
+      "file": "20260926211058243_9a36cd7b_repair_literal_updated_at.ts",
+      "snapshot": "20260926211058243_9a36cd7b_repair_literal_updated_at.snapshot.json",
+      "checksum": "1a469ec64ff3353d2c2d72f837333044ffa5f232c0bb88559435e7a238fa3ad8"
     }
   ]
 }
