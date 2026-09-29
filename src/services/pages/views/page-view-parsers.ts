@@ -29,6 +29,10 @@ const VIEW_PATCH_FIELDS = new Set([
   "orderedHeaderCols",
   "orderedRows",
   "columnWidths",
+  "dateColumnId",
+  "colorColumnId",
+  "calendarPropertyIds",
+  "calendarShowPropertyLabels",
 ]);
 
 export function isJsonRecord(value: unknown): value is JsonRecord {

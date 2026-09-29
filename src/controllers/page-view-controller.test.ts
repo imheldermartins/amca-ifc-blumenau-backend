@@ -39,6 +39,8 @@ const PAGE_ID = "01KXVZ00000000000000000001";
 const VIEW_ID = "01KXVZ00000000000000000002";
 const OTHER_VIEW_ID = "01KXVZ00000000000000000003";
 const COLUMN_ID = "01KXVZ00000000000000000004";
+const DATE_COLUMN_ID = "01KXVZ00000000000000000006";
+const COLOR_COLUMN_ID = "01KXVZ00000000000000000007";
 const OWNER_ID = "01KXVZ00000000000000000005";
 const NOW = "2026-09-01T12:34:56.789Z";
 
@@ -363,6 +365,56 @@ describe("PageViewController", () => {
     );
     expect(result.ok && result.data.data[OTHER_VIEW_ID]).toEqual(otherView);
     expect(result.ok && (result.data.view.filters as unknown)).toEqual(filters);
+  });
+
+  it("persiste apenas colunas compatíveis na configuração do calendário", async () => {
+    const current = page({ [VIEW_ID]: { view: "calendar", name: "Agenda" } });
+    const persisted = page({ [VIEW_ID]: {
+      view: "calendar", name: "Agenda", dateColumnId: DATE_COLUMN_ID, colorColumnId: COLOR_COLUMN_ID,
+      calendarPropertyIds: [COLOR_COLUMN_ID, COLUMN_ID],
+      calendarShowPropertyLabels: false,
+    } });
+    mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
+    mocks.columns.findAll.mockResolvedValue([
+      { ...column(), id: DATE_COLUMN_ID, name: "Data", type: "date" },
+      { ...column(), id: COLOR_COLUMN_ID, name: "Status", type: "select" },
+      column(),
+    ]);
+
+    const result = await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, {
+      dateColumnId: DATE_COLUMN_ID,
+      colorColumnId: COLOR_COLUMN_ID,
+      calendarPropertyIds: [COLOR_COLUMN_ID, COLUMN_ID],
+      calendarShowPropertyLabels: false,
+    });
+
+    expect(result).toMatchObject({ ok: true, data: { changed: true, view: {
+      dateColumnId: DATE_COLUMN_ID,
+      colorColumnId: COLOR_COLUMN_ID,
+      calendarPropertyIds: [COLOR_COLUMN_ID, COLUMN_ID],
+      calendarShowPropertyLabels: false,
+    } } });
+    expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledWith(PAGE_ID, [
+      { path: [VIEW_ID, "dateColumnId"], value: DATE_COLUMN_ID },
+      { path: [VIEW_ID, "colorColumnId"], value: COLOR_COLUMN_ID },
+      { path: [VIEW_ID, "calendarPropertyIds"], value: [COLOR_COLUMN_ID, COLUMN_ID] },
+      { path: [VIEW_ID, "calendarShowPropertyLabels"], value: false },
+    ], VIEW_ID);
+  });
+
+  it("recusa colunas incompatíveis na configuração do calendário", async () => {
+    mocks.pages.find.mockResolvedValue(page({ [VIEW_ID]: { view: "calendar", name: "Agenda" } }));
+    mocks.columns.findAll.mockResolvedValue([{ ...column(), type: "text" }]);
+
+    await expect(pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { dateColumnId: COLUMN_ID }))
+      .resolves.toMatchObject({ ok: false, reason: "validation" });
+    await expect(pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { colorColumnId: COLUMN_ID }))
+      .resolves.toMatchObject({ ok: false, reason: "validation" });
+    await expect(pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { calendarPropertyIds: [OTHER_VIEW_ID] }))
+      .resolves.toMatchObject({ ok: false, reason: "validation" });
+    await expect(pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { calendarShowPropertyLabels: "não" }))
+      .resolves.toMatchObject({ ok: false, reason: "validation" });
+    expect(mocks.pageJson.updatePageJsonPaths).not.toHaveBeenCalled();
   });
 
   it.each(["grid", "board", "calendar", "timeline", "graph"])(

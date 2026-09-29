@@ -21,6 +21,12 @@ export namespace Input {
   export type UpdateWorkspace = Partial<Pick<Schema.Workspace, "name" | "icon">>;
   export type UpdateWorkspaceMemberRole = { role?: Schema.WorkspaceRole };
 
+  // --- Schedule ---
+  export type PinSchedulePage = {
+    dateColumnId?: string;
+    colorColumnId?: string | null;
+  };
+
   // --- Organizations ---
   export type CreateOrganization = { name?: string; workspaceId?: string };
 

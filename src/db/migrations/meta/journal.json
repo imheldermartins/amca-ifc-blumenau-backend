@@ -19,6 +19,12 @@
       "file": "20260926211058243_9a36cd7b_repair_literal_updated_at.ts",
       "snapshot": "20260926211058243_9a36cd7b_repair_literal_updated_at.snapshot.json",
       "checksum": "1a469ec64ff3353d2c2d72f837333044ffa5f232c0bb88559435e7a238fa3ad8"
+    },
+    {
+      "id": "20260928231611832_eef4196a_add_pinned_schedule_pages",
+      "file": "20260928231611832_eef4196a_add_pinned_schedule_pages.ts",
+      "snapshot": "20260928231611832_eef4196a_add_pinned_schedule_pages.snapshot.json",
+      "checksum": "b0f8666462f18331b520cf998d9816591a3f99b89a67b280b755a8fd83072bf0"
     }
   ]
 }

@@ -4,6 +4,7 @@ import type { PageViewPatchPlan } from "@/services/pages/views/types/page-view.t
 import { PageViewSnapshot } from "@/services/pages/views/page-view-snapshot";
 import {
   isJsonRecord,
+  isUlid,
   isSupportedViewKind,
   parseColumnWidths,
   parsePageViewTitle,
@@ -88,6 +89,52 @@ export class PageViewPatchPlanner {
     }
     if (raw.columnWidths !== undefined) {
       set("columnWidths", parseColumnWidths(raw.columnWidths));
+    }
+    if (raw.dateColumnId !== undefined) {
+      const column = isUlid(raw.dateColumnId)
+        ? columns.find((candidate) => candidate.id === raw.dateColumnId)
+        : undefined;
+      if (!column || column.type !== "date") {
+        throw new ViewFiltersValidationError("Coluna de data inválida");
+      }
+      set("dateColumnId", raw.dateColumnId);
+    }
+    if (raw.colorColumnId !== undefined) {
+      if (raw.colorColumnId === null) {
+        set("colorColumnId", null);
+      } else {
+        const column = isUlid(raw.colorColumnId)
+          ? columns.find((candidate) => candidate.id === raw.colorColumnId)
+          : undefined;
+        if (!column || column.type !== "select") {
+          throw new ViewFiltersValidationError("Coluna de cor inválida");
+        }
+        set("colorColumnId", raw.colorColumnId);
+      }
+    }
+    if (raw.calendarPropertyIds !== undefined) {
+      const propertyIds = parseStringList(
+        raw.calendarPropertyIds,
+        "Propriedades visíveis do calendário",
+      );
+      if (
+        propertyIds.some(
+          (id) => !isUlid(id) || !columns.some((column) => column.id === id),
+        )
+      ) {
+        throw new ViewFiltersValidationError(
+          "Propriedades visíveis do calendário inválidas",
+        );
+      }
+      set("calendarPropertyIds", propertyIds);
+    }
+    if (raw.calendarShowPropertyLabels !== undefined) {
+      if (typeof raw.calendarShowPropertyLabels !== "boolean") {
+        throw new ViewFiltersValidationError(
+          "Visibilidade dos nomes das propriedades do calendário inválida",
+        );
+      }
+      set("calendarShowPropertyLabels", raw.calendarShowPropertyLabels);
     }
 
     return { patches };

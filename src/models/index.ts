@@ -9,6 +9,7 @@ import { pageCollaborators } from "@models/page-collaborator-model";
 import { organizations } from "@models/organization-model";
 import { organizationMembers } from "@models/organization-member-model";
 import { workspaceMembers } from "@models/workspace-member-model";
+import { pinnedSchedulePages } from "@models/pinned-schedule-page-model";
 
 export default {
     users,
@@ -21,5 +22,6 @@ export default {
     organizations,
     organizationMembers,
     workspaceMembers,
+    pinnedSchedulePages,
     sqlRaw: Model.sqlRaw,
 };

@@ -157,7 +157,16 @@ export namespace Schema {
   }
   export interface PageColumnsValues extends PageColumnValue {}
 
-  // --- 7. PAGE COLLABORATORS (Colaboradores/Acesso de Página) ---
+  // --- 7. SCHEDULE PINS ---
+  export interface PinnedSchedulePage extends EntityBase {
+    workspace_id: NonEmptyString;
+    page_id: NonEmptyString;
+    pinned_by_user_id: NonEmptyString;
+    date_column_id: NonEmptyString;
+    color_column_id: NonEmptyString | null;
+  }
+
+  // --- 8. PAGE COLLABORATORS (Colaboradores/Acesso de Página) ---
   // Vínculo N:N entre páginas e usuários com acesso àquela página (além do
   // owner_id da própria pages). UNIQUE(page_id, user_id) no banco.
   export interface PageCollaborator extends EntityBase {

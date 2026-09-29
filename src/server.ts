@@ -7,6 +7,7 @@ import workspaceRouter from "@routes/workspace-route";
 import organizationRouter from "@routes/organization-route";
 import accessRouter from "@routes/access-route";
 import inviteRouter from "@routes/invite-route";
+import scheduleRouter from "@routes/schedule-route";
 
 const server = new HttpServer([
   { path: "/users", router: userRouter },
@@ -16,6 +17,7 @@ const server = new HttpServer([
   { path: "/access", router: accessRouter },
   { path: "/invites", router: inviteRouter },
   { path: "/auth", router: authRouter },
+  { path: "/schedule", router: scheduleRouter },
 ]);
 
 await db.waitForDatabase();
