@@ -11,6 +11,7 @@ import { authenticatedUserId, routeParam } from "@/routes/request-values";
 import middleware from "@/services/auth/middleware";
 import { requirePageAccess } from "@/services/auth/page-access-middleware";
 import { requireScopedPermission } from "@/services/auth/scoped-access-middleware";
+import { requireUnlockedPageTitle } from '@/services/auth/column-lock-middleware';
 import pageRealtimePublisher, { PageRealtimePublisher } from "@/services/realtime/page-realtime-publisher";
 import { StatusCode } from "@/services/http/status-code";
 
@@ -28,7 +29,7 @@ export class PageResourceRouter extends BaseRouter<Schema.Page> {
       all: [middleware.handle],
       get: [middleware.handle, requirePageAccess()],
       create: [middleware.handle],
-      update: [middleware.handle, requireScopedPermission("page", "write", "update")],
+      update: [middleware.handle, requireScopedPermission("page", "write", "update"), requireUnlockedPageTitle],
       delete: [middleware.handle, requireScopedPermission("page", "write", "delete")],
     });
   }

@@ -2,7 +2,7 @@ import {Table,Column,Default,Json,ForeignKey,Check,Index} from '@cubs/rqlite-cli
 import {BaseSchema} from './Base.schema.js';
 
 @Table('page_columns', {softDelete: 'deleted_at'})
-@Check("type IN ('text', 'numeric', 'select', 'date', 'checkbox')")
+@Check("type IN ('text', 'numeric', 'select', 'date', 'checkbox', 'flow')")
 @ForeignKey({"columns":["parent_id"],"table":"pages","references":["id"]})
 @Index("idx_page_columns_parent_deleted_at", ["parent_id","deleted_at"])
 export class PageColumnSchema extends BaseSchema {

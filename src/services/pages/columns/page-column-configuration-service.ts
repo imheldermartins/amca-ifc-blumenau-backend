@@ -15,10 +15,11 @@ const COLUMN_TYPES = new Set<Schema.ColumnType>([
   "select",
   "date",
   "checkbox",
+  "flow",
 ]);
 const NUMBER_FORMATS = new Set<Schema.NumberFormat>(["percentage", "currency"]);
 const CURRENCY_CODES = new Set<Schema.CurrencyCode>(["BRL"]);
-const TEXT_MASKS = new Set<Schema.TextMask>(["cpf", "cep", "phone-br", "date"]);
+const TEXT_MASKS = new Set<Schema.TextMask>(["cpf", "cep", "phone-br", "date", "email"]);
 
 export class PageColumnConfigurationService {
   public constructor(
@@ -49,6 +50,7 @@ export class PageColumnConfigurationService {
     if (existingOptionTombstones.length > 0) {
       data.reservedOptionKeys = existingOptionTombstones;
     }
+    if (existing?.flow) data.flow = existing.flow;
 
     if (input.options === null) {
       const tombstones = optionTombstones(

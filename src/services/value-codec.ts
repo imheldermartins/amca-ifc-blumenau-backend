@@ -127,10 +127,35 @@ const dateCodec: Schema.ColumnValueCodec<string> = {
   decode: (data) => decodeEnvelope(data) as string,
 };
 
+const flowCodec: Schema.ColumnValueCodec<Schema.FlowExecutionSummary> = {
+  validate(rawValue) {
+    if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) {
+      throw new Error("Resultado de flow inválido");
+    }
+    const value = rawValue as Partial<Schema.FlowExecutionSummary>;
+    if (
+      typeof value.executionId !== "string"
+      || (value.status !== "succeeded" && value.status !== "failed")
+      || typeof value.startedAt !== "string"
+      || typeof value.finishedAt !== "string"
+      || !Array.isArray(value.executedNodeIds)
+      || !value.effects
+      || typeof value.effects.emailsQueued !== "number"
+      || typeof value.effects.valuesUpdated !== "number"
+    ) {
+      throw new Error("Resultado de flow inválido");
+    }
+    return value as Schema.FlowExecutionSummary;
+  },
+  encode: encodeEnvelope,
+  decode: (data) => decodeEnvelope(data) as Schema.FlowExecutionSummary,
+};
+
 export const VALUE_CODECS: Record<Schema.ColumnType, Schema.ColumnValueCodec> = {
   text: textCodec,
   numeric: numericCodec,
   checkbox: checkboxCodec,
   select: selectCodec,
   date: dateCodec,
+  flow: flowCodec,
 };

@@ -68,7 +68,7 @@ export function accessGuard(scope: AccessScope, scopeId: string, userId: string,
           AND (m.page_id = ctx.scope_id OR (
             ${contains("role", "'$.read'", "'subpages'")}
             AND NOT EXISTS (SELECT 1 FROM page_collaborators direct WHERE direct.page_id = ctx.scope_id AND direct.user_id = ctx.user_id AND direct.deleted_at IS NULL)
-            AND (ctx.kind = 'read' OR (ctx.action IN ('update','create','edit_subpages') AND ${contains("role", "'$.write'", "'edit_subpages'")}))
+            AND (ctx.kind = 'read' OR (ctx.action IN ('update','create','edit_subpages','lock_columns') AND ${contains("role", "'$.write'", "'edit_subpages'")}))
           ))
       ))`;
   }

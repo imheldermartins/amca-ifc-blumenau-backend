@@ -13,6 +13,7 @@ import { authenticatedUserId, routeParam } from "@/routes/request-values";
 import middleware from "@/services/auth/middleware";
 import { requirePageAccess } from "@/services/auth/page-access-middleware";
 import { requireScopedPermission } from "@/services/auth/scoped-access-middleware";
+import { requireUnlockedColumn } from '@/services/auth/column-lock-middleware';
 import { StatusCode } from "@/services/http/status-code";
 import pageRealtimePublisher, {
   PageRealtimePublisher,
@@ -51,18 +52,21 @@ export class PageColumnRouter extends ApplicationRouter {
       "/parent/:id/columns/:column_id",
       middleware.handle,
       requireScopedPermission("page", "write", "update"),
+      requireUnlockedColumn('id'),
       this.update.bind(this),
     );
     this.router.post(
       "/parent/:id/columns/:column_id/reset",
       middleware.handle,
       requireScopedPermission("page", "write", "update"),
+      requireUnlockedColumn('id'),
       this.resetColumn.bind(this),
     );
     this.router.delete(
       "/parent/:id/columns/:column_id",
       middleware.handle,
       requireScopedPermission("page", "write", "update"),
+      requireUnlockedColumn('id'),
       this.delete.bind(this),
     );
   }
@@ -176,7 +180,7 @@ export class PageColumnRouter extends ApplicationRouter {
   private typeFromQuery(raw: unknown): Schema.ColumnType | undefined | null {
     if (typeof raw !== "string") return undefined;
     if (raw === "number") return "numeric";
-    if (raw === "text" || raw === "numeric" || raw === "select" || raw === "date" || raw === "checkbox") {
+    if (raw === "text" || raw === "numeric" || raw === "select" || raw === "date" || raw === "checkbox" || raw === "flow") {
       return raw;
     }
     return null;

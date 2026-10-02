@@ -8,6 +8,8 @@ import organizationRouter from "@routes/organization-route";
 import accessRouter from "@routes/access-route";
 import inviteRouter from "@routes/invite-route";
 import scheduleRouter from "@routes/schedule-route";
+import notificationRouter from "@routes/notification-route";
+import notificationWorker from '@/services/notifications/notification-worker';
 
 const server = new HttpServer([
   { path: "/users", router: userRouter },
@@ -18,8 +20,10 @@ const server = new HttpServer([
   { path: "/invites", router: inviteRouter },
   { path: "/auth", router: authRouter },
   { path: "/schedule", router: scheduleRouter },
+  { path: "/notifications", router: notificationRouter },
 ]);
 
 await db.waitForDatabase();
 await db.assertReady();
 server.start();
+notificationWorker.start();

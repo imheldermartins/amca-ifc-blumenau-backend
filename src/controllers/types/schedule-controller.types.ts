@@ -24,3 +24,22 @@ export interface PinnedSchedulePageDto {
   properties: SchedulePropertyDto[];
   pinnedAt: string;
 }
+
+export interface ScheduleRecipientDto {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
+export interface SchedulePinRequestDto {
+  id: string;
+  status: 'pending';
+  recipient: ScheduleRecipientDto;
+  emailQueued: true;
+}
+
+export interface SchedulePinDecisionDto {
+  requestId: string;
+  status: 'accepted' | 'declined';
+  pinnedPage: PinnedSchedulePageDto | null;
+}

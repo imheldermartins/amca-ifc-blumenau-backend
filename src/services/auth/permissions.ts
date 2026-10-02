@@ -14,7 +14,7 @@ export const PERMISSION_CATALOG = {
   },
   page: {
     read: ["view", "subpages", "members", "roles"],
-    write: ["update", "create", "edit_subpages", "delete", "add_members", "promote_members", "create_page_roles"],
+    write: ["update", "create", "edit_subpages", "delete", "add_members", "promote_members", "create_page_roles", "lock_columns"],
   },
 } as const;
 
@@ -40,6 +40,7 @@ export function parsePermissions(scope: AccessScope, input: unknown): Permission
   if ((output.read.length || output.write.length) && !output.read.includes("view")) return null;
   if (output.write.includes("edit_subpages")
     && (!output.write.includes("update") || !output.read.includes("subpages"))) return null;
+  if (output.write.includes("lock_columns") && !output.write.includes("update")) return null;
   return output;
 }
 

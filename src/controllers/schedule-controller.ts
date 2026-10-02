@@ -3,32 +3,30 @@ import type { Input } from "@/db/schemas/inputs";
 import pageAccessController, { PageAccessController } from "@/controllers/page-access-controller";
 import type {
   PinnedSchedulePageDto,
+  SchedulePinDecisionDto,
+  SchedulePinRequestDto,
   SchedulePropertyDto,
+  ScheduleRecipientDto,
 } from "@/controllers/types/schedule-controller.types";
 import type { ServiceResult } from "@/controllers/types/service-result.types";
 import scheduleStore, { ScheduleStore } from "@/repositories/schedule-repository";
+import schedulePinRequestStore, { SchedulePinRequestStore } from "@/repositories/schedule-pin-request-repository";
 import type {
   PinnedSchedulePageRow,
   SchedulePropertyRow,
 } from "@/repositories/types/schedule-repository.types";
 import { VALUE_CODECS } from "@/services/value-codec";
+import { schedulePinRequestMail } from '@/services/notifications/schedule-notification-mail';
+import { projectScheduleInterval } from '@/services/schedule/schedule-date';
 import { isUlid } from "@/utils/ulid";
+import { ulid } from 'ulid';
 
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-const MIDNIGHT_ISO = /^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/;
 const COLORS = new Set<Schema.ColorOptions>(Schema.COLOR_OPTIONS);
 
 interface SelectOptionData {
   id: string;
   value: string;
   color?: Schema.ColorOptions;
-}
-
-function addUtcDay(value: string): string {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year!, month! - 1, day!));
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
 }
 
 function parseColumnData(raw: string | null): Schema.PageColumnData {
@@ -73,28 +71,12 @@ function decodeProperty(row: SchedulePropertyRow): SchedulePropertyDto | null {
   }
 }
 
-function interval(raw: string): Pick<PinnedSchedulePageDto, "start" | "end" | "allDay"> | null {
-  const parts = raw.includes("@") ? raw.split("@") : [raw];
-  if (parts.length < 1 || parts.length > 2 || !parts[0]) return null;
-  const start = parts[0];
-  const inclusiveEnd = parts[1];
-  const isAllDayPart = (value: string) => DATE_ONLY.test(value) || MIDNIGHT_ISO.test(value);
-  const allDay = isAllDayPart(start) && (!inclusiveEnd || isAllDayPart(inclusiveEnd));
-  const inclusive = inclusiveEnd ?? start;
-  const end = allDay
-    ? DATE_ONLY.test(inclusive)
-      ? addUtcDay(inclusive)
-      : `${addUtcDay(inclusive.slice(0, 10))}T00:00:00.000Z`
-    : inclusiveEnd;
-  if (end && end < start) return null;
-  return { start, ...(end && { end }), allDay };
-}
-
 /** Regras de pin e projeção do schedule; não conhece Express. */
 export class ScheduleController {
   public constructor(
     private readonly store: ScheduleStore = scheduleStore,
     private readonly access: PageAccessController = pageAccessController,
+    private readonly requests: SchedulePinRequestStore = schedulePinRequestStore,
   ) {}
 
   public async list(
@@ -204,6 +186,162 @@ export class ScheduleController {
     }
   }
 
+  public async recipients(
+    workspaceId: string,
+    pageId: string,
+    userId: string,
+  ): Promise<ServiceResult<ScheduleRecipientDto[]>> {
+    if (!isUlid(workspaceId) || !isUlid(pageId) || !isUlid(userId)) {
+      return { ok: false, reason: 'validation', message: 'Página ou workspace inválida' };
+    }
+    if (!await this.access.canAccessPage(userId, pageId)) {
+      return { ok: false, reason: 'not_found', message: '"Page" não encontrado' };
+    }
+    try {
+      const recipients = await this.requests.listEligibleRecipients(
+        workspaceId as NonEmptyString,
+        pageId as NonEmptyString,
+        userId as NonEmptyString,
+      );
+      return { ok: true, data: recipients };
+    } catch (error) {
+      this.log(error);
+      return { ok: false, reason: 'server_error', message: 'Erro ao carregar destinatários' };
+    }
+  }
+
+  public async requestPin(
+    workspaceId: string,
+    pageId: string,
+    userId: string,
+    input: Input.RequestSchedulePin,
+  ): Promise<ServiceResult<SchedulePinRequestDto>> {
+    const recipientUserId = input.recipientUserId;
+    const dateColumnId = input.dateColumnId;
+    const colorColumnId = input.colorColumnId ?? null;
+    if (
+      !isUlid(workspaceId) || !isUlid(pageId) || !isUlid(userId)
+      || !isUlid(recipientUserId) || !isUlid(dateColumnId)
+      || (colorColumnId !== null && !isUlid(colorColumnId))
+    ) {
+      return { ok: false, reason: 'validation', message: 'Solicitação de agenda inválida' };
+    }
+    if (recipientUserId === userId) {
+      return { ok: false, reason: 'validation', message: 'Fixe a página diretamente na sua agenda' };
+    }
+    if (!await this.access.canAccessPage(userId, pageId)) {
+      return { ok: false, reason: 'not_found', message: '"Page" não encontrado' };
+    }
+    try {
+      const [target, recipients, context] = await Promise.all([
+        this.store.resolvePinTarget(
+          workspaceId as NonEmptyString,
+          pageId as NonEmptyString,
+          dateColumnId as NonEmptyString,
+          colorColumnId as NonEmptyString | null,
+        ),
+        this.requests.listEligibleRecipients(
+          workspaceId as NonEmptyString,
+          pageId as NonEmptyString,
+          userId as NonEmptyString,
+        ),
+        this.requests.requestContext(pageId as NonEmptyString, userId as NonEmptyString),
+      ]);
+      const recipient = recipients.find((candidate) => candidate.id === recipientUserId);
+      if (!target || !recipient || !context) {
+        return {
+          ok: false,
+          reason: 'forbidden',
+          message: 'O destinatário não pode visualizar esta página nesta workspace',
+        };
+      }
+      const requestId = ulid() as NonEmptyString;
+      const requesterName = context.actor_name || context.actor_email;
+      const pageTitle = context.page_title ?? 'Sem título';
+      const created = await this.requests.create({
+        requestId,
+        notificationId: ulid() as NonEmptyString,
+        deliveryId: ulid() as NonEmptyString,
+        workspaceId: workspaceId as NonEmptyString,
+        pageId: pageId as NonEmptyString,
+        requestedByUserId: userId as NonEmptyString,
+        recipientUserId: recipientUserId as NonEmptyString,
+        dateColumnId: dateColumnId as NonEmptyString,
+        colorColumnId: colorColumnId as NonEmptyString | null,
+        notificationData: {
+          status: 'pending',
+          pageId,
+          pageTitle,
+          dateColumnId,
+          colorColumnId,
+          requesterName,
+        },
+        email: schedulePinRequestMail({
+          recipient: { name: recipient.name || recipient.email, email: recipient.email },
+          requesterName,
+          pageTitle,
+        }),
+      });
+      return created
+        ? { ok: true, data: { id: requestId, status: 'pending', recipient, emailQueued: true } }
+        : {
+            ok: false,
+            reason: 'conflict',
+            message: 'Já existe uma solicitação pendente para esta pessoa e página',
+          };
+    } catch (error) {
+      this.log(error);
+      return { ok: false, reason: 'server_error', message: 'Erro ao solicitar fixação' };
+    }
+  }
+
+  public async decidePinRequest(
+    workspaceId: string,
+    requestId: string,
+    userId: string,
+    input: Input.DecideSchedulePinRequest,
+  ): Promise<ServiceResult<SchedulePinDecisionDto>> {
+    const decision = input.decision;
+    if (
+      !isUlid(workspaceId) || !isUlid(requestId) || !isUlid(userId)
+      || (decision !== 'accepted' && decision !== 'declined')
+    ) {
+      return { ok: false, reason: 'validation', message: 'Decisão inválida' };
+    }
+    try {
+      const request = await this.requests.findForRecipient(
+        workspaceId as NonEmptyString,
+        requestId as NonEmptyString,
+        userId as NonEmptyString,
+      );
+      if (!request) {
+        return { ok: false, reason: 'not_found', message: 'Solicitação não encontrada' };
+      }
+      if (request.status !== 'pending') {
+        return { ok: false, reason: 'conflict', message: 'Esta solicitação já foi respondida' };
+      }
+      const saved = await this.requests.decide(request, userId as NonEmptyString, decision);
+      if (!saved) {
+        return {
+          ok: false,
+          reason: 'forbidden',
+          message: 'A página não está mais disponível para esta agenda',
+        };
+      }
+      let pinnedPage: PinnedSchedulePageDto | null = null;
+      if (decision === 'accepted') {
+        const listed = await this.list(workspaceId, userId);
+        if (listed.ok) {
+          pinnedPage = listed.data.find((candidate) => candidate.pageId === request.page_id) ?? null;
+        }
+      }
+      return { ok: true, data: { requestId, status: decision, pinnedPage } };
+    } catch (error) {
+      this.log(error);
+      return { ok: false, reason: 'server_error', message: 'Erro ao responder solicitação' };
+    }
+  }
+
   private project(
     pin: PinnedSchedulePageRow,
     rows: SchedulePropertyRow[],
@@ -216,7 +354,7 @@ export class ScheduleController {
       return null;
     }
     if (typeof rawDate !== "string") return null;
-    const projectedInterval = interval(rawDate);
+    const projectedInterval = projectScheduleInterval(rawDate);
     if (!projectedInterval) return null;
 
     const properties = rows

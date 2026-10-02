@@ -6,6 +6,7 @@ import type {
   PinnedSchedulePageRow,
   SchedulePinTargetRow,
   SchedulePropertyRow,
+  ScheduleReminderCandidateRow,
 } from "@/repositories/types/schedule-repository.types";
 import { accessGuard } from "@/repositories/scoped-access-repository";
 
@@ -193,6 +194,28 @@ export class ScheduleStore {
       AND pin.pinned_by_user_id = ?
     ORDER BY pin.created_at, column.created_at, column.id`;
     return db.sqlRaw<SchedulePropertyRow>({ text, values: [workspaceId, userId] }, "query");
+  }
+
+  public listReminderCandidates(): Promise<ScheduleReminderCandidateRow[]> {
+    const text = `SELECT pin.id AS pin_id, pin.workspace_id, pin.page_id,
+      pin.pinned_by_user_id AS user_id, pin.created_at AS pin_created_at,
+      user.name AS user_name, user.email AS user_email,
+      page.title AS page_title, date_value.data AS date_value_data
+    FROM pinned_schedule_pages pin
+    JOIN users user ON user.id = pin.pinned_by_user_id
+    JOIN pages page ON page.id = pin.page_id AND page.deleted_at IS NULL
+    JOIN page_columns date_column
+      ON date_column.id = pin.date_column_id
+      AND date_column.type = 'date'
+      AND date_column.deleted_at IS NULL
+    JOIN page_edges source_edge
+      ON source_edge.child_id = page.id
+      AND source_edge.parent_id = date_column.parent_id
+    JOIN page_columns_values date_value
+      ON date_value.page_id = page.id
+      AND date_value.page_column_id = date_column.id
+    ORDER BY pin.id`;
+    return db.sqlRaw<ScheduleReminderCandidateRow>({ text, values: [] }, 'query');
   }
 }
 

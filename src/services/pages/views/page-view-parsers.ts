@@ -21,7 +21,7 @@ const VIEW_KINDS = new Set<PageViewKind>([
   "timeline",
   "graph",
 ]);
-const TITLE_MASKS = new Set<Schema.TextMask>(["cpf", "cep", "phone-br", "date"]);
+const TITLE_MASKS = new Set<Schema.TextMask>(["cpf", "cep", "phone-br", "date", "email"]);
 const VIEW_PATCH_FIELDS = new Set([
   "view",
   "name",

@@ -66,6 +66,11 @@ const doubles = vi.hoisted(() => ({
     canReadSubpages: vi.fn(),
     listSharedPages: vi.fn(),
   },
+  locks: {
+    rowParentId: vi.fn(),
+    columnParentId: vi.fn(),
+    canMutate: vi.fn(),
+  },
   publisher: {
     pageChanged: vi.fn(async () => undefined),
     rowCreated: vi.fn(async () => undefined),
@@ -79,6 +84,7 @@ const doubles = vi.hoisted(() => ({
 }));
 
 vi.mock("@/repositories/scoped-access-repository", async (load) => ({...await load<object>(),default:{can: (_scope:string,id:string,userId:string) => doubles.access.canAccessPage(userId,id)}}));
+vi.mock("@/repositories/column-lock-repository", () => ({ default: doubles.locks }));
 vi.mock("@/controllers/page-controller", () => ({ default: doubles.page }));
 vi.mock("@/controllers/page-hierarchy-controller", () => ({ default: doubles.hierarchy }));
 vi.mock("@/controllers/page-column-controller", () => ({ default: doubles.column }));
@@ -128,6 +134,9 @@ beforeEach(() => {
   doubles.access.canAccessPage.mockResolvedValue(true);
   doubles.access.canUpdatePage.mockResolvedValue(true);
   doubles.hierarchy.getParentId.mockResolvedValue(PARENT_ID);
+  doubles.locks.rowParentId.mockResolvedValue(PARENT_ID);
+  doubles.locks.columnParentId.mockResolvedValue(PARENT_ID);
+  doubles.locks.canMutate.mockResolvedValue(true);
 });
 
 async function request(

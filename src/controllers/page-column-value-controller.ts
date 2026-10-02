@@ -39,6 +39,9 @@ export class PageColumnValueController {
       if (!this.values.supports(column)) {
         return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
       }
+      if (column.type === "flow") {
+        return { ok: false, reason: "validation", message: "Resultado de flow só pode ser alterado pela execução" };
+      }
 
       // A célula é única por (página, coluna); criação nunca substitui valor.
       const occupied = await this.cells.findCell(input.page_id, input.page_column_id);
@@ -83,6 +86,9 @@ export class PageColumnValueController {
       }
       if (!this.values.supports(column)) {
         return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
+      }
+      if (column.type === "flow") {
+        return { ok: false, reason: "validation", message: "Resultado de flow só pode ser alterado pela execução" };
       }
 
       let data: string;
@@ -139,6 +145,9 @@ export class PageColumnValueController {
       const column = await this.cells.findColumnForCell(pageId, columnId);
       if (!column) {
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
+      }
+      if (column.type === "flow") {
+        return { ok: false, reason: "validation", message: "Resultado de flow só pode ser alterado pela execução" };
       }
 
       const deleted = await this.cells.deleteCell(row.id, pageId);

@@ -2,9 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ScheduleController } from "@/controllers/schedule-controller";
 import type { PageAccessController } from "@/controllers/page-access-controller";
+import type {
+  CreateSchedulePinRequestInput,
+  SchedulePinRequestStore,
+} from "@/repositories/schedule-pin-request-repository";
 import type { ScheduleStore, UpsertSchedulePinInput } from "@/repositories/schedule-repository";
 import type {
   PinnedSchedulePageRow,
+  SchedulePinRequestRow,
   SchedulePropertyRow,
 } from "@/repositories/types/schedule-repository.types";
 
@@ -18,6 +23,7 @@ const DATE_COLUMN_ID = "01ARZ3NDEKTSV4RRFFQ69G5FB1";
 const COLOR_COLUMN_ID = "01ARZ3NDEKTSV4RRFFQ69G5FB2";
 const OPTION_ID = "01ARZ3NDEKTSV4RRFFQ69G5FB3";
 const PIN_ID = "01ARZ3NDEKTSV4RRFFQ69G5FB4";
+const REQUEST_ID = "01ARZ3NDEKTSV4RRFFQ69G5FB5";
 
 function pinRow(pageId = PAGE_ID): PinnedSchedulePageRow {
   return {
@@ -49,8 +55,30 @@ function propertyRows(pageId = PAGE_ID): SchedulePropertyRow[] {
   }];
 }
 
+function requestRow(status: SchedulePinRequestRow["status"] = "pending"): SchedulePinRequestRow {
+  return {
+    id: REQUEST_ID,
+    created_at: "2026-09-28 12:00:00",
+    updated_at: "2026-09-28 12:00:00",
+    workspace_id: WORKSPACE_ID,
+    page_id: PAGE_ID,
+    requested_by_user_id: USER_ID,
+    recipient_user_id: OTHER_USER_ID,
+    date_column_id: DATE_COLUMN_ID,
+    color_column_id: COLOR_COLUMN_ID,
+    status,
+    decided_at: null,
+    page_title: "Entrega",
+    requester_name: "Pessoa solicitante",
+    requester_email: "requester@example.test",
+    recipient_name: "Pessoa destinatária",
+    recipient_email: "recipient@example.test",
+  };
+}
+
 function setup(rows = [pinRow()], properties = propertyRows()) {
   const captured: UpsertSchedulePinInput[] = [];
+  const capturedRequests: CreateSchedulePinRequestInput[] = [];
   const store = {
     list: vi.fn().mockResolvedValue(rows),
     listProperties: vi.fn().mockResolvedValue(properties),
@@ -70,13 +98,34 @@ function setup(rows = [pinRow()], properties = propertyRows()) {
       async (_userId: string, pageId: string) => pageId !== HIDDEN_PAGE_ID,
     ),
   };
+  const requests = {
+    listEligibleRecipients: vi.fn().mockResolvedValue([{
+      id: OTHER_USER_ID,
+      name: "Pessoa destinatária",
+      email: "recipient@example.test",
+    }]),
+    requestContext: vi.fn().mockResolvedValue({
+      page_title: "Entrega",
+      actor_name: "Pessoa solicitante",
+      actor_email: "requester@example.test",
+    }),
+    create: vi.fn().mockImplementation((input: CreateSchedulePinRequestInput) => {
+      capturedRequests.push(input);
+      return Promise.resolve(true);
+    }),
+    findForRecipient: vi.fn().mockResolvedValue(requestRow()),
+    decide: vi.fn().mockResolvedValue(true),
+  };
   return {
     controller: new ScheduleController(
       store as unknown as ScheduleStore,
       access as unknown as PageAccessController,
+      requests as unknown as SchedulePinRequestStore,
     ),
     store,
+    requests,
     captured,
+    capturedRequests,
   };
 }
 
@@ -166,5 +215,87 @@ describe("ScheduleController", () => {
       data: null,
     });
     expect(store.delete).toHaveBeenCalledWith(WORKSPACE_ID, USER_ID, PAGE_ID);
+  });
+
+  it("solicita o pin somente para destinatário elegível e deriva o ator do token", async () => {
+    const { controller, capturedRequests } = setup();
+    const result = await controller.requestPin(WORKSPACE_ID, PAGE_ID, USER_ID, {
+      recipientUserId: OTHER_USER_ID,
+      dateColumnId: DATE_COLUMN_ID,
+      colorColumnId: COLOR_COLUMN_ID,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        status: "pending",
+        emailQueued: true,
+        recipient: { id: OTHER_USER_ID },
+      },
+    });
+    expect(capturedRequests).toHaveLength(1);
+    expect(capturedRequests[0]).toMatchObject({
+      workspaceId: WORKSPACE_ID,
+      pageId: PAGE_ID,
+      requestedByUserId: USER_ID,
+      recipientUserId: OTHER_USER_ID,
+      dateColumnId: DATE_COLUMN_ID,
+      colorColumnId: COLOR_COLUMN_ID,
+      notificationData: {
+        status: "pending",
+        pageId: PAGE_ID,
+        pageTitle: "Entrega",
+        requesterName: "Pessoa solicitante",
+      },
+    });
+    expect(capturedRequests[0]?.email.to.email).toBe("recipient@example.test");
+  });
+
+  it("não cria solicitação para usuário sem acesso atual à página", async () => {
+    const { controller, requests } = setup();
+    requests.listEligibleRecipients.mockResolvedValueOnce([]);
+
+    const result = await controller.requestPin(WORKSPACE_ID, PAGE_ID, USER_ID, {
+      recipientUserId: OTHER_USER_ID,
+      dateColumnId: DATE_COLUMN_ID,
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: "forbidden" });
+    expect(requests.create).not.toHaveBeenCalled();
+  });
+
+  it("aceita uma solicitação pendente e devolve o item já projetado na agenda", async () => {
+    const { controller, requests } = setup();
+    const result = await controller.decidePinRequest(
+      WORKSPACE_ID,
+      REQUEST_ID,
+      OTHER_USER_ID,
+      { decision: "accepted" },
+    );
+
+    expect(requests.decide).toHaveBeenCalledWith(
+      expect.objectContaining({ id: REQUEST_ID }),
+      OTHER_USER_ID,
+      "accepted",
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      data: { requestId: REQUEST_ID, status: "accepted", pinnedPage: { pageId: PAGE_ID } },
+    });
+  });
+
+  it("impede resposta repetida sem executar outra mutation", async () => {
+    const { controller, requests } = setup();
+    requests.findForRecipient.mockResolvedValueOnce(requestRow("accepted"));
+
+    const result = await controller.decidePinRequest(
+      WORKSPACE_ID,
+      REQUEST_ID,
+      OTHER_USER_ID,
+      { decision: "declined" },
+    );
+
+    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+    expect(requests.decide).not.toHaveBeenCalled();
   });
 });

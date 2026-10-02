@@ -43,6 +43,21 @@ export class ScheduleRouter extends ApplicationRouter {
       canReadWorkspace,
       this.unpin.bind(this),
     );
+    this.router.get(
+      "/:workspaceId/pages/:pageId/pin-recipients",
+      canReadWorkspace,
+      this.recipients.bind(this),
+    );
+    this.router.post(
+      "/:workspaceId/pinned-pages/:pageId/requests",
+      canReadWorkspace,
+      this.requestPin.bind(this),
+    );
+    this.router.post(
+      "/:workspaceId/pin-requests/:requestId/decision",
+      canReadWorkspace,
+      this.decidePinRequest.bind(this),
+    );
   }
 
   private async list(request: Request, response: Response): Promise<Response> {
@@ -75,6 +90,41 @@ export class ScheduleRouter extends ApplicationRouter {
     );
     return result.ok
       ? response.status(StatusCode.NO_CONTENT).send()
+      : response.status(FAILURE_STATUS[result.reason]).json({ message: result.message });
+  }
+
+  private async recipients(request: Request, response: Response): Promise<Response> {
+    const result = await this.schedule.recipients(
+      routeParam(request, "workspaceId"),
+      routeParam(request, "pageId"),
+      authenticatedUserId(request),
+    );
+    return result.ok
+      ? response.status(StatusCode.OK).json(result.data)
+      : response.status(FAILURE_STATUS[result.reason]).json({ message: result.message });
+  }
+
+  private async requestPin(request: Request, response: Response): Promise<Response> {
+    const result = await this.schedule.requestPin(
+      routeParam(request, "workspaceId"),
+      routeParam(request, "pageId"),
+      authenticatedUserId(request),
+      (request.body ?? {}) as Input.RequestSchedulePin,
+    );
+    return result.ok
+      ? response.status(StatusCode.CREATED).json(result.data)
+      : response.status(FAILURE_STATUS[result.reason]).json({ message: result.message });
+  }
+
+  private async decidePinRequest(request: Request, response: Response): Promise<Response> {
+    const result = await this.schedule.decidePinRequest(
+      routeParam(request, "workspaceId"),
+      routeParam(request, "requestId"),
+      authenticatedUserId(request),
+      (request.body ?? {}) as Input.DecideSchedulePinRequest,
+    );
+    return result.ok
+      ? response.status(StatusCode.OK).json(result.data)
       : response.status(FAILURE_STATUS[result.reason]).json({ message: result.message });
   }
 }

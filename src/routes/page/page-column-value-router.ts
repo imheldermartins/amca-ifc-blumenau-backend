@@ -9,6 +9,7 @@ import { authenticatedUserId, routeParam } from "@/routes/request-values";
 import middleware from "@/services/auth/middleware";
 import { requirePageAccess } from "@/services/auth/page-access-middleware";
 import { requireScopedPermission } from "@/services/auth/scoped-access-middleware";
+import { requireUnlockedColumn } from '@/services/auth/column-lock-middleware';
 import { StatusCode } from "@/services/http/status-code";
 import pageRealtimePublisher, {
   PageRealtimePublisher,
@@ -28,6 +29,7 @@ export class PageColumnValueRouter extends ApplicationRouter {
       "/:id/column/:column_id/value",
       middleware.handle,
       requireScopedPermission("page", "write", "update"),
+      requireUnlockedColumn(),
       this.create.bind(this),
     );
     this.router.get(
@@ -40,12 +42,14 @@ export class PageColumnValueRouter extends ApplicationRouter {
       "/:id/column/:column_id/value",
       middleware.handle,
       requireScopedPermission("page", "write", "update"),
+      requireUnlockedColumn(),
       this.update.bind(this),
     );
     this.router.delete(
       "/:id/column/:column_id/value",
       middleware.handle,
       requireScopedPermission("page", "write", "update"),
+      requireUnlockedColumn(),
       this.delete.bind(this),
     );
   }

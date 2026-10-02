@@ -26,6 +26,12 @@ export namespace Input {
     dateColumnId?: string;
     colorColumnId?: string | null;
   };
+  export type RequestSchedulePin = PinSchedulePage & {
+    recipientUserId?: string;
+  };
+  export type DecideSchedulePinRequest = {
+    decision?: 'accepted' | 'declined';
+  };
 
   // --- Organizations ---
   export type CreateOrganization = { name?: string; workspaceId?: string };

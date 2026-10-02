@@ -5,6 +5,7 @@ import {BaseSchema} from './Base.schema.js';
 @ForeignKey({"columns":["child_id"],"table":"pages","references":["id"]})
 @ForeignKey({"columns":["parent_id"],"table":"pages","references":["id"]})
 @Unique(["parent_id","child_id"])
+@Unique(["child_id"])
 @Index("idx_page_edges_parent_id", ["parent_id"])
 export class PageEdgeSchema extends BaseSchema {
   @Column()

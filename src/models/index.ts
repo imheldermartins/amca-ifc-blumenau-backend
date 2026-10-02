@@ -10,6 +10,8 @@ import { organizations } from "@models/organization-model";
 import { organizationMembers } from "@models/organization-member-model";
 import { workspaceMembers } from "@models/workspace-member-model";
 import { pinnedSchedulePages } from "@models/pinned-schedule-page-model";
+import { notifications, notificationDeliveries } from "@models/notification-model";
+import { schedulePinRequests } from "@models/schedule-pin-request-model";
 
 export default {
     users,
@@ -23,5 +25,8 @@ export default {
     organizationMembers,
     workspaceMembers,
     pinnedSchedulePages,
+    notifications,
+    notificationDeliveries,
+    schedulePinRequests,
     sqlRaw: Model.sqlRaw,
 };

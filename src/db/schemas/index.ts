@@ -71,7 +71,93 @@ export namespace Schema {
   export interface PageEdges extends PageEdge {}
 
   // --- 5. PAGE COLUMNS (Configurações de Colunas) ---
-  export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox';
+  export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow';
+
+  export type FlowSwitchOperator =
+    | 'equals'
+    | 'not_equals'
+    | 'contains'
+    | 'greater_than'
+    | 'less_than'
+    | 'is_empty'
+    | 'is_not_empty';
+
+  export interface FlowStartNode {
+    id: string;
+    type: 'start';
+    config: { nextNodeId: string };
+  }
+
+  export interface FlowEmailNode {
+    id: string;
+    type: 'email';
+    config: {
+      /** Deve resolver para um macro exato `@people.<userId>.email`. */
+      to: string;
+      subject: string;
+      body: string;
+      nextNodeId: string;
+    };
+  }
+
+  export interface FlowSetValueNode {
+    id: string;
+    type: 'set_value';
+    config: { columnId: NonEmptyString; value: unknown; nextNodeId: string };
+  }
+
+  export interface FlowSwitchNode {
+    id: string;
+    type: 'switch';
+    config: {
+      left: string;
+      operator: FlowSwitchOperator;
+      right?: unknown;
+      trueTargetId: string;
+      falseTargetId: string;
+    };
+  }
+
+  export interface FlowCallbackNode {
+    id: string;
+    type: 'callback';
+    config: { message?: string };
+  }
+
+  export type FlowNode =
+    | FlowStartNode
+    | FlowEmailNode
+    | FlowSetValueNode
+    | FlowSwitchNode
+    | FlowCallbackNode;
+
+  export interface FlowDefinition {
+    version: 1;
+    trigger: { type: 'manual' };
+    nodes: FlowNode[];
+  }
+
+  export interface FlowExecutionSummary {
+    executionId: NonEmptyString;
+    status: 'succeeded' | 'failed';
+    startedAt: string;
+    finishedAt: string;
+    executedNodeIds: string[];
+    callback: string | null;
+    effects: { emailsQueued: number; valuesUpdated: number };
+    error?: string;
+  }
+
+  export type MacroKind = 'page' | 'workspace' | 'column' | 'person';
+  export interface MacroDescriptor {
+    key: string;
+    label: string;
+    kind: MacroKind;
+    valueType: 'text' | 'number' | 'boolean' | 'date' | 'email' | 'unknown';
+    columnId?: NonEmptyString;
+    userId?: NonEmptyString;
+    preview?: string | null;
+  }
 
   // Cores aceitas para as opções de uma coluna `select`.
   export const COLOR_OPTIONS = [
@@ -115,7 +201,7 @@ export namespace Schema {
 
   // Máscara de uma coluna `text`. Espelha as máscaras de PATTERN do front
   // (applyMask); percentage/currency são de numeric, não entram aqui.
-  export type TextMask = 'cpf' | 'cep' | 'phone-br' | 'date';
+  export type TextMask = 'cpf' | 'cep' | 'phone-br' | 'date' | 'email';
 
   /**
    * Config da coluna (page_columns.data) — por tipo:
@@ -138,6 +224,8 @@ export namespace Schema {
     publicKey?: PublicKeyMetadata;
     /** Tombstones internos: impedem que links de options excluídas mudem de alvo. */
     reservedOptionKeys?: string[];
+    /** Contrato autoritativo do Flow Cards. Configurado apenas pela rota de flow. */
+    flow?: FlowDefinition;
   }
 
   export interface PageColumn extends EntityBase, SoftDeletableEntity {
@@ -164,6 +252,47 @@ export namespace Schema {
     pinned_by_user_id: NonEmptyString;
     date_column_id: NonEmptyString;
     color_column_id: NonEmptyString | null;
+  }
+
+  export type NotificationType = 'schedule_pin_request' | 'schedule_event_reminder' | 'flow_email';
+  export type NotificationResourceType = 'schedule_pin_request' | 'page' | 'flow_execution';
+
+  export interface Notification extends EntityBase {
+    workspace_id: NonEmptyString;
+    recipient_user_id: NonEmptyString | null;
+    actor_user_id: NonEmptyString | null;
+    type: NotificationType;
+    resource_type: NotificationResourceType;
+    resource_id: NonEmptyString;
+    data: Record<string, unknown>;
+    dedupe_key: string;
+    read_at: string | null;
+  }
+
+  export type NotificationDeliveryStatus = 'pending' | 'processing' | 'sent' | 'failed';
+  export interface NotificationDelivery extends EntityBase {
+    notification_id: NonEmptyString;
+    channel: 'email';
+    status: NotificationDeliveryStatus;
+    attempts: number;
+    payload: Record<string, unknown>;
+    next_attempt_at: string | null;
+    locked_at: string | null;
+    sent_at: string | null;
+    provider_message_id: string | null;
+    last_error: string | null;
+  }
+
+  export type SchedulePinRequestStatus = 'pending' | 'accepted' | 'declined' | 'canceled';
+  export interface SchedulePinRequest extends EntityBase {
+    workspace_id: NonEmptyString;
+    page_id: NonEmptyString;
+    requested_by_user_id: NonEmptyString;
+    recipient_user_id: NonEmptyString;
+    date_column_id: NonEmptyString;
+    color_column_id: NonEmptyString | null;
+    status: SchedulePinRequestStatus;
+    decided_at: string | null;
   }
 
   // --- 8. PAGE COLLABORATORS (Colaboradores/Acesso de Página) ---

@@ -20,6 +20,7 @@ const CELL_RESET: Record<Schema.ColumnType, { clear: true } | { clear: false; va
   checkbox: { clear: false, value: false },
   select: { clear: true },
   date: { clear: true },
+  flow: { clear: true },
 };
 
 export class PageColumnResetService {
