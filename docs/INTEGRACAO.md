@@ -92,6 +92,7 @@ personalização das **views** daquela base, indexada pelo ULID da view:
       "mask": "cpf",                     // opcional; apresentação por view
       "publicKey": { "key": "docente", "aliases": [] }
     },
+    "tileSize": "medium",                // Grade: small | medium | large (opcional)
     "orderedHeaderCols": [                // ordem das colunas; ids de page_columns
       "page_title",                       // + a coluna sintética de título
       "01KXDN4B3X8J9NXGSTMK8PRFMF"
@@ -107,6 +108,22 @@ personalização das **views** daquela base, indexada pelo ULID da view:
 ```
 
 ### Por que "snapshot"
+
+A view `board` projeta as opções de uma coluna `select` em Quadros. Sua configuração
+vive em `board: { selectColumnId, optionOrder?, collapsedOptionIds?, propertyIds?,
+showPropertyLabels? }`. IDs de opções e propriedades são ULIDs; `__unassigned__`
+identifica o Quadro "Sem valor". O PATCH da view altera apenas os campos de Board
+enviados, preservando os demais. A ordem das opções é apresentação desta view;
+cards usam `orderedRows` completo, inclusive páginas ocultas pelos filtros.
+Mover entre Quadros grava a célula select e, depois da confirmação, a ordem.
+Board mantém filtros e não aplica `groupBy`.
+
+Colunas Flow podem guardar `data.flowButton: { label: string | null, icon: string }`.
+Label nulo produz botão circular; configuração ausente usa `lucide:play`.
+O botão abre a mesma prévia/execução da tabela. Bloqueios permanecem globais à
+database e seguem a allowlist; a definição pública de Form expõe apenas
+`fields[].readOnly`, nunca os usuários da allowlist. Respostas públicas não podem
+preencher campos bloqueados usando a autorização do autor da publicação.
 
 Cada entrada continua sendo o **retrato completo** da personalização daquela
 view quando lida. A escrita normal, porém, não reenvia mais `pages.data`
@@ -485,3 +502,54 @@ O frontend usa a mesma matriz CASL para não renderizar o painel e encaminhar
 rotas `PUT /workspaces/:id`, `GET /workspaces/:id/members` e
 `PUT /workspaces/:id/members/:userId/role` repetem a checagem no backend e
 retornam o mesmo 403 `{ message }`; nunca confie só na ausência de um link.
+
+---
+
+## 6. Projeções paginadas das visualizações
+
+`GET /pages/:id/view-metadata` devolve a página e suas colunas sem linhas nem
+arrays `orderedRows`. `POST /pages/:id/views/:viewId/query` recebe os filtros
+efetivos da sessão, um escopo (`root`, Board/opção, caminho de grupo,
+período/dia do calendário ou parent do grafo), cursor e `limit` de 1 a 50.
+O contrato portátil é `src/services/pages/views/page-view-query-contract.ts`;
+`npm run database:contract:check` confere a cópia do frontend.
+
+Autorização de cada linha, filtros, agrupamentos, contadores e ordenação
+acontecem em SQL antes de materializar as células. O orçamento inicial é de
+**50 páginas no total**, distribuído entre os grupos visíveis/abertos; não são
+50 por Board. Todas as opções do Board, incluindo vazias e `__unassigned__`,
+permanecem no catálogo. Os cabeçalhos de grupos da tabela têm paginação própria.
+O calendário retorna contagens completas por dia e uma janela de até 50 páginas
+únicas do período. O SQL distribui a prévia por dia; intervalos ocupam uma única
+vaga pelo primeiro dia sobreposto. Essa janela não tem cursor; abrir um dia
+consulta sua própria lista paginável. No grafo, filtros da view governam os nós
+iniciais; filhos de um ramo aberto mantêm a semântica anterior e mostram todas
+as filhas autorizadas daquele parent, com paginação independente.
+
+`metadataOnly: true` atualiza grupos e contadores sem hidratar linhas. Cursores
+são assinados e vinculados ao usuário, consulta, escopo e revisões de dados e
+ordem. Uma mudança invalida o token com `409 { message, code: "STALE_CURSOR" }`;
+`anchorId` permite reconciliar a faixa já carregada. Movimentos usam
+`POST /pages/:id/views/:viewId/rows/:rowId/move`, âncoras e `expectedOrderRevision`,
+preservando linhas não carregadas e confirmando select/ordem no mesmo commit.
+
+A migration
+`20261004220750243_5ed96b46_add_paginated_database_projections_and_row_order`
+acrescenta projeções tipadas/indexadas, `dataset_revision` e
+`page_view_row_order`. Depois de aplicar as migrations no ambiente desejado,
+execute `npm run database:backfill` para diagnóstico e
+`npm run database:backfill -- --apply` para importar valores e ordens legadas no
+ambiente de desenvolvimento. Em produção, execute o mesmo script com
+`npx tsx --env-file=.env.production scripts/backfill-database-views.ts --apply`.
+Confirme que todos os contadores `remaining` são zero antes de ativar o frontend
+paginado. O backfill é idempotente e condicional aos valores canônicos; os
+novos writers mantêm derivados e posições no commit. Endpoints de consulta
+nunca aplicam migration, importação ou reparo: uma preparação incompleta retorna
+`409 { message, code: "PAGINATION_NOT_READY" }`.
+
+As rooms e fatos realtime pós-commit permanecem os mesmos. O frontend atualiza
+conteúdo já carregado, reconcilia metadados/faixas afetadas em background e
+revalida depois do ACK de reconexão. Linhas fora da faixa não são inventadas nem
+baixadas por evento. A cache da view mantém até 250 páginas, com exceção das
+linhas temporariamente protegidas por edição/arraste; a virtualização limita
+também os componentes montados.

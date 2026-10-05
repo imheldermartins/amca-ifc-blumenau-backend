@@ -12,6 +12,8 @@ import type {
   FlowMacroCatalogSource,
   FlowMacroPerson,
 } from '@/repositories/types/flow-repository.types';
+import { pageCellUpsertStatement } from '@/repositories/page-cell-statements';
+import {pageActivityTouchStatement} from '@/repositories/page-activity';
 
 export class FlowStore {
   public async findFlowColumn(
@@ -70,16 +72,10 @@ export class FlowStore {
   }
 
   /** Persiste todos os efeitos duráveis numa única transação rqlite. */
-  public async commitExecution(input: CommitFlowExecutionInput): Promise<boolean> {
+  public buildExecutionStatements(input: CommitFlowExecutionInput): RqliteStatement[] {
     const statements: RqliteStatement[] = [];
     for (const value of input.values) {
-      statements.push([
-        `INSERT INTO page_columns_values (id, data, page_column_id, page_id)
-          VALUES (?, ?, ?, ?)
-          ON CONFLICT(page_id, page_column_id) DO UPDATE SET
-            data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
-        ulid(), value.data, value.columnId, input.source.row.id,
-      ]);
+      statements.push(pageCellUpsertStatement(input.source.row.id, value.columnId, value.data));
     }
     for (const email of input.emails) {
       const notificationId = ulid();
@@ -110,17 +106,18 @@ export class FlowStore {
         ulid(), notificationId, JSON.stringify(email.payload),
       ]);
     }
-    statements.push([
-      `INSERT INTO page_columns_values (id, data, page_column_id, page_id)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(page_id, page_column_id) DO UPDATE SET
-          data = excluded.data, updated_at = CURRENT_TIMESTAMP`,
-      ulid(), input.flowColumnData, input.source.flowColumn.id, input.source.row.id,
-    ]);
-    statements.push([
-      `UPDATE pages SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL`,
+    statements.push(pageCellUpsertStatement(
       input.source.row.id,
-    ]);
+      input.source.flowColumn.id,
+      input.flowColumnData,
+    ));
+    statements.push(pageActivityTouchStatement(input.source.row.id));
+    return statements;
+  }
+
+  /** Persiste todos os efeitos duráveis numa única transação rqlite. */
+  public async commitExecution(input: CommitFlowExecutionInput): Promise<boolean> {
+    const statements = this.buildExecutionStatements(input);
     const results = await rqlite(statements, 'execute', { transaction: true });
     return results.length === statements.length && results.every(Boolean);
   }

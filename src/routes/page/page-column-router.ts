@@ -85,6 +85,7 @@ export class PageColumnRouter extends ApplicationRouter {
       ...(body.format !== undefined && { format: body.format }),
       ...(body.currency !== undefined && { currency: body.currency }),
       ...(body.mask !== undefined && { mask: body.mask }),
+      ...(body.flowButton !== undefined && { flowButton: body.flowButton }),
       ...(type !== undefined ? { type } : body.type !== undefined ? { type: body.type } : {}),
       parent_id: pageId,
     });
@@ -126,6 +127,7 @@ export class PageColumnRouter extends ApplicationRouter {
       ...(body.format !== undefined && { format: body.format }),
       ...(body.currency !== undefined && { currency: body.currency }),
       ...(body.mask !== undefined && { mask: body.mask }),
+      ...(body.flowButton !== undefined && { flowButton: body.flowButton }),
       ...(type !== undefined ? { type } : body.type !== undefined ? { type: body.type } : {}),
     };
     const result = await this.columns.updateColumn(this.lookup(request), input);

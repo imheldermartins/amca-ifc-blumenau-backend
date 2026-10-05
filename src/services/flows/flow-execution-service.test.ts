@@ -93,6 +93,115 @@ function source(): FlowExecutionSource {
 }
 
 describe('FlowExecutionService', () => {
+  it('executa somente o ramo falso v2 e continua depois da condição', async () => {
+    const executionSource = source()
+    executionSource.flowColumn.data = {
+      flow: {
+        version: 2,
+        trigger: { type: 'manual' },
+        nodes: [
+          { id: 'start', type: 'start', config: {} },
+          { id: 'decision', type: 'switch', config: {
+            columnId: 'score', operator: 'greater_than', value: 50,
+            whenTrue: [{ id: 'yes', type: 'set_value', config: { columnId: 'score', value: '90' } }],
+            whenFalse: [{ id: 'no', type: 'set_value', config: { columnId: 'score', value: '1' } }],
+          } },
+          { id: 'common', type: 'set_value', config: { columnId: 'score', value: '2' } },
+          { id: 'done', type: 'callback', config: { message: 'Fim' } },
+        ],
+      },
+    }
+    const commitExecution = vi.fn(async (_input: CommitFlowExecutionInput) => true)
+    const service = new FlowExecutionService(
+      { executionSource: vi.fn(async () => executionSource), commitExecution } as unknown as FlowStore,
+      new FlowDefinitionService(),
+      new MacroService(),
+      { canMutate: vi.fn(async () => true) } as unknown as ColumnLockStore,
+      () => new Date(timestamp),
+    )
+
+    const outcome = await service.execute('row' as NonEmptyString, 'flow' as NonEmptyString, 'actor' as NonEmptyString)
+
+    expect(outcome.summary.executedNodeIds).toEqual(['start', 'decision', 'no', 'common', 'done'])
+    expect(outcome.updatedValues).toEqual([{ columnId: 'score', value: 2 }])
+  })
+
+  it('executa condições v2 aninhadas, usa IDs de select e reencontra a continuação comum', async () => {
+    const executionSource = source()
+    const approved = '01M40000000000000000000001' as NonEmptyString
+    const status = entity('status', {
+      deleted_at: null,
+      name: 'Status',
+      type: 'select' as const,
+      data: { options: [{ id: approved, value: 'Aprovado renomeado' }] },
+      parent_id: 'database' as NonEmptyString,
+    })
+    executionSource.columns = [status, ...executionSource.columns]
+    executionSource.values.push(entity('status-value', {
+      data: JSON.stringify({ value: approved }),
+      page_column_id: 'status' as NonEmptyString,
+      page_id: 'row' as NonEmptyString,
+    }))
+    executionSource.flowColumn.data = {
+      flow: {
+        version: 2,
+        trigger: { type: 'manual' },
+        nodes: [
+          { id: 'start', type: 'start', config: {} },
+          {
+            id: 'status-decision',
+            type: 'switch',
+            config: {
+              columnId: 'status', operator: 'equals', value: approved,
+              whenTrue: [{
+                id: 'score-decision',
+                type: 'switch',
+                config: {
+                  columnId: 'score', operator: 'greater_than', value: 5,
+                  whenTrue: [{ id: 'lower-score', type: 'set_value', config: { columnId: 'score', value: '2' } }],
+                  whenFalse: [{ id: 'nested-false', type: 'set_value', config: { columnId: 'score', value: '90' } }],
+                },
+              }],
+              whenFalse: [{ id: 'status-false', type: 'set_value', config: { columnId: 'score', value: '80' } }],
+            },
+          },
+          {
+            id: 'updated-decision',
+            type: 'switch',
+            config: {
+              columnId: 'score', operator: 'less_than', value: 5,
+              whenTrue: [{ id: 'uses-updated-value', type: 'set_value', config: { columnId: 'score', value: '7' } }],
+              whenFalse: [{ id: 'stale-value-path', type: 'set_value', config: { columnId: 'score', value: '70' } }],
+            },
+          },
+          { id: 'common', type: 'set_value', config: { columnId: 'score', value: '9' } },
+          { id: 'done', type: 'callback', config: { message: 'Pontuação @columns.score' } },
+        ],
+      },
+    }
+    const commitExecution = vi.fn(async (_input: CommitFlowExecutionInput) => true)
+    const service = new FlowExecutionService(
+      { executionSource: vi.fn(async () => executionSource), commitExecution } as unknown as FlowStore,
+      new FlowDefinitionService(),
+      new MacroService(),
+      { canMutate: vi.fn(async () => true) } as unknown as ColumnLockStore,
+      () => new Date(timestamp),
+    )
+
+    const outcome = await service.execute('row' as NonEmptyString, 'flow' as NonEmptyString, 'actor' as NonEmptyString)
+
+    expect(outcome.summary.executedNodeIds).toEqual([
+      'start', 'status-decision', 'score-decision', 'lower-score',
+      'updated-decision', 'uses-updated-value', 'common', 'done',
+    ])
+    expect(outcome.summary.executedNodeIds).not.toContain('status-false')
+    expect(outcome.summary.executedNodeIds).not.toContain('nested-false')
+    expect(outcome.summary.executedNodeIds).not.toContain('stale-value-path')
+    expect(outcome.summary.callback).toBe('Pontuação 9')
+    expect(outcome.updatedValues).toEqual([{ columnId: 'score', value: 9 }])
+    expect(commitExecution).toHaveBeenCalledTimes(1)
+  })
+
   it('executa branch, atualiza macro em memória e envia um único commit', async () => {
     const executionSource = source();
     const commitExecution = vi.fn(async (_input: CommitFlowExecutionInput) => true);

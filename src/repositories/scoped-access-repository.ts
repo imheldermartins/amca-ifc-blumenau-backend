@@ -75,6 +75,18 @@ export function accessGuard(scope: AccessScope, scopeId: string, userId: string,
   return { text: `EXISTS (${select})`, values: [scopeId, userId, kind, action] };
 }
 
+/** Correlated guard for a bounded SQL projection; authorize before COUNT/LIMIT. */
+export function correlatedPageReadGuard(pageIdColumn: string, userId: string): SqlStatement {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$/.test(pageIdColumn)) {
+    throw new Error('Invalid correlated page identifier');
+  }
+  const guard = accessGuard('page', '', userId, 'read', 'view');
+  return {
+    text: guard.text.replace('VALUES (?, ?, ?, ?)', `SELECT ${pageIdColumn}, ?, ?, ?`),
+    values: guard.values.slice(1),
+  };
+}
+
 export class ScopedAccessStore {
   async can(scope: AccessScope, scopeId: string, userId: string, kind: PermissionKind, action: string): Promise<boolean> {
     if (!ULID_RE.test(scopeId) || !ULID_RE.test(userId)) return false;

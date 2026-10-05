@@ -46,7 +46,7 @@ export class AccessController {
   members(scope: AccessScope, id: string, actor: string, target?: string) {
     return this.run(async () => {
       const grant = await access.get(scope, id, actor);
-      if (!allows(grant, 'read', 'members') && !allows(grant, 'write', 'promote_members') && !allows(grant, 'write', 'add_members')) return denied;
+      if (!allows(grant, 'read', 'members') && !['promote_members', 'add_members', 'remove_members'].some(action => allows(grant, 'write', action))) return denied;
       const members = await roleStore.members(scope, id);
       if (!target) return { ok: true, data: members };
       const member = members.find(row => row.id === target || row.membershipId === target);
@@ -64,7 +64,10 @@ export class AccessController {
     return this.run(() => inviteApplicationService.inviteMember(scope, id, actor, body));
   }
   removeMember(scope: AccessScope, id: string, actor: string, target: string) {
-    return this.run(async () => await roleStore.removeMember(scope, id, actor, target) ? { ok: true, data: { saved: true } } : denied);
+    return this.run(async () => {
+      if (!ULID_RE.test(target)) return invalid;
+      return await roleStore.removeMember(scope, id, actor, target) ? { ok: true, data: { saved: true } } : denied;
+    });
   }
   requests(scope: AccessScope, id: string, actor: string) {
     return this.run(async () => ({ ok: true, data: await requestStore.list(scope, id, actor) }));

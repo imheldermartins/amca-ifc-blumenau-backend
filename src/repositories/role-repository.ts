@@ -104,7 +104,7 @@ export class RoleStore {
 
   async removeMember(scope: AccessScope, scopeId: string, actorId: string, userId: string): Promise<boolean> {
     const table = SCOPE_TABLES[scope].members;
-    const auth = accessGuard(scope, scopeId, actorId, "write", "promote_members");
+    const auth = accessGuard(scope, scopeId, actorId, "write", "remove_members");
     const owner = accessGuard(scope, scopeId, userId, "owner", "owner");
     const current = delegationGuard(scope, scopeId, actorId,
       `(SELECT r.roles FROM ${scope}_roles r WHERE r.id = ${table}.${scope}_member_role_id AND r.${scope}_id = ${table}.${scope}_id)`);
@@ -122,8 +122,8 @@ export class RoleStore {
     const statements: RqliteStatement[] = [];
     const rootId = ulid();
     if (scope === "workspace") {
-      statements.push([`INSERT INTO pages (id, title, data, owner_id)
-        SELECT ?, 'Base de dados', '{}', ? WHERE ${condition.text}`, rootId, userId, ...condition.values]);
+      statements.push([`INSERT INTO pages (id, title, data, owner_id, title_search, projection_version)
+        SELECT ?, 'Base de dados', '{}', ?, 'base de dados', 1 WHERE ${condition.text}`, rootId, userId, ...condition.values]);
     }
     statements.push([`INSERT INTO ${SCOPE_TABLES[scope].members} (
       id, ${scope}_id, user_id, ${scope}_member_role_id ${scope === "workspace" ? ', page_root_id' : ''})

@@ -3,7 +3,7 @@ import { StatusCode } from "@/services/http/status-code";
 
 /**
  * Limites de requisições por IP, para segurar rajadas/brute-force sem
- * derrubar o servidor. Três níveis:
+ * derrubar o servidor. Quatro níveis:
  *
  *  - globalRateLimit: todas as rotas HTTP. Generoso — só corta abuso
  *    (RATE_LIMIT_MAX req por RATE_LIMIT_WINDOW_MS; default 300/min).
@@ -14,6 +14,9 @@ import { StatusCode } from "@/services/http/status-code";
  *    entram aqui: não adivinham senha, e o refresh é a checagem de sessão do
  *    boot — sob o agressivo, o próprio app estourava o limite e travava o
  *    login.
+ *  - formSubmit/formRead: capabilities públicas têm cotas menores por IP;
+ *    leitura e escrita continuam separadas para a review não disputar com
+ *    respostas legítimas.
  * Atrás do nginx (prod), TRUST_PROXY=1 é obrigatório (ver http-server.ts):
  * sem ele o IP visto aqui seria o do proxy, e o limite valeria para TODOS
  * os usuários juntos.
@@ -44,4 +47,16 @@ export const authRateLimit = rateLimit({
   windowMs: envInt("AUTH_RATE_LIMIT_WINDOW_MS", 15 * 60_000),
   limit: envInt("AUTH_RATE_LIMIT_MAX", 20),
   ...tooManyRequests("Muitas tentativas de autenticação — aguarde antes de tentar de novo"),
+});
+
+export const formSubmitRateLimit = rateLimit({
+  windowMs: envInt('FORM_SUBMIT_RATE_LIMIT_WINDOW_MS', 15 * 60_000),
+  limit: envInt('FORM_SUBMIT_RATE_LIMIT_MAX', 30),
+  ...tooManyRequests('Muitos envios de formulário — aguarde antes de tentar novamente'),
+});
+
+export const formReadRateLimit = rateLimit({
+  windowMs: envInt('FORM_READ_RATE_LIMIT_WINDOW_MS', 60_000),
+  limit: envInt('FORM_READ_RATE_LIMIT_MAX', 120),
+  ...tooManyRequests('Muitas consultas ao formulário — tente novamente em instantes'),
 });

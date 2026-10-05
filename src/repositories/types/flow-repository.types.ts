@@ -30,7 +30,7 @@ export interface FlowEmailWrite {
 
 export interface CommitFlowExecutionInput {
   executionId: NonEmptyString;
-  actorUserId: NonEmptyString;
+  actorUserId: NonEmptyString | null;
   source: FlowExecutionSource;
   flowColumnData: string;
   summary: Schema.FlowExecutionSummary;

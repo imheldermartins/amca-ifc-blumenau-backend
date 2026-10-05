@@ -71,6 +71,14 @@ function column(data: Schema.PageColumnData = {}): Schema.PageColumn {
   };
 }
 
+function flowColumn(): Schema.PageColumn {
+  return {
+    ...column({ flow: { version: 1, trigger: { type: "manual" }, nodes: [] } }),
+    type: "flow",
+    name: "Enviar",
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.columns.findAll.mockResolvedValue([]);
@@ -133,6 +141,53 @@ describe("PageViewController", () => {
       ok: true,
       data: { view: { view: "table", name: "Nova tabela" } },
     });
+  });
+
+  it("cria form somente com configuração vinculada a uma coluna Flow", async () => {
+    let persisted = page({});
+    mocks.pages.find.mockImplementation(async () => persisted);
+    mocks.columns.findAll.mockResolvedValue([flowColumn()]);
+    mocks.pageJson.insertPageViewJson.mockImplementation(async (_pageId, viewId, view) => {
+      persisted = page({ [viewId]: view });
+      return true;
+    });
+    const form = {
+      version: 1,
+      flowColumnId: COLUMN_ID,
+      hiddenFieldIds: ["page_title"],
+      submitButton: { label: "Enviar inscrição", icon: "lucide:send" },
+    } as const;
+
+    const result = await pageViewController.createView(PAGE_ID, {
+      type: "form",
+      name: "Inscrição",
+      form,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { view: { view: "form", name: "Inscrição", form } },
+    });
+  });
+
+  it("recusa form sem configuração ou apontando para coluna não-Flow", async () => {
+    mocks.pages.find.mockResolvedValue(page({}));
+    mocks.columns.findAll.mockResolvedValue([column()]);
+
+    await expect(pageViewController.createView(PAGE_ID, {
+      type: "form",
+      name: "Sem config",
+    })).resolves.toMatchObject({ ok: false, reason: "validation" });
+    await expect(pageViewController.createView(PAGE_ID, {
+      type: "form",
+      name: "Flow inválido",
+      form: {
+        version: 1,
+        flowColumnId: COLUMN_ID,
+        submitButton: { label: "Enviar", icon: "lucide:send" },
+      },
+    })).resolves.toMatchObject({ ok: false, reason: "validation" });
+    expect(mocks.pageJson.insertPageViewJson).not.toHaveBeenCalled();
   });
 
   it("aceita type na query e recusa tipos conflitantes", async () => {
@@ -365,6 +420,79 @@ describe("PageViewController", () => {
     );
     expect(result.ok && result.data.data[OTHER_VIEW_ID]).toEqual(otherView);
     expect(result.ok && (result.data.view.filters as unknown)).toEqual(filters);
+  });
+
+  it.each(["small", "medium", "large"])("salva tamanho %s somente na view selecionada", async (tileSize) => {
+    const filters = { version: 2, updatedAt: NOW, clauses: [], groupBy: [], passthrough: [] };
+    const source = { view: "grid", name: "Grade", filters };
+    const other = { view: "grid", name: "Outra", tileSize: "large" };
+    const current = page({ [VIEW_ID]: source, [OTHER_VIEW_ID]: other });
+    const persisted = page({ [VIEW_ID]: { ...source, tileSize }, [OTHER_VIEW_ID]: other });
+    mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
+
+    const result = await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { tileSize });
+
+    expect(result).toMatchObject({ ok: true, data: { changed: true, view: { tileSize, filters } } });
+    expect(result.ok && result.data.data[OTHER_VIEW_ID]).toEqual(other);
+    expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledExactlyOnceWith(PAGE_ID, [{ path: [VIEW_ID, "tileSize"], value: tileSize }], VIEW_ID);
+  });
+
+  it("aceita preferências Board pela entrada do PATCH e preserva campos irmãos", async () => {
+    const board = { selectColumnId: COLOR_COLUMN_ID, propertyIds: [COLUMN_ID], showPropertyLabels: true };
+    const source = { view: "board", name: "Quadros", board };
+    const current = page({ [VIEW_ID]: source });
+    const persisted = page({ [VIEW_ID]: { ...source, board: { ...board, collapsedOptionIds: ["__unassigned__"] } } });
+    mocks.columns.findAll.mockResolvedValue([{ ...column(), id: COLOR_COLUMN_ID, type: "select", data: { options: [] } }, column()]);
+    mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
+    const result = await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { board: { collapsedOptionIds: ["__unassigned__"] } });
+    expect(result).toMatchObject({ ok: true, data: { view: { board: { ...board, collapsedOptionIds: ["__unassigned__"] } } } });
+    expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledExactlyOnceWith(PAGE_ID,
+      [{ path: [VIEW_ID, "board", "collapsedOptionIds"], value: ["__unassigned__"] }], VIEW_ID);
+  });
+
+  it.each([null, "enorme", 240, ["small"], { size: "small" }])("rejeita tamanho de card inválido (%j) sem escrita", async (tileSize) => {
+    mocks.pages.find.mockResolvedValue(page({ [VIEW_ID]: { view: "grid", name: "Grade" } }));
+    expect(await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { tileSize })).toMatchObject({ ok: false, reason: "validation" });
+    expect(mocks.pageJson.updatePageJsonPaths).not.toHaveBeenCalled();
+  });
+
+  it("converte uma view em form e persiste a configuração no mesmo patch", async () => {
+    const current = page({ [VIEW_ID]: { view: "table", name: "Principal" } });
+    const form = {
+      version: 1,
+      flowColumnId: COLUMN_ID,
+      submitButton: { label: "Responder", icon: "cuida:send" },
+    } as const;
+    const persisted = page({ [VIEW_ID]: { view: "form", name: "Principal", form } });
+    mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
+    mocks.columns.findAll.mockResolvedValue([flowColumn()]);
+
+    const result = await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, {
+      view: "form",
+      form,
+    });
+
+    expect(result).toMatchObject({ ok: true, data: { view: { view: "form", form } } });
+    expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledWith(PAGE_ID, [
+      { path: [VIEW_ID, "view"], value: "form" },
+      { path: [VIEW_ID, "form"], value: form },
+    ], VIEW_ID);
+  });
+
+  it("recusa conversão em form sem Flow e configuração de form em outra view", async () => {
+    mocks.pages.find.mockResolvedValue(page({ [VIEW_ID]: { view: "table", name: "Principal" } }));
+    mocks.columns.findAll.mockResolvedValue([column()]);
+    const form = {
+      version: 1,
+      flowColumnId: COLUMN_ID,
+      submitButton: { label: "Enviar", icon: "lucide:send" },
+    };
+
+    await expect(pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { view: "form", form }))
+      .resolves.toMatchObject({ ok: false, reason: "validation" });
+    await expect(pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { form }))
+      .resolves.toMatchObject({ ok: false, reason: "validation" });
+    expect(mocks.pageJson.updatePageJsonPaths).not.toHaveBeenCalled();
   });
 
   it("persiste apenas colunas compatíveis na configuração do calendário", async () => {

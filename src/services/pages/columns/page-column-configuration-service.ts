@@ -51,6 +51,16 @@ export class PageColumnConfigurationService {
       data.reservedOptionKeys = existingOptionTombstones;
     }
     if (existing?.flow) data.flow = existing.flow;
+    if (existing?.flowButton) data.flowButton = existing.flowButton;
+    if (input.flowButton !== undefined) {
+      const button = input.flowButton as Record<string, unknown> | null;
+      if (!button || typeof button !== 'object' || Array.isArray(button)
+        || (button.label !== null && (typeof button.label !== 'string' || button.label.length > 80))
+        || typeof button.icon !== 'string' || !/^[a-z0-9-]+:[a-z0-9-]+$/.test(button.icon) || button.icon.length > 120) {
+        throw new Error('Botão Flow inválido');
+      }
+      data.flowButton = { label: typeof button.label === 'string' ? button.label.trim() || null : null, icon: button.icon };
+    }
 
     if (input.options === null) {
       const tombstones = optionTombstones(

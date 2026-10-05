@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Schema } from '@/db/schemas/index';
 
-import { FlowDefinitionService } from './flow-definition-service.js';
+import { FlowDefinitionService, flowMacroInputs } from './flow-definition-service.js';
 
 const service = new FlowDefinitionService();
 
@@ -38,7 +38,92 @@ function validFlow(): Schema.FlowDefinition {
   };
 }
 
+function validFlowV2(): Schema.FlowDefinitionV2 {
+  return {
+    version: 2,
+    trigger: { type: 'manual' },
+    nodes: [
+      { id: 'start', type: 'start', config: {} },
+      {
+        id: 'decision',
+        type: 'switch',
+        config: {
+          columnId: 'status',
+          operator: 'equals',
+          value: 'approved',
+          whenTrue: [{
+            id: 'nested',
+            type: 'switch',
+            config: {
+              columnId: 'score',
+              operator: 'greater_than',
+              value: 10,
+              whenTrue: [],
+              whenFalse: [],
+            },
+          }],
+          whenFalse: [],
+        },
+      },
+      { id: 'done', type: 'callback', config: { message: 'Concluído' } },
+    ],
+  }
+}
+
+const conditionColumns = [
+  {
+    id: 'status', type: 'select', name: 'Status',
+    data: { options: [{ id: 'approved', value: 'Aprovado' }] },
+  },
+  { id: 'score', type: 'numeric', name: 'Pontuação', data: {} },
+] as unknown as Schema.PageColumn[]
+
 describe('FlowDefinitionService', () => {
+  it('aceita uma árvore v2 aninhada e valida literais pelos tipos das colunas', () => {
+    const parsed = service.parse(validFlowV2())
+    expect(parsed.version).toBe(2)
+    expect(() => service.validateAgainstColumns(parsed, conditionColumns)).not.toThrow()
+  })
+
+  it('não interpreta o literal da condição v2 como macro', () => {
+    const flow = validFlowV2()
+    ;(flow.nodes[1] as Schema.FlowSwitchStepV2).config.value = '@texto.literal'
+    expect(flowMacroInputs(flow)).not.toContain('@texto.literal')
+    expect(JSON.stringify(flowMacroInputs(flow))).not.toContain('@texto.literal')
+  })
+
+  it('rejeita IDs duplicados em níveis distintos e mais de 100 nodes no v2', () => {
+    const duplicate = validFlowV2()
+    const decision = duplicate.nodes[1] as Schema.FlowSwitchStepV2
+    decision.config.whenFalse.push({
+      id: 'nested', type: 'email', config: { to: '@page.title', subject: 'Assunto', body: 'Corpo' },
+    })
+    expect(() => service.parse(duplicate)).toThrow('IDs de nodes devem ser únicos')
+
+    const oversized = validFlowV2()
+    ;(oversized.nodes[1] as Schema.FlowSwitchStepV2).config.whenFalse = Array.from({ length: 98 }, (_, index) => ({
+      id: `mail-${index}`,
+      type: 'email' as const,
+      config: { to: '@page.title', subject: 'Assunto', body: 'Corpo' },
+    }))
+    expect(() => service.parse(oversized)).toThrow('O flow deve ter no máximo 100 nodes')
+  })
+
+  it('mantém a condição inválida quando coluna, opção ou operador deixam de existir', () => {
+    const missingColumn = service.parse(validFlowV2())
+    expect(() => service.validateAgainstColumns(missingColumn, conditionColumns.slice(1)))
+      .toThrow('Coluna da condição não existe mais')
+
+    const missingOption = service.parse(validFlowV2())
+    ;(missingOption.nodes[1] as Schema.FlowSwitchStepV2).config.value = 'removed'
+    expect(() => service.validateAgainstColumns(missingOption, conditionColumns))
+      .toThrow('Opção da condição não existe mais')
+
+    const incompatible = service.parse(validFlowV2())
+    ;(incompatible.nodes[1] as Schema.FlowSwitchStepV2).config.operator = 'contains'
+    expect(() => service.validateAgainstColumns(incompatible, conditionColumns))
+      .toThrow('Operador incompatível com a coluna da condição')
+  })
   it('normaliza um flow manual válido e preserva os contratos dos cards', () => {
     const flow = validFlow();
     flow.nodes[0]!.id = ' start ';

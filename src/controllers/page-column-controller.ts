@@ -18,6 +18,7 @@ import type { ServiceResult } from "@/controllers/types/service-result.types";
 import pageColumnConfigurationService, {
   type PageColumnConfigurationService,
 } from "@/services/pages/columns/page-column-configuration-service";
+import { pageUsesFlowColumn } from "@/services/pages/views/page-view-parsers";
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : "Erro no servidor";
@@ -172,6 +173,7 @@ export class PageColumnController {
     // deixar passar chave desconhecida (whitelist). Trocar SÓ o `type` não mexe
     // no data — o config antigo fica preservado para um eventual retrocesso.
     const hasConfig =
+      input.flowButton !== undefined ||
       input.options !== undefined ||
       input.format !== undefined ||
       input.currency !== undefined ||
@@ -190,6 +192,18 @@ export class PageColumnController {
     } catch (error) {
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
+    }
+
+    if (
+      existing.type === "flow" &&
+      effectiveType !== "flow" &&
+      pageUsesFlowColumn(parent?.data, existing.id)
+    ) {
+      return {
+        ok: false,
+        reason: "conflict",
+        message: "A coluna Flow está vinculada a uma visualização de formulário",
+      };
     }
 
     try {
@@ -257,6 +271,13 @@ export class PageColumnController {
       if (existing.parent_id) {
         const page = await db.pages.find({ id: existing.parent_id } as LookupValues<Schema.Page>);
         if (!page) return { ok: false, reason: "not_found", message: "Página não encontrada" };
+        if (pageUsesFlowColumn(page.data, existing.id)) {
+          return {
+            ok: false,
+            reason: "conflict",
+            message: "A coluna Flow está vinculada a uma visualização de formulário",
+          };
+        }
         const tombstones = appendDeletedColumnKeys(page.data, existing);
         before.push(buildUpdatePageJsonPathsStatement(existing.parent_id, [
           {

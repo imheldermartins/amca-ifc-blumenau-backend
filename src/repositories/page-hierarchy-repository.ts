@@ -5,6 +5,9 @@ import type { Schema } from "@/db/schemas/index";
 import { SystemRoleFactory } from "@/repositories/system-role-factory";
 import { pageActivityTouchStatement } from "@/repositories/page-activity";
 import { pageChildEdgeStatement } from "@/repositories/page-child-creation";
+import {titleValueProjection} from '@/repositories/page-value-projection';
+import {appendCreatedRowOrderStatements, withPageRowOrderLock} from '@/repositories/page-view-row-order';
+import {initializePageViewSnapshot} from '@/repositories/page-view-initial-snapshot';
 import type {
   PageBreadcrumbRow,
   PageChildCreationData,
@@ -26,16 +29,21 @@ export class PageHierarchyStore {
     if (!parent) return null;
 
     const childId = ulid();
-    return this.pages.createWithId(childId, {
-      title: input.title ?? null,
-      owner_id: ownerId,
-      data: input.data ?? {},
-    }, {
-      after: [
-        SystemRoleFactory.defaultStatement("page", childId),
-        pageChildEdgeStatement(parentId, childId),
-        pageActivityTouchStatement(parentId),
-      ],
+    return withPageRowOrderLock(parentId, async () => {
+      const positions = await appendCreatedRowOrderStatements(parentId, childId);
+      return this.pages.createWithId(childId, {
+        title: input.title ?? null,
+        ...titleValueProjection(input.title ?? null),
+        owner_id: ownerId,
+        data: initializePageViewSnapshot(input.data ?? {}) as Schema.Page['data'],
+      }, {
+        after: [
+          SystemRoleFactory.defaultStatement("page", childId),
+          pageChildEdgeStatement(parentId, childId),
+          ...positions,
+          pageActivityTouchStatement(parentId),
+        ],
+      });
     });
   }
 

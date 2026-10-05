@@ -7,7 +7,13 @@ import type {
 import { PageViewSnapshot } from "@/services/pages/views/page-view-snapshot";
 import { collectReservedPublicKeys, reconcilePublicKeyMetadata } from "@/services/public-key";
 import { readDeletedColumnKeys } from "@/services/filter-key-registry";
-import { toColumnKeyEntities } from "@/services/pages/views/page-view-parsers";
+import {
+  assertFormFlowColumn,
+  isJsonRecord,
+  parsePageViewFormConfig,
+  toColumnKeyEntities,
+} from "@/services/pages/views/page-view-parsers";
+import { ViewFiltersValidationError } from "@/services/view-filters-v2";
 
 export class PageViewFactory {
   public create(
@@ -15,6 +21,12 @@ export class PageViewFactory {
     columns: readonly Schema.PageColumn[],
     input: PageViewCreateInput,
   ): PageViewDraft {
+    if (input.kind === "form") {
+      if (!input.form) {
+        throw new ViewFiltersValidationError("Configuração do formulário obrigatória");
+      }
+      assertFormFlowColumn(input.form, columns);
+    }
     const reservedTitleKeys = collectReservedPublicKeys(
       toColumnKeyEntities(columns),
       "coluna",
@@ -50,16 +62,25 @@ export class PageViewFactory {
         },
         orderedHeaderCols: [],
         order: snapshot.nextOrder(),
+        ...(input.form && { form: input.form }),
       },
     };
   }
 
   public duplicate(
     snapshot: PageViewSnapshot,
+    columns: readonly Schema.PageColumn[],
     sourceViewId: string,
   ): PageViewDraft | null {
     const source = snapshot.active(sourceViewId);
     if (!source) return null;
+
+    if (source.view === "form") {
+      if (!isJsonRecord(source.form)) {
+        throw new ViewFiltersValidationError("Configuração do formulário inválida");
+      }
+      assertFormFlowColumn(parsePageViewFormConfig(source.form), columns);
+    }
 
     const sourceName =
       typeof source.name === "string" && source.name.trim()

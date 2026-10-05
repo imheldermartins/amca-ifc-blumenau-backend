@@ -2,7 +2,7 @@ import type { ServiceResult } from '@/controllers/types/service-result.types';
 import type { Schema } from '@/db/schemas/index';
 import columnLockStore, { ColumnLockStore } from '@/repositories/column-lock-repository';
 import flowStore, { FlowStore } from '@/repositories/flow-repository';
-import flowDefinitionService, { FlowDefinitionService, flowRecipientKeys } from '@/services/flows/flow-definition-service';
+import flowDefinitionService, { FlowDefinitionService, flowMacroInputs, flowRecipientKeys } from '@/services/flows/flow-definition-service';
 import flowExecutionService, {
   FlowExecutionError,
   FlowExecutionService,
@@ -16,6 +16,30 @@ export interface FlowConfigurationDto {
 
 export interface FlowMacroCatalogDto {
   macros: Schema.MacroDescriptor[];
+}
+
+type FlowConfigurableAction = Schema.FlowEmailNode | Schema.FlowSetValueNode
+  | Schema.FlowEmailStepV2 | Schema.FlowSetValueStepV2;
+
+function configurableActions(flow: Schema.FlowDefinition): FlowConfigurableAction[] {
+  if (flow.version === 1) {
+    return flow.nodes.filter((node): node is Schema.FlowEmailNode | Schema.FlowSetValueNode => (
+      node.type === 'email' || node.type === 'set_value'
+    ));
+  }
+  const actions: FlowConfigurableAction[] = [];
+  const visit = (steps: readonly Schema.FlowStepV2[]) => {
+    for (const step of steps) {
+      if (step.type === 'switch') {
+        visit(step.config.whenTrue);
+        visit(step.config.whenFalse);
+      } else {
+        actions.push(step);
+      }
+    }
+  };
+  visit(flow.nodes.slice(1, -1) as Schema.FlowStepV2[]);
+  return actions;
 }
 
 export class FlowController {
@@ -60,18 +84,22 @@ export class FlowController {
 
       const source = await this.store.macroCatalog(parentId);
       if (!source) return { ok: false, reason: 'not_found', message: 'Página da database não encontrada' };
+      try { this.definitions.validateAgainstColumns(flow, source.columns); }
+      catch (error) {
+        return { ok: false, reason: 'validation', message: error instanceof Error ? error.message : 'Condição inválida' };
+      }
       const catalog = this.macros.catalog({
         page: source.parent,
         workspace: source.workspace,
         columns: source.columns,
         people: source.people,
       });
-      try { this.macros.assertKnown(flow, catalog.descriptors); }
+      try { this.macros.assertKnown(flowMacroInputs(flow), catalog.descriptors); }
       catch (error) {
         return { ok: false, reason: 'validation', message: error instanceof Error ? error.message : 'Macro inválida' };
       }
 
-      for (const node of flow.nodes) {
+      for (const node of configurableActions(flow)) {
         if (node.type === 'email') {
           const recipients = flowRecipientKeys(node.config.to);
           const incompatible = recipients.find((key) => {

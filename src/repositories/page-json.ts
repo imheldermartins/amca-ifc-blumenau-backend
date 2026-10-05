@@ -1,5 +1,6 @@
 import { rqlite } from "../db/client-db.js";
 import type { PageColumnJsonUpdate, PageJsonPathUpdate } from "@/repositories/types/page-json.types";
+import {checkedOrderWrite, newViewRowOrderStatements, withPageRowOrderLock} from '@/repositories/page-view-row-order';
 export type { PageColumnJsonUpdate, PageJsonPathUpdate } from "@/repositories/types/page-json.types";
 
 const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
@@ -60,6 +61,12 @@ export function buildUpdatePageJsonPathsStatement(
   for (const viewId of requiredViewIds) {
     where += " AND json_type(data, ?) = 'object' AND json_extract(data, ?) IS NULL";
     values.push(jsonPath([viewId]), jsonPath([viewId, "deletedAt"]));
+  }
+  for (const patch of patches) {
+    if (patch.path.length === 2 && patch.path[1] === 'orderedRows') {
+      where += ' AND COALESCE(json_extract(data, ?), 0) <> 2';
+      values.push(jsonPath([patch.path[0]!, 'rowOrder', 'version']));
+    }
   }
   if (expectedData !== undefined) {
     where += " AND CASE WHEN json_valid(data) THEN json(data) ELSE NULL END = json(?)";
@@ -149,8 +156,15 @@ export async function insertPageViewJson(
   view: Record<string, unknown>,
   sourceViewId?: string,
 ): Promise<boolean> {
-  const [inserted] = await rqlite([wire(buildInsertPageViewStatement(pageId, viewId, view, sourceViewId))], "execute");
-  return inserted === true;
+  return withPageRowOrderLock(pageId, async () => {
+    const positions = await newViewRowOrderStatements(pageId, viewId, sourceViewId);
+    const {orderedRows: _legacy, ...preferences} = view;
+    const persisted = {...preferences, rowOrder: {version: 2, revision: 0}};
+    const statements = [...checkedOrderWrite(wire(buildInsertPageViewStatement(pageId, viewId, persisted, sourceViewId))),
+      ...positions];
+    const results = await rqlite(statements, 'execute', {transaction: true});
+    return results[0] === true;
+  });
 }
 
 /**

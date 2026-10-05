@@ -6,7 +6,9 @@ import {
   isJsonRecord,
   isUlid,
   isSupportedViewKind,
+  assertFormFlowColumn,
   parseColumnWidths,
+  parsePageViewFormConfig,
   parsePageViewTitle,
   parseStringList,
   toColumnKeyEntities,
@@ -15,6 +17,7 @@ import {
 import { ViewFiltersValidationError } from "@/services/view-filters-v2";
 import { collectReservedPublicKeys, reconcilePublicKeyMetadata } from "@/services/public-key";
 import { readDeletedColumnKeys } from "@/services/filter-key-registry";
+import { parseBoardPatch } from '@/services/pages/views/page-board-config';
 
 export class PageViewPatchPlanner {
   public plan(
@@ -36,6 +39,28 @@ export class PageViewPatchPlanner {
         throw new ViewFiltersValidationError("Tipo de view inválido");
       }
       set("view", raw.view);
+    }
+
+    const targetKind = raw.view ?? current.view;
+    if (raw.board !== undefined) {
+      const board = parseBoardPatch(raw.board, current.board, columns);
+      const previous = isJsonRecord(current.board) ? current.board : {};
+      for (const [field, value] of Object.entries(board)) {
+        if (!valuesEqual(previous[field], value)) patches.push({ path: [viewId, 'board', field], value });
+      }
+    }
+    const requestedForm = raw.form === undefined
+      ? current.form
+      : parsePageViewFormConfig(raw.form);
+    if (targetKind === "form") {
+      if (requestedForm === undefined) {
+        throw new ViewFiltersValidationError("Configuração do formulário obrigatória");
+      }
+      const form = parsePageViewFormConfig(requestedForm);
+      assertFormFlowColumn(form, columns);
+      if (raw.form !== undefined) set("form", form);
+    } else if (raw.form !== undefined) {
+      throw new ViewFiltersValidationError("Configuração de formulário incompatível com a view");
     }
 
     if (raw.name !== undefined) {
@@ -85,10 +110,19 @@ export class PageViewPatchPlanner {
       );
     }
     if (raw.orderedRows !== undefined) {
+      if (isJsonRecord(current.rowOrder) && current.rowOrder.version === 2) {
+        throw new ViewFiltersValidationError('A ordem desta view usa movimentos por âncoras; recarregue a página');
+      }
       set("orderedRows", parseStringList(raw.orderedRows, "Ordem de linhas"));
     }
     if (raw.columnWidths !== undefined) {
       set("columnWidths", parseColumnWidths(raw.columnWidths));
+    }
+    if (raw.tileSize !== undefined) {
+      if (!["small", "medium", "large"].includes(raw.tileSize as string)) {
+        throw new ViewFiltersValidationError("Tamanho dos cards inválido");
+      }
+      set("tileSize", raw.tileSize);
     }
     if (raw.dateColumnId !== undefined) {
       const column = isUlid(raw.dateColumnId)

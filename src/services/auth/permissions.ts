@@ -6,15 +6,15 @@ export type { AccessScope, PermissionKind, Permissions, ScopeAccess } from "@/se
 export const PERMISSION_CATALOG = {
   organization: {
     read: ["view", "workspaces", "members", "roles"],
-    write: ["update", "create", "add_members", "promote_members", "create_org_roles", "manage_workspaces"],
+    write: ["update", "create", "add_members", "remove_members", "promote_members", "create_org_roles", "manage_workspaces"],
   },
   workspace: {
     read: ["view", "members", "roles"],
-    write: ["update", "create", "add_members", "promote_members", "create_wk_roles", "manage_pages"],
+    write: ["update", "create", "add_members", "remove_members", "promote_members", "create_wk_roles", "manage_pages"],
   },
   page: {
     read: ["view", "subpages", "members", "roles"],
-    write: ["update", "create", "edit_subpages", "delete", "add_members", "promote_members", "create_page_roles", "lock_columns"],
+    write: ["update", "create", "edit_subpages", "delete", "add_members", "remove_members", "promote_members", "create_page_roles", "lock_columns"],
   },
 } as const;
 

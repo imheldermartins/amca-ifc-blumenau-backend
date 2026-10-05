@@ -1,5 +1,6 @@
 import { ulid } from 'ulid';
 import { rqlite } from '@/db/client-db';
+import {normalizeSearchText} from '@/repositories/page-value-projection';
 import type { Schema } from '@/db/schemas/index';
 import access, { accessGuard } from './scoped-access-repository.js';
 import roles from './role-repository.js';
@@ -61,8 +62,8 @@ class WorkspaceStore {
       [`INSERT INTO workspaces (id, name, data, organization_id, icon, created_by_user_id)
         SELECT ?, ?, '{}', ?, ?, ? WHERE ${authorization.text}`, input.workspaceId, input.workspaceName,
         input.organizationId, input.workspaceIcon, input.ownerId, ...authorization.values],
-      [`INSERT INTO pages (id, title, data, owner_id) SELECT ?, ?, '{}', ? WHERE ${created}`,
-        input.workspaceId, input.rootTitle, input.ownerId, input.workspaceId, input.ownerId],
+      [`INSERT INTO pages (id, title, data, owner_id, title_search, projection_version) SELECT ?, ?, '{}', ?, ?, 1 WHERE ${created}`,
+        input.workspaceId, input.rootTitle, input.ownerId, normalizeSearchText(input.rootTitle), input.workspaceId, input.ownerId],
       SystemRoleFactory.defaultStatement('workspace', input.workspaceId, {
         text: created, values: [input.workspaceId, input.ownerId],
       }),

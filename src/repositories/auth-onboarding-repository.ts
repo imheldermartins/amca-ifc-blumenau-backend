@@ -1,4 +1,5 @@
 import { rqlite } from "@/db/client-db";
+import {normalizeSearchText} from '@/repositories/page-value-projection';
 import type { Schema } from "@/db/schemas/index";
 import { SystemRoleFactory } from "./system-role-factory.js";
 import type { PrivateWorkspaceProvision } from "@/repositories/types/auth-onboarding-repository.types";
@@ -43,9 +44,9 @@ class AuthOnboardingStore {
         ) VALUES (?, ?, ?, NULL, ?, ?)`,
         input.workspaceId, input.workspaceName, JSON.stringify({}),
         input.workspaceIcon, input.userId],
-      [`INSERT INTO pages (id, title, data, owner_id)
-        VALUES (?, ?, ?, ?)`,
-        input.workspaceId, input.workspaceName, JSON.stringify({}), input.userId],
+      [`INSERT INTO pages (id, title, data, owner_id, title_search, projection_version)
+        VALUES (?, ?, ?, ?, ?, 1)`,
+        input.workspaceId, input.workspaceName, JSON.stringify({}), input.userId, normalizeSearchText(input.workspaceName)],
       SystemRoleFactory.defaultStatement("workspace", input.workspaceId, workspaceCreated),
       SystemRoleFactory.defaultStatement("page", input.workspaceId, workspaceCreated),
       [`INSERT INTO workspace_members (

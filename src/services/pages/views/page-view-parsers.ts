@@ -3,6 +3,7 @@ import type { JsonRecord } from "@/services/types/json.types";
 import type { FilterColumnDefinition } from "@/services/types/view-filters.types";
 import type {
   PageViewCreateInput,
+  PageViewFormConfig,
   PageViewKind,
   PageViewTitleInput,
 } from "@/services/pages/views/types/page-view.types";
@@ -20,6 +21,7 @@ const VIEW_KINDS = new Set<PageViewKind>([
   "calendar",
   "timeline",
   "graph",
+  "form",
 ]);
 const TITLE_MASKS = new Set<Schema.TextMask>(["cpf", "cep", "phone-br", "date", "email"]);
 const VIEW_PATCH_FIELDS = new Set([
@@ -29,11 +31,16 @@ const VIEW_PATCH_FIELDS = new Set([
   "orderedHeaderCols",
   "orderedRows",
   "columnWidths",
+  "tileSize",
   "dateColumnId",
   "colorColumnId",
   "calendarPropertyIds",
   "calendarShowPropertyLabels",
+  "board",
+  "form",
 ]);
+
+const FORM_ICON_PATTERN = /^(?:cuida|lucide):[a-z0-9][a-z0-9-]*$/i;
 
 export function isJsonRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -77,13 +84,75 @@ export function parsePageViewTitle(value: unknown): PageViewTitleInput {
   };
 }
 
+export function parsePageViewFormConfig(value: unknown): PageViewFormConfig {
+  if (
+    !isJsonRecord(value) ||
+    Object.keys(value).some((key) => !["version", "flowColumnId", "hiddenFieldIds", "submitButton"].includes(key)) ||
+    value.version !== 1 ||
+    !isUlid(value.flowColumnId) ||
+    !isJsonRecord(value.submitButton) ||
+    Object.keys(value.submitButton).some((key) => !["label", "icon"].includes(key))
+  ) {
+    throw new ViewFiltersValidationError("Configuração do formulário inválida");
+  }
+
+  const label = typeof value.submitButton.label === "string"
+    ? value.submitButton.label.trim()
+    : "";
+  const icon = value.submitButton.icon;
+  const hiddenFieldIds = value.hiddenFieldIds === undefined
+    ? []
+    : parseStringList(value.hiddenFieldIds, "Campos ocultos");
+  if (
+    !label ||
+    label.length > 80 ||
+    (icon !== null &&
+      (typeof icon !== "string" || icon.length > 120 || !FORM_ICON_PATTERN.test(icon))) ||
+    hiddenFieldIds.length > 500 ||
+    hiddenFieldIds.some((id) => id !== TITLE_COLUMN_ID && !isUlid(id))
+  ) {
+    throw new ViewFiltersValidationError("Botão do formulário inválido");
+  }
+
+  return {
+    version: 1,
+    flowColumnId: value.flowColumnId,
+    ...(value.hiddenFieldIds !== undefined && { hiddenFieldIds }),
+    submitButton: { label, icon },
+  };
+}
+
+export function assertFormFlowColumn(
+  config: PageViewFormConfig,
+  columns: readonly Schema.PageColumn[],
+): void {
+  const flowColumn = columns.find((column) => column.id === config.flowColumnId);
+  if (!flowColumn || flowColumn.type !== "flow") {
+    throw new ViewFiltersValidationError("Coluna Flow do formulário inválida");
+  }
+  const hidden = new Set(config.hiddenFieldIds ?? []);
+  if (columns.some((column) => column.type === "flow" && hidden.has(column.id))) {
+    throw new ViewFiltersValidationError("Coluna Flow não pode ser campo oculto do formulário");
+  }
+}
+
+export function pageUsesFlowColumn(data: unknown, columnId: string): boolean {
+  if (!isJsonRecord(data)) return false;
+  return Object.values(data).some((value) => {
+    if (!isActivePageView(value) || value.view !== "form" || !isJsonRecord(value.form)) {
+      return false;
+    }
+    return value.form.flowColumnId === columnId;
+  });
+}
+
 export function parsePageViewCreate(
   raw: unknown,
   queryType?: unknown,
 ): PageViewCreateInput {
   if (
     !isJsonRecord(raw) ||
-    Object.keys(raw).some((key) => !["type", "view", "name", "title"].includes(key))
+    Object.keys(raw).some((key) => !["type", "view", "name", "title", "form"].includes(key))
   ) {
     throw new ViewFiltersValidationError("View inválida");
   }
@@ -105,6 +174,14 @@ export function parsePageViewCreate(
     throw new ViewFiltersValidationError("Nome de view inválido");
   }
 
+  const form = raw.form === undefined ? undefined : parsePageViewFormConfig(raw.form);
+  if (kind === "form" && !form) {
+    throw new ViewFiltersValidationError("Configuração do formulário obrigatória");
+  }
+  if (kind !== "form" && form) {
+    throw new ViewFiltersValidationError("Configuração de formulário incompatível com a view");
+  }
+
   return {
     kind: kind as PageViewKind,
     name,
@@ -112,6 +189,7 @@ export function parsePageViewCreate(
       raw.title === undefined
         ? { key: "title", column_name: "Título" }
         : parsePageViewTitle(raw.title),
+    ...(form && { form }),
   };
 }
 

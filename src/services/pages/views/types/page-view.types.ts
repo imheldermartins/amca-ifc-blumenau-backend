@@ -12,7 +12,27 @@ export type PageViewKind =
   | "board"
   | "calendar"
   | "timeline"
-  | "graph";
+  | "graph"
+  | "form";
+
+export interface PageViewFormConfig {
+  version: 1;
+  flowColumnId: string;
+  /** Campos ocultos somente do preenchimento; continuam na base e no review. */
+  hiddenFieldIds?: string[];
+  submitButton: {
+    label: string;
+    icon: string | null;
+  };
+}
+
+export interface PageViewBoardConfig {
+  selectColumnId?: string;
+  optionOrder?: string[];
+  collapsedOptionIds?: string[];
+  propertyIds?: string[];
+  showPropertyLabels?: boolean;
+}
 
 export interface PageViewTitleInput {
   key: "title";
@@ -24,6 +44,7 @@ export interface PageViewCreateInput {
   kind: PageViewKind;
   name: string;
   title: PageViewTitleInput;
+  form?: PageViewFormConfig;
 }
 
 export interface PageViewContext {

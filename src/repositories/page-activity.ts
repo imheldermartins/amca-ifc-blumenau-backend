@@ -6,8 +6,8 @@ const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
 export function pageActivityTouchStatement(pageId: string): RqliteStatement {
   if (!ULID_RE.test(pageId)) throw new Error('Invalid page id');
   return [
-    "UPDATE pages SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND deleted_at IS NULL",
-    pageId,
+    "UPDATE pages SET updated_at = CASE WHEN id = ? THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') ELSE updated_at END, dataset_revision = dataset_revision + 1 WHERE (id = ? OR id IN (SELECT parent_id FROM page_edges WHERE child_id = ?)) AND deleted_at IS NULL",
+    pageId, pageId, pageId,
   ];
 }
 

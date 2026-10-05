@@ -9,6 +9,7 @@ import accessRouter from "@routes/access-route";
 import inviteRouter from "@routes/invite-route";
 import scheduleRouter from "@routes/schedule-route";
 import notificationRouter from "@routes/notification-route";
+import formRouter from '@/routes/form-route';
 import notificationWorker from '@/services/notifications/notification-worker';
 
 const server = new HttpServer([
@@ -21,6 +22,7 @@ const server = new HttpServer([
   { path: "/auth", router: authRouter },
   { path: "/schedule", router: scheduleRouter },
   { path: "/notifications", router: notificationRouter },
+  { path: "/forms", router: formRouter },
 ]);
 
 await db.waitForDatabase();

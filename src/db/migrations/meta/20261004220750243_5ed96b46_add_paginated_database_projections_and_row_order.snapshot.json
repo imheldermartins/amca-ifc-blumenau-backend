@@ -1,0 +1,4173 @@
+{
+  "formatVersion": 1,
+  "tables": [
+    {
+      "name": "access_invite_acceptances",
+      "className": "AccessInviteAcceptanceSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "invite_id",
+          "name": "invite_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "user_id",
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "accepted_at",
+          "name": "accepted_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        }
+      ],
+      "indexes": [],
+      "foreignKeys": [
+        {
+          "columns": [
+            "user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "invite_id"
+          ],
+          "table": "access_invites",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [
+        [
+          "invite_id",
+          "user_id"
+        ]
+      ]
+    },
+    {
+      "name": "access_invites",
+      "className": "AccessInviteSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "token_hash",
+          "name": "token_hash",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "token_hint",
+          "name": "token_hint",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "scope_type",
+          "name": "scope_type",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "scope_id",
+          "name": "scope_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "role_id",
+          "name": "role_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "recipient_email",
+          "name": "recipient_email",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "author_id",
+          "name": "author_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "status",
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "pending"
+          }
+        },
+        {
+          "property": "expires_at",
+          "name": "expires_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "acceptance_limit",
+          "name": "acceptance_limit",
+          "type": "INTEGER",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | number",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "acceptance_count",
+          "name": "acceptance_count",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "notified_at",
+          "name": "notified_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_access_invites_recipient",
+          "columns": [],
+          "expressions": [
+            "lower(trim(recipient_email))"
+          ]
+        },
+        {
+          "name": "idx_access_invites_scope",
+          "columns": [
+            "scope_type",
+            "scope_id",
+            "created_at"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "author_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "length(token_hash) = 64",
+        "scope_type IN ('organization','workspace','page')",
+        "status IN ('pending','accepted','rejected','canceled','expired')",
+        "acceptance_limit IS NULL OR acceptance_limit > 0",
+        "acceptance_count >= 0"
+      ],
+      "unique": [
+        [
+          "token_hash"
+        ]
+      ],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "account_verifications",
+      "className": "AccountVerificationSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "user_id",
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "token_hash",
+          "name": "token_hash",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "token_hint",
+          "name": "token_hint",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "invite_id",
+          "name": "invite_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "context",
+          "name": "context",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Array<unknown> | Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": "{}"
+          }
+        },
+        {
+          "property": "expires_at",
+          "name": "expires_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "last_sent_at",
+          "name": "last_sent_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "consumed_at",
+          "name": "consumed_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_account_verifications_active",
+          "columns": [
+            "user_id"
+          ],
+          "unique": true,
+          "where": "consumed_at IS NULL AND deleted_at IS NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "invite_id"
+          ],
+          "table": "access_invites",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "length(token_hash) = 64",
+        "json_valid(context)"
+      ],
+      "unique": [
+        [
+          "token_hash"
+        ]
+      ],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "notification_deliveries",
+      "className": "NotificationDeliverySchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "notification_id",
+          "name": "notification_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "channel",
+          "name": "channel",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "email"
+          }
+        },
+        {
+          "property": "status",
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "pending"
+          }
+        },
+        {
+          "property": "attempts",
+          "name": "attempts",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "payload",
+          "name": "payload",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": "{}"
+          }
+        },
+        {
+          "property": "next_attempt_at",
+          "name": "next_attempt_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "locked_at",
+          "name": "locked_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "sent_at",
+          "name": "sent_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "provider_message_id",
+          "name": "provider_message_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "last_error",
+          "name": "last_error",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_notification_deliveries_notification_channel",
+          "columns": [
+            "notification_id",
+            "channel"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_notification_deliveries_due",
+          "columns": [
+            "status",
+            "next_attempt_at"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "notification_id"
+          ],
+          "table": "notifications",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "channel IN ('email')",
+        "status IN ('pending','processing','sent','failed')",
+        "attempts >= 0"
+      ],
+      "unique": []
+    },
+    {
+      "name": "notifications",
+      "className": "NotificationSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "workspace_id",
+          "name": "workspace_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "recipient_user_id",
+          "name": "recipient_user_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "actor_user_id",
+          "name": "actor_user_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "type",
+          "name": "type",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "resource_type",
+          "name": "resource_type",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "resource_id",
+          "name": "resource_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "data",
+          "name": "data",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": "{}"
+          }
+        },
+        {
+          "property": "dedupe_key",
+          "name": "dedupe_key",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "read_at",
+          "name": "read_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_notifications_recipient_workspace_created",
+          "columns": [
+            "recipient_user_id",
+            "workspace_id",
+            "created_at"
+          ]
+        },
+        {
+          "name": "idx_notifications_dedupe_key",
+          "columns": [
+            "dedupe_key"
+          ],
+          "unique": true
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "recipient_user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "actor_user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": []
+    },
+    {
+      "name": "organization_members",
+      "className": "OrganizationMemberSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "organization_id",
+          "name": "organization_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "user_id",
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "organization_member_role_id",
+          "name": "organization_member_role_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_organization_members_active",
+          "columns": [
+            "organization_id",
+            "user_id"
+          ],
+          "unique": true,
+          "where": "deleted_at IS NULL"
+        },
+        {
+          "name": "idx_organization_members_user",
+          "columns": [
+            "user_id"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "organization_member_role_id",
+            "organization_id"
+          ],
+          "table": "organization_roles",
+          "references": [
+            "id",
+            "organization_id"
+          ]
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "organization_id"
+          ],
+          "table": "organizations",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "organization_pending_requests",
+      "className": "OrganizationPendingRequestSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "organization_id",
+          "name": "organization_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "requester_id",
+          "name": "requester_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "notified_emails",
+          "name": "notified_emails",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Array<unknown> | Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": "[]"
+          }
+        },
+        {
+          "property": "status",
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "pending"
+          }
+        },
+        {
+          "property": "accepted_by",
+          "name": "accepted_by",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "decided_by",
+          "name": "decided_by",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "decided_at",
+          "name": "decided_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "role_id",
+          "name": "role_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_organization_pending_requests_open",
+          "columns": [
+            "organization_id",
+            "requester_id"
+          ],
+          "unique": true,
+          "where": "status = 'pending' AND deleted_at IS NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "role_id",
+            "organization_id"
+          ],
+          "table": "organization_roles",
+          "references": [
+            "id",
+            "organization_id"
+          ]
+        },
+        {
+          "columns": [
+            "decided_by"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "accepted_by"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "requester_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "organization_id"
+          ],
+          "table": "organizations",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "json_valid(notified_emails)",
+        "status IN ('pending','accepted','rejected','canceled','expired')"
+      ],
+      "unique": [],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "organization_roles",
+      "className": "OrganizationRoleSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "organization_id",
+          "name": "organization_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "name",
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "roles",
+          "name": "roles",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Array<unknown> | Record<string, unknown>",
+          "codec": "json"
+        },
+        {
+          "property": "is_default",
+          "name": "is_default",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "system_key",
+          "name": "system_key",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_organization_roles_default",
+          "columns": [
+            "organization_id"
+          ],
+          "unique": true,
+          "where": "is_default = 1 AND deleted_at IS NULL"
+        },
+        {
+          "name": "idx_organization_roles_scope",
+          "columns": [
+            "organization_id"
+          ]
+        },
+        {
+          "name": "idx_organization_roles_system",
+          "columns": [
+            "organization_id",
+            "system_key"
+          ],
+          "unique": true,
+          "where": "system_key IS NOT NULL AND deleted_at IS NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "organization_id"
+          ],
+          "table": "organizations",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "json_valid(roles)",
+        "is_default IN (0,1)"
+      ],
+      "unique": [
+        [
+          "id",
+          "organization_id"
+        ]
+      ],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "organizations",
+      "className": "OrganizationSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "name",
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "data",
+          "name": "data",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Array<unknown> | Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": "{}"
+          }
+        },
+        {
+          "property": "owner_id",
+          "name": "owner_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [],
+      "foreignKeys": [
+        {
+          "columns": [
+            "owner_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": []
+    },
+    {
+      "name": "page_collaborators",
+      "className": "PageCollaboratorSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "user_id",
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "page_member_role_id",
+          "name": "page_member_role_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_collaborators_active",
+          "columns": [
+            "page_id",
+            "user_id"
+          ],
+          "unique": true,
+          "where": "deleted_at IS NULL"
+        },
+        {
+          "name": "idx_page_collaborators_user",
+          "columns": [
+            "user_id"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "page_member_role_id",
+            "page_id"
+          ],
+          "table": "page_roles",
+          "references": [
+            "id",
+            "page_id"
+          ]
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "page_columns",
+      "className": "PageColumnSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "name",
+          "name": "name",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "type",
+          "name": "type",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "data",
+          "name": "data",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | Array<unknown> | Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "parent_id",
+          "name": "parent_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_columns_parent_deleted_at",
+          "columns": [
+            "parent_id",
+            "deleted_at"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "parent_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "type IN ('text', 'numeric', 'select', 'date', 'checkbox', 'flow')"
+      ],
+      "unique": [],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "page_columns_values",
+      "className": "PageColumnValueSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "data",
+          "name": "data",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "search_text",
+          "name": "search_text",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "number_value",
+          "name": "number_value",
+          "type": "REAL",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | number",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "select_option_id",
+          "name": "select_option_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "checkbox_value",
+          "name": "checkbox_value",
+          "type": "INTEGER",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | number",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "date_start_ms",
+          "name": "date_start_ms",
+          "type": "INTEGER",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | number",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "date_end_ms",
+          "name": "date_end_ms",
+          "type": "INTEGER",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | number",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "value_kind",
+          "name": "value_kind",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "missing"
+          }
+        },
+        {
+          "property": "projection_version",
+          "name": "projection_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "page_column_id",
+          "name": "page_column_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_columns_values_cell",
+          "columns": [
+            "page_id",
+            "page_column_id"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_page_values_select",
+          "columns": [
+            "page_column_id",
+            "select_option_id",
+            "page_id"
+          ],
+          "where": "select_option_id IS NOT NULL"
+        },
+        {
+          "name": "idx_page_values_number",
+          "columns": [
+            "page_column_id",
+            "number_value",
+            "page_id"
+          ],
+          "where": "number_value IS NOT NULL"
+        },
+        {
+          "name": "idx_page_values_date_start",
+          "columns": [
+            "page_column_id",
+            "date_start_ms",
+            "page_id"
+          ],
+          "where": "date_start_ms IS NOT NULL"
+        },
+        {
+          "name": "idx_page_values_date_end",
+          "columns": [
+            "page_column_id",
+            "date_end_ms",
+            "page_id"
+          ],
+          "where": "date_end_ms IS NOT NULL"
+        },
+        {
+          "name": "idx_page_values_search",
+          "columns": [
+            "page_column_id",
+            "search_text",
+            "page_id"
+          ],
+          "where": "search_text IS NOT NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "page_column_id"
+          ],
+          "table": "page_columns",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": []
+    },
+    {
+      "name": "page_documents",
+      "className": "PageDocumentSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "content",
+          "name": "content",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Record<string, unknown>",
+          "codec": "json"
+        },
+        {
+          "property": "revision",
+          "name": "revision",
+          "type": "REAL",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 1
+          }
+        }
+      ],
+      "indexes": [],
+      "foreignKeys": [
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [
+        [
+          "page_id"
+        ]
+      ]
+    },
+    {
+      "name": "page_edges",
+      "className": "PageEdgeSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "parent_id",
+          "name": "parent_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "child_id",
+          "name": "child_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_edges_parent_id",
+          "columns": [
+            "parent_id"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "child_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "parent_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [
+        [
+          "parent_id",
+          "child_id"
+        ],
+        [
+          "child_id"
+        ]
+      ]
+    },
+    {
+      "name": "page_form_publications",
+      "className": "PageFormPublicationSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "view_id",
+          "name": "view_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "created_by_user_id",
+          "name": "created_by_user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "submit_token_hash",
+          "name": "submit_token_hash",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "submit_token_hint",
+          "name": "submit_token_hint",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "review_token_hash",
+          "name": "review_token_hash",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "review_token_hint",
+          "name": "review_token_hint",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "expires_at",
+          "name": "expires_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "revoked_at",
+          "name": "revoked_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_form_publications_page_view",
+          "columns": [
+            "page_id",
+            "view_id"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "created_by_user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "length(submit_token_hash) = 64",
+        "length(review_token_hash) = 64"
+      ],
+      "unique": [
+        [
+          "page_id",
+          "view_id"
+        ],
+        [
+          "submit_token_hash"
+        ],
+        [
+          "review_token_hash"
+        ]
+      ]
+    },
+    {
+      "name": "page_form_submissions",
+      "className": "PageFormSubmissionSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "publication_id",
+          "name": "publication_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "response_page_id",
+          "name": "response_page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "client_request_id",
+          "name": "client_request_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "payload_hash",
+          "name": "payload_hash",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "flow_execution_id",
+          "name": "flow_execution_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_form_submissions_publication_created",
+          "columns": [
+            "publication_id",
+            "created_at",
+            "id"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "publication_id"
+          ],
+          "table": "page_form_publications",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "response_page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "length(payload_hash) = 64"
+      ],
+      "unique": [
+        [
+          "publication_id",
+          "client_request_id"
+        ],
+        [
+          "response_page_id"
+        ]
+      ]
+    },
+    {
+      "name": "page_pending_requests",
+      "className": "PagePendingRequestSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "requester_id",
+          "name": "requester_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "notified_emails",
+          "name": "notified_emails",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Array<unknown> | Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": "[]"
+          }
+        },
+        {
+          "property": "status",
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "pending"
+          }
+        },
+        {
+          "property": "accepted_by",
+          "name": "accepted_by",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "decided_by",
+          "name": "decided_by",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "decided_at",
+          "name": "decided_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "role_id",
+          "name": "role_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_pending_requests_open",
+          "columns": [
+            "page_id",
+            "requester_id"
+          ],
+          "unique": true,
+          "where": "status = 'pending' AND deleted_at IS NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "role_id",
+            "page_id"
+          ],
+          "table": "page_roles",
+          "references": [
+            "id",
+            "page_id"
+          ]
+        },
+        {
+          "columns": [
+            "decided_by"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "accepted_by"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "requester_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "json_valid(notified_emails)",
+        "status IN ('pending','accepted','rejected','canceled','expired')"
+      ],
+      "unique": [],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "page_roles",
+      "className": "PageRoleSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "name",
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "roles",
+          "name": "roles",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Array<unknown> | Record<string, unknown>",
+          "codec": "json"
+        },
+        {
+          "property": "is_default",
+          "name": "is_default",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "system_key",
+          "name": "system_key",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_roles_default",
+          "columns": [
+            "page_id"
+          ],
+          "unique": true,
+          "where": "is_default = 1 AND deleted_at IS NULL"
+        },
+        {
+          "name": "idx_page_roles_scope",
+          "columns": [
+            "page_id"
+          ]
+        },
+        {
+          "name": "idx_page_roles_system",
+          "columns": [
+            "page_id",
+            "system_key"
+          ],
+          "unique": true,
+          "where": "system_key IS NOT NULL AND deleted_at IS NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "json_valid(roles)",
+        "is_default IN (0,1)"
+      ],
+      "unique": [
+        [
+          "id",
+          "page_id"
+        ]
+      ],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "page_view_row_order",
+      "className": "PageViewRowOrderSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "parent_id",
+          "name": "parent_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "view_id",
+          "name": "view_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "row_id",
+          "name": "row_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "rank",
+          "name": "rank",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_page_view_row_order_row",
+          "columns": [
+            "parent_id",
+            "view_id",
+            "row_id"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_page_view_row_order_cursor",
+          "columns": [
+            "parent_id",
+            "view_id",
+            "rank",
+            "row_id"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "parent_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ],
+          "onDelete": "CASCADE"
+        },
+        {
+          "columns": [
+            "row_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ],
+          "onDelete": "CASCADE"
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": []
+    },
+    {
+      "name": "pages",
+      "className": "PageSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "title",
+          "name": "title",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "title_search",
+          "name": "title_search",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "projection_version",
+          "name": "projection_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "dataset_revision",
+          "name": "dataset_revision",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "data",
+          "name": "data",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | Array<unknown> | Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "owner_id",
+          "name": "owner_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_pages_deleted_at",
+          "columns": [
+            "deleted_at"
+          ]
+        },
+        {
+          "name": "idx_pages_owner_id",
+          "columns": [
+            "owner_id"
+          ]
+        },
+        {
+          "name": "idx_pages_title_search",
+          "columns": [
+            "title_search",
+            "id"
+          ],
+          "where": "deleted_at IS NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "owner_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "pinned_schedule_pages",
+      "className": "PinnedSchedulePageSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "workspace_id",
+          "name": "workspace_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "pinned_by_user_id",
+          "name": "pinned_by_user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "date_column_id",
+          "name": "date_column_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "color_column_id",
+          "name": "color_column_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_pinned_schedule_pages_workspace_user",
+          "columns": [
+            "workspace_id",
+            "pinned_by_user_id"
+          ]
+        },
+        {
+          "name": "idx_pinned_schedule_pages_unique",
+          "columns": [
+            "workspace_id",
+            "pinned_by_user_id",
+            "page_id"
+          ],
+          "unique": true
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "pinned_by_user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "date_column_id"
+          ],
+          "table": "page_columns",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "color_column_id"
+          ],
+          "table": "page_columns",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": []
+    },
+    {
+      "name": "schedule_pin_requests",
+      "className": "SchedulePinRequestSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "workspace_id",
+          "name": "workspace_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "requested_by_user_id",
+          "name": "requested_by_user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "recipient_user_id",
+          "name": "recipient_user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "date_column_id",
+          "name": "date_column_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "color_column_id",
+          "name": "color_column_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "status",
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "pending"
+          }
+        },
+        {
+          "property": "decided_at",
+          "name": "decided_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_schedule_pin_requests_recipient_status",
+          "columns": [
+            "recipient_user_id",
+            "status",
+            "created_at"
+          ]
+        },
+        {
+          "name": "idx_schedule_pin_requests_pending_unique",
+          "columns": [
+            "workspace_id",
+            "recipient_user_id",
+            "page_id"
+          ],
+          "unique": true,
+          "where": "status = 'pending'"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "requested_by_user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "recipient_user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "date_column_id"
+          ],
+          "table": "page_columns",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "color_column_id"
+          ],
+          "table": "page_columns",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "status IN ('pending','accepted','declined','canceled')"
+      ],
+      "unique": []
+    },
+    {
+      "name": "users",
+      "className": "UserSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "name",
+          "name": "name",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "email",
+          "name": "email",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "password_hash",
+          "name": "password_hash",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "token_version",
+          "name": "token_version",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "email_verified_at",
+          "name": "email_verified_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_users_email",
+          "columns": [
+            "email"
+          ]
+        }
+      ],
+      "foreignKeys": [],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [
+        [
+          "email"
+        ]
+      ]
+    },
+    {
+      "name": "workspace_members",
+      "className": "WorkspaceMemberSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "workspace_id",
+          "name": "workspace_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "user_id",
+          "name": "user_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "workspace_member_role_id",
+          "name": "workspace_member_role_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "page_root_id",
+          "name": "page_root_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_workspace_members_active",
+          "columns": [
+            "workspace_id",
+            "user_id"
+          ],
+          "unique": true,
+          "where": "deleted_at IS NULL"
+        },
+        {
+          "name": "idx_workspace_members_user",
+          "columns": [
+            "user_id"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "workspace_member_role_id",
+            "workspace_id"
+          ],
+          "table": "workspace_roles",
+          "references": [
+            "id",
+            "workspace_id"
+          ]
+        },
+        {
+          "columns": [
+            "page_root_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [
+        [
+          "page_root_id"
+        ]
+      ],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "workspace_pending_requests",
+      "className": "WorkspacePendingRequestSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "workspace_id",
+          "name": "workspace_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "requester_id",
+          "name": "requester_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "notified_emails",
+          "name": "notified_emails",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Array<unknown> | Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": "[]"
+          }
+        },
+        {
+          "property": "status",
+          "name": "status",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "pending"
+          }
+        },
+        {
+          "property": "accepted_by",
+          "name": "accepted_by",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "decided_by",
+          "name": "decided_by",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "decided_at",
+          "name": "decided_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "role_id",
+          "name": "role_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_workspace_pending_requests_open",
+          "columns": [
+            "workspace_id",
+            "requester_id"
+          ],
+          "unique": true,
+          "where": "status = 'pending' AND deleted_at IS NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "role_id",
+            "workspace_id"
+          ],
+          "table": "workspace_roles",
+          "references": [
+            "id",
+            "workspace_id"
+          ]
+        },
+        {
+          "columns": [
+            "decided_by"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "accepted_by"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "requester_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "json_valid(notified_emails)",
+        "status IN ('pending','accepted','rejected','canceled','expired')"
+      ],
+      "unique": [],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "workspace_roles",
+      "className": "WorkspaceRoleSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "workspace_id",
+          "name": "workspace_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "name",
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "roles",
+          "name": "roles",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Array<unknown> | Record<string, unknown>",
+          "codec": "json"
+        },
+        {
+          "property": "is_default",
+          "name": "is_default",
+          "type": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 0
+          }
+        },
+        {
+          "property": "system_key",
+          "name": "system_key",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "deleted_at",
+          "name": "deleted_at",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_workspace_roles_default",
+          "columns": [
+            "workspace_id"
+          ],
+          "unique": true,
+          "where": "is_default = 1 AND deleted_at IS NULL"
+        },
+        {
+          "name": "idx_workspace_roles_scope",
+          "columns": [
+            "workspace_id"
+          ]
+        },
+        {
+          "name": "idx_workspace_roles_system",
+          "columns": [
+            "workspace_id",
+            "system_key"
+          ],
+          "unique": true,
+          "where": "system_key IS NOT NULL AND deleted_at IS NULL"
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26",
+        "json_valid(roles)",
+        "is_default IN (0,1)"
+      ],
+      "unique": [
+        [
+          "id",
+          "workspace_id"
+        ]
+      ],
+      "softDelete": "deleted_at"
+    },
+    {
+      "name": "workspaces",
+      "className": "WorkspaceSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "name",
+          "name": "name",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "data",
+          "name": "data",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | Array<unknown> | Record<string, unknown>",
+          "codec": "json",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "organization_id",
+          "name": "organization_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        {
+          "property": "icon",
+          "name": "icon",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "default": {
+            "kind": "literal",
+            "value": "lucide:boxes"
+          }
+        },
+        {
+          "property": "created_by_user_id",
+          "name": "created_by_user_id",
+          "type": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "tsType": "null | string",
+          "default": {
+            "kind": "literal",
+            "value": null
+          }
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_workspaces_organization_id",
+          "columns": [
+            "organization_id"
+          ]
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "created_by_user_id"
+          ],
+          "table": "users",
+          "references": [
+            "id"
+          ]
+        },
+        {
+          "columns": [
+            "organization_id"
+          ],
+          "table": "organizations",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": []
+    }
+  ],
+  "opaque": []
+}

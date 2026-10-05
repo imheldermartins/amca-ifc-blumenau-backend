@@ -1,5 +1,6 @@
 import pageHierarchyStore from "@/repositories/page-hierarchy-repository";
 import { readPageLatestUpdatedAt } from '@/repositories/page-activity';
+import { sanitizeViewSnapshot } from '@/services/pages/views/page-query-serialization';
 import type { ColumnPayload, RowPayload } from "@/services/realtime/contracts/realtime-contract-v1";
 import {
   pageEditChannel,
@@ -83,7 +84,7 @@ export class PageRealtimePublisher {
     if (input.data !== undefined) {
       this.safeEmit("view-updated", input.pageId, () =>
         this.emitter.emitViewUpdated(
-          this.factory.create({ pageId: input.pageId, data: input.data }, metadata),
+          this.factory.create({ pageId: input.pageId, data: sanitizeViewSnapshot(input.data) }, metadata),
         ),
       );
     }
@@ -124,6 +125,11 @@ export class PageRealtimePublisher {
 
   async rowCreated(input: RowChangedInput): Promise<void> {
     await this.emitRowChange("row-created", input, (payload) => this.emitter.emitRowCreated(payload));
+  }
+
+  async rowOrderUpdated(pageId: string, viewId: string, rowId: string, orderRevision: number, originUserId: string): Promise<void> {
+    const payload = this.factory.create({ pageId, viewId, rowId, orderRevision }, this.metadata({ originUserId }));
+    this.safeEmit('row-order-updated', pageId, () => this.emitter.emitRowOrderUpdated?.(payload));
   }
 
   async rowDeleted(input: RowChangedInput): Promise<void> {

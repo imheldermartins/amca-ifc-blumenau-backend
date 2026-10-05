@@ -8,6 +8,7 @@ const db = vi.hoisted(() => ({
     findAll: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    delete: vi.fn(),
   },
   values: {
     findAll: vi.fn(),
@@ -181,5 +182,34 @@ describe("PageColumnController: public keys", () => {
 
     log.mockRestore();
     expect(db.columns.create).not.toHaveBeenCalled();
+  });
+
+  it("impede trocar o tipo ou excluir uma coluna Flow vinculada a uma view form", async () => {
+    const flow = column({ type: "flow", name: "Enviar" });
+    db.columns.find.mockResolvedValue(flow);
+    db.columns.findAll.mockResolvedValue([flow]);
+    db.pages.find.mockResolvedValue({
+      data: {
+        "01KXVZ00000000000000000006": {
+          view: "form",
+          name: "Inscrição",
+          form: {
+            version: 1,
+            flowColumnId: COLUMN_ID,
+            submitButton: { label: "Enviar", icon: "lucide:send" },
+          },
+        },
+      },
+    });
+
+    await expect(pageColumnController.updateColumn(
+      { id: COLUMN_ID, parent_id: PAGE_ID },
+      { type: "text" },
+    )).resolves.toMatchObject({ ok: false, reason: "conflict" });
+    await expect(pageColumnController.deleteColumn(
+      { id: COLUMN_ID, parent_id: PAGE_ID },
+    )).resolves.toMatchObject({ ok: false, reason: "conflict" });
+    expect(db.columns.update).not.toHaveBeenCalled();
+    expect(db.columns.delete).not.toHaveBeenCalled();
   });
 });

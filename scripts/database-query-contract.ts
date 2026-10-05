@@ -1,0 +1,13 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('..', import.meta.url));
+const source = resolve(root, 'src/services/pages/views/page-view-query-contract.ts');
+const target = resolve(process.env.CUBS_FRONTEND_ROOT?.trim() || resolve(root, '../cubs-frontend'), 'src/shared/cubs-database/pageViewQueryContract.ts');
+const mode = process.argv[2];
+if (mode !== 'sync' && mode !== 'check') throw new Error('Uso: database-query-contract.ts <sync|check>');
+const canonical = await readFile(source, 'utf8');
+if (/^\s*import\s/m.test(canonical)) throw new Error('O contrato de consultas deve ser portátil.');
+if (mode === 'sync') await writeFile(target, canonical, 'utf8');
+else if (canonical.replace(/\r\n/g, '\n') !== (await readFile(target, 'utf8')).replace(/\r\n/g, '\n')) throw new Error('Contrato de consultas divergente; execute database:contract:sync.');
+console.log(`Contrato de consultas ${mode === 'sync' ? 'sincronizado' : 'conferido'}.`);

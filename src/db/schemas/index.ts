@@ -55,11 +55,41 @@ export namespace Schema {
 
   // --- 3. PAGES ---
   export interface Page extends EntityBase, SoftDeletableEntity {
+    /** Internal query projection; omitted from public page responses. */
+    title_search?: string | null;
+    projection_version?: number;
+    dataset_revision?: number;
     title: string | null;
     data: Record<string, unknown>;
     owner_id: NonEmptyString; // ID do usuário dono (ULID)
   }
   export interface Pages extends Page {}
+
+  export interface PageFormPublication extends EntityBase {
+    page_id: NonEmptyString;
+    view_id: NonEmptyString;
+    created_by_user_id: NonEmptyString;
+    submit_token_hash: string;
+    submit_token_hint: string;
+    review_token_hash: string;
+    review_token_hint: string;
+    expires_at: string | null;
+    revoked_at: string | null;
+  }
+
+  export interface PageFormSubmission extends EntityBase {
+    publication_id: NonEmptyString;
+    response_page_id: NonEmptyString;
+    client_request_id: string;
+    payload_hash: string;
+    flow_execution_id: NonEmptyString;
+  }
+
+  export interface PageDocument extends EntityBase {
+    page_id: NonEmptyString;
+    content: Record<string, unknown>;
+    revision: number;
+  }
 
   // --- 4. PAGE EDGES (Hierarquia/Conexões de Páginas) ---
   // Aresta pai->filho entre pages. Convenção parent/child (antes page_root_id/
@@ -82,6 +112,7 @@ export namespace Schema {
     | 'is_empty'
     | 'is_not_empty';
 
+  /** Documento legado v1, mantido para execução e conversão compatíveis. */
   export interface FlowStartNode {
     id: string;
     type: 'start';
@@ -131,11 +162,61 @@ export namespace Schema {
     | FlowSwitchNode
     | FlowCallbackNode;
 
-  export interface FlowDefinition {
+  export interface FlowDefinitionV1 {
     version: 1;
     trigger: { type: 'manual' };
     nodes: FlowNode[];
   }
+
+  export interface FlowStartNodeV2 {
+    id: string;
+    type: 'start';
+    config: Record<string, never>;
+  }
+
+  export interface FlowEmailStepV2 {
+    id: string;
+    type: 'email';
+    config: { to: string; subject: string; body: string };
+  }
+
+  export interface FlowSetValueStepV2 {
+    id: string;
+    type: 'set_value';
+    config: { columnId: NonEmptyString; value: unknown };
+  }
+
+  export interface FlowSwitchStepV2 {
+    id: string;
+    type: 'switch';
+    config: {
+      /** `page_title` representa a coluna sintética da página/row. */
+      columnId: string;
+      operator: FlowSwitchOperator;
+      value?: unknown;
+      whenTrue: FlowStepV2[];
+      whenFalse: FlowStepV2[];
+    };
+  }
+
+  export type FlowStepV2 = FlowEmailStepV2 | FlowSetValueStepV2 | FlowSwitchStepV2;
+
+  export interface FlowCallbackNodeV2 {
+    id: string;
+    type: 'callback';
+    config: { message?: string };
+  }
+
+  export type FlowNodeV2 = FlowStartNodeV2 | FlowStepV2 | FlowCallbackNodeV2;
+
+  export interface FlowDefinitionV2 {
+    version: 2;
+    trigger: { type: 'manual' };
+    /** Start e callback são únicos e fixos na raiz; os steps podem aninhar switches. */
+    nodes: FlowNodeV2[];
+  }
+
+  export type FlowDefinition = FlowDefinitionV1 | FlowDefinitionV2;
 
   export interface FlowExecutionSummary {
     executionId: NonEmptyString;
@@ -216,6 +297,7 @@ export namespace Schema {
    * PageColumnConfigurationService e a limpeza explícita na rota /reset.
    */
   export interface PageColumnData {
+    flowButton?: { label: string | null; icon: string };
     options?: SelectOption[];
     format?: NumberFormat;
     currency?: CurrencyCode;
@@ -238,6 +320,14 @@ export namespace Schema {
 
   // --- 6. PAGE COLUMNS VALUES (Valores das Colunas) ---
   export interface PageColumnValue extends EntityBase {
+    search_text?: string | null;
+    number_value?: number | null;
+    select_option_id?: string | null;
+    checkbox_value?: number | null;
+    date_start_ms?: number | null;
+    date_end_ms?: number | null;
+    value_kind?: string;
+    projection_version?: number;
     /** Envelope JSON ainda serializado; somente o codec o transforma em valor. */
     data: string;
     page_column_id: NonEmptyString | null;

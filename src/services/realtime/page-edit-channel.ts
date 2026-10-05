@@ -7,6 +7,7 @@ import type {
   PageUpdatedPayload,
   RowPayload,
   RowUpdatedPayload,
+  RowOrderUpdatedPayload,
   ServerToClientEvents,
   ViewUpdatedPayload,
 } from "@/services/realtime/contracts/realtime-contract-v1";
@@ -23,6 +24,7 @@ export class PageEditChannel implements RealtimeChannel {
   readonly serverEvents = [
     "cell-updated",
     "row-updated",
+    "row-order-updated",
     "page-updated",
     "database-updated",
     "column-updated",
@@ -51,6 +53,10 @@ export class PageEditChannel implements RealtimeChannel {
 
   emitRowUpdated(payload: RowUpdatedPayload): void {
     this.emit("row-updated", payload);
+  }
+
+  emitRowOrderUpdated(payload: RowOrderUpdatedPayload): void {
+    this.emit("row-order-updated", payload);
   }
 
   emitPageUpdated(payload: PageUpdatedPayload): void {

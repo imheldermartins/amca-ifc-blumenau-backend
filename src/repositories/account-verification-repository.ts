@@ -1,5 +1,6 @@
 import { ulid } from 'ulid';
 import { rqlite } from '@/db/client-db';
+import {normalizeSearchText} from '@/repositories/page-value-projection';
 import { SystemRoleFactory } from './system-role-factory.js';
 import type { StartVerificationResult, VerificationContext, VerificationRecord } from '@/repositories/types/account-verification-repository.types';
 export type { StartVerificationResult, VerificationContext, VerificationRecord } from '@/repositories/types/account-verification-repository.types';
@@ -151,9 +152,9 @@ class AccountVerificationStore {
         WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND email_verified_at IS NOT NULL)
           AND NOT EXISTS (SELECT 1 FROM workspaces WHERE created_by_user_id = ?)`,
         input.workspaceId, workspaceName, verification.userId, verification.userId, verification.userId],
-      [`INSERT INTO pages (id, title, data, owner_id)
-        SELECT ?, ?, '{}', ? WHERE EXISTS (SELECT 1 FROM workspaces WHERE id = ? AND created_by_user_id = ?)`,
-        input.workspaceId, workspaceName, verification.userId, input.workspaceId, verification.userId],
+      [`INSERT INTO pages (id, title, data, owner_id, title_search, projection_version)
+        SELECT ?, ?, '{}', ?, ?, 1 WHERE EXISTS (SELECT 1 FROM workspaces WHERE id = ? AND created_by_user_id = ?)`,
+        input.workspaceId, workspaceName, verification.userId, normalizeSearchText(workspaceName), input.workspaceId, verification.userId],
       workspaceDefault,
       pageDefault,
       [`INSERT INTO workspace_members

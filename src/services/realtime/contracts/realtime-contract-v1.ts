@@ -53,6 +53,12 @@ export interface RowUpdatedPayload extends RealtimePayload {
   title: string | null;
 }
 
+export interface RowOrderUpdatedPayload extends RealtimePayload {
+  viewId: string;
+  rowId: string;
+  orderRevision: number;
+}
+
 export interface PageUpdatedPayload extends RealtimePayload {
   title: string | null;
 }
@@ -91,6 +97,7 @@ export interface RealtimeServerToClientEvents {
   "page-presence": (payload: PresencePayload) => void;
   "cell-updated": (payload: CellUpdatedPayload) => void;
   "row-updated": (payload: RowUpdatedPayload) => void;
+  "row-order-updated": (payload: RowOrderUpdatedPayload) => void;
   "page-updated": (payload: PageUpdatedPayload) => void;
   "database-updated": (payload: DatabaseUpdatedPayload) => void;
   "column-updated": (payload: ColumnUpdatedPayload) => void;
@@ -137,6 +144,7 @@ export const REALTIME_SERVER_TO_CLIENT_EVENT_NAMES = [
   "page-presence",
   "cell-updated",
   "row-updated",
+  "row-order-updated",
   "page-updated",
   "database-updated",
   "column-updated",

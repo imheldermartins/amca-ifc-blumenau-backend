@@ -96,7 +96,7 @@ export class PageViewController {
         return { ok: false, reason: "not_found", message: "Página não encontrada" };
       }
 
-      const draft = this.factory.duplicate(context.snapshot, sourceViewId);
+      const draft = this.factory.duplicate(context.snapshot, context.columns, sourceViewId);
       if (!draft) {
         return { ok: false, reason: "not_found", message: "View não encontrada" };
       }
@@ -126,6 +126,9 @@ export class PageViewController {
         data: { viewId: draft.viewId, view: persisted, data: snapshot.data },
       };
     } catch (error) {
+      if (error instanceof ViewFiltersValidationError) {
+        return { ok: false, reason: "validation", message: error.message };
+      }
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
     }

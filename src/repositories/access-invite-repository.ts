@@ -190,8 +190,8 @@ class AccessInviteStore {
     if (context.workspaceId && workspaceDefault) {
       const rootId = ulid();
       statements.push(
-        [`INSERT INTO pages (id, title, data, owner_id)
-          SELECT ?, 'Base de dados', '{}', ? WHERE ${valid.text}
+        [`INSERT INTO pages (id, title, data, owner_id, title_search, projection_version)
+          SELECT ?, 'Base de dados', '{}', ?, 'base de dados', 1 WHERE ${valid.text}
             AND NOT EXISTS (SELECT 1 FROM workspace_members
               WHERE workspace_id = ? AND user_id = ? AND deleted_at IS NULL)`,
           rootId, userId, ...valid.values, context.workspaceId, userId],

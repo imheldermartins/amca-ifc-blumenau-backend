@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ulid } from 'ulid';
 const mocks = vi.hoisted(() => ({
   access: { get: vi.fn(), can: vi.fn() },
-  roles: { save: vi.fn(), addMember: vi.fn(), members: vi.fn() },
+  roles: { save: vi.fn(), addMember: vi.fn(), members: vi.fn(), removeMember: vi.fn() },
   requests: { create: vi.fn(), list: vi.fn(), decide: vi.fn(), notificationContext: vi.fn(), recordNotification: vi.fn() },
   send: vi.fn(), close: vi.fn(),
 }));
@@ -24,6 +24,15 @@ beforeEach(() => {
   });
 });
 describe('AccessController', () => {
+  it('valida o alvo da remoção e passa o ator autenticado ao repositório', async () => {
+    expect(await controller.removeMember('page', scopeId, actor, 'invalid')).toMatchObject({ ok: false, reason: 'validation' });
+    expect(mocks.roles.removeMember).not.toHaveBeenCalled();
+    mocks.roles.removeMember.mockResolvedValue(false);
+    expect(await controller.removeMember('page', scopeId, actor, requester)).toMatchObject({ ok: false, reason: 'forbidden' });
+    expect(mocks.roles.removeMember).toHaveBeenCalledWith('page', scopeId, actor, requester);
+    mocks.roles.removeMember.mockResolvedValue(true);
+    expect(await controller.removeMember('page', scopeId, actor, requester)).toMatchObject({ ok: true, data: { saved: true } });
+  });
   it('rejeita permissões desconhecidas e delegação acima do ator', async () => {
     expect(await controller.saveRole('page', scopeId, actor, { name: 'Inválida', roles: { read: ['view'], write: ['superadmin'] } })).toMatchObject({ ok: false, reason: 'validation' });
     expect(await controller.saveRole('page', scopeId, actor, { name: 'Escalada', roles: { read: ['view'], write: ['delete'] } })).toMatchObject({ ok: false, reason: 'forbidden' });

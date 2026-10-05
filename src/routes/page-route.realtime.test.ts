@@ -155,6 +155,21 @@ async function request(
 }
 
 describe("PageRouter: publicação realtime somente pós-commit", () => {
+  it.each(['POST', 'PUT'] as const)('encaminha flowButton na rota de colunas %s e publica o valor confirmado', async (method) => {
+    const flowButton = { label: 'Conferir', icon: 'lucide:play' };
+    const column = { id: COLUMN_ID, parent_id: PARENT_ID, type: 'flow', data: { flowButton } };
+    doubles.column.createColumn.mockResolvedValue({ ok: true, data: column });
+    doubles.column.updateColumn.mockResolvedValue({ ok: true, data: column });
+    const response = await request(`/pages/parent/${PARENT_ID}/columns${method === 'PUT' ? `/${COLUMN_ID}` : ''}`, method, { type: 'flow', flowButton });
+    expect(response.status).toBe(method === 'POST' ? 201 : 200);
+    if (method === 'POST') {
+      expect(doubles.column.createColumn).toHaveBeenCalledWith(expect.objectContaining({ flowButton }));
+      expect(doubles.publisher.columnCreated).toHaveBeenCalledWith(expect.objectContaining({ column }));
+    } else {
+      expect(doubles.column.updateColumn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ flowButton }));
+      expect(doubles.publisher.columnUpdated).toHaveBeenCalledWith(expect.objectContaining({ column }));
+    }
+  });
   it('retorna a última edição calculada em GET sem coluna persistida', async () => {
     doubles.page.get.mockResolvedValueOnce({ id: PAGE_ID, title: 'Base', updated_at: '2026-09-14 10:00:00' });
     doubles.page.latestUpdatedAt.mockResolvedValueOnce('2026-09-14 11:30:00');

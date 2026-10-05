@@ -7,6 +7,7 @@ import type {
   PageUpdatedPayload,
   RowPayload,
   RowUpdatedPayload,
+  RowOrderUpdatedPayload,
   ViewUpdatedPayload,
 } from "@/services/realtime/contracts/realtime-contract-v1";
 
@@ -21,6 +22,7 @@ export interface DatabaseActivityReader {
 export interface PageEditEmitter {
   emitCellUpdated(payload: CellUpdatedPayload): void;
   emitRowUpdated(payload: RowUpdatedPayload): void;
+  emitRowOrderUpdated?(payload: RowOrderUpdatedPayload): void;
   emitPageUpdated(payload: PageUpdatedPayload): void;
   emitDatabaseUpdated(payload: DatabaseUpdatedPayload): void;
   emitColumnUpdated(payload: ColumnUpdatedPayload): void;

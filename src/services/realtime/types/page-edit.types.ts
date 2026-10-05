@@ -4,6 +4,7 @@ import type { CubsSocketServer } from "@/services/realtime/types/socket.types";
 export type PageEditEventName =
   | "cell-updated"
   | "row-updated"
+  | "row-order-updated"
   | "page-updated"
   | "database-updated"
   | "column-updated"

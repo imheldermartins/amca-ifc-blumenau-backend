@@ -53,6 +53,7 @@ export namespace Input {
   // O update é PARCIAL e o `data` ACUMULA: PageColumnConfigurationService
   // mescla somente as chaves conhecidas; mandar `format` não apaga `mask`.
   export type CreatePageColumn = {
+    flowButton?: { label: string | null; icon: string };
     name?: string | null;
     type?: Schema.ColumnType;
     options?: { id?: string; value: string; color?: Schema.ColorOptions }[];
@@ -65,6 +66,7 @@ export namespace Input {
   // No UPDATE, cada config aceita `null` = LIMPAR aquela chave (ex.: tirar a
   // máscara). `undefined`/ausente = preserva. Ver mergeData no controller.
   export type UpdatePageColumn = {
+    flowButton?: { label: string | null; icon: string };
     name?: string | null;
     type?: Schema.ColumnType;
     options?: { id?: string; value: string; color?: Schema.ColorOptions }[] | null;

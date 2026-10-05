@@ -16,6 +16,7 @@ function emitter() {
   return {
     emitCellUpdated: vi.fn(),
     emitRowUpdated: vi.fn(),
+    emitRowOrderUpdated: vi.fn(),
     emitPageUpdated: vi.fn(),
     emitDatabaseUpdated: vi.fn(),
     emitColumnUpdated: vi.fn(),
@@ -48,6 +49,16 @@ function publisher(options?: {
 }
 
 describe("PageRealtimePublisher", () => {
+  it("publica movimento confirmado sem transmitir a lista de linhas", async () => {
+    const { realtime, edits } = publisher();
+    await realtime.rowOrderUpdated(PAGE_ID, "view-1", ROW_ID, 7, USER_ID);
+    expect(edits.emitRowOrderUpdated).toHaveBeenCalledExactlyOnceWith({
+      pageId: PAGE_ID, viewId: "view-1", rowId: ROW_ID, orderRevision: 7,
+      updatedAt: UPDATED_AT, originUserId: USER_ID,
+    });
+    expect(edits.emitViewUpdated).not.toHaveBeenCalled();
+    expect(edits.emitRowUpdated).not.toHaveBeenCalled();
+  });
   it("publica o timestamp persistido da base, distinto do relógio do evento", async () => {
     const { realtime, edits } = publisher();
     await realtime.rowCreated({ pageId: PAGE_ID, rowId: ROW_ID, originUserId: USER_ID });
