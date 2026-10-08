@@ -4,7 +4,7 @@ import roleStore from '@/repositories/role-repository';
 import scopedAccess from '@/repositories/scoped-access-repository';
 import { SystemRoleFactory } from '@/repositories/system-role-factory';
 import { canDelegate, type AccessScope } from '@/services/auth/permissions';
-import { SmtpService } from '@/services/mail/smtp-service';
+import { SendEmail } from '@/services/mail/send-email';
 import { accessInviteEmail } from '@/services/mail/access-invite-email';
 import accountVerification from '@/services/account-verification';
 import { createOpaqueToken, hashOpaqueToken, isOpaqueToken, opaqueTokenHint } from '@/services/opaque-token';
@@ -81,11 +81,11 @@ export abstract class InviteFlow {
       }
     }
 
-    let smtp: SmtpService | undefined;
+    let emailSender: SendEmail | undefined;
     try {
       if (!inviteUrl) throw new Error('APP_PUBLIC_URL não configurada');
-      smtp = SmtpService.fromEnvironment();
-      await smtp.send(accessInviteEmail.create({
+      emailSender = SendEmail.fromEnvironment();
+      const email = accessInviteEmail.create({
         recipientEmail,
         scopeType: { organization: 'organização', workspace: 'workspace', page: 'página' }[this.scope],
         scopeName: invite.scopeName,
@@ -93,13 +93,17 @@ export abstract class InviteFlow {
         roleName: invite.roleName,
         inviteUrl,
         expiresAt: invite.expiresAt,
-      }));
+      });
+      await emailSender.send({
+        to: { name: target.user?.name?.trim() || recipientEmail, email: recipientEmail },
+        ...email,
+      });
       await accessInviteStore.markNotified(id);
       return { ok: true, invite: (await accessInviteStore.getById(id)) ?? invite, inviteUrl: null, notificationPending: false };
     } catch {
       return { ok: true, invite, inviteUrl: null, notificationPending: true };
     } finally {
-      smtp?.close();
+      emailSender?.close();
     }
   }
 

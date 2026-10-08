@@ -123,7 +123,7 @@ describe('FlowExecutionService', () => {
     const outcome = await service.execute('row' as NonEmptyString, 'flow' as NonEmptyString, 'actor' as NonEmptyString)
 
     expect(outcome.summary.executedNodeIds).toEqual(['start', 'decision', 'no', 'common', 'done'])
-    expect(outcome.updatedValues).toEqual([{ columnId: 'score', value: 2 }])
+    expect(outcome.updatedValues).toEqual([{ columnId: 'score', columnType: 'numeric', value: 2 }])
   })
 
   it('executa condições v2 aninhadas, usa IDs de select e reencontra a continuação comum', async () => {
@@ -198,7 +198,7 @@ describe('FlowExecutionService', () => {
     expect(outcome.summary.executedNodeIds).not.toContain('nested-false')
     expect(outcome.summary.executedNodeIds).not.toContain('stale-value-path')
     expect(outcome.summary.callback).toBe('Pontuação 9')
-    expect(outcome.updatedValues).toEqual([{ columnId: 'score', value: 9 }])
+    expect(outcome.updatedValues).toEqual([{ columnId: 'score', columnType: 'numeric', value: 9 }])
     expect(commitExecution).toHaveBeenCalledTimes(1)
   })
 
@@ -234,7 +234,7 @@ describe('FlowExecutionService', () => {
       callback: 'Atualizado para 42',
       effects: { emailsQueued: 0, valuesUpdated: 1 },
     });
-    expect(outcome.updatedValues).toEqual([{ columnId: 'score', value: 42 }]);
+    expect(outcome.updatedValues).toEqual([{ columnId: 'score', columnType: 'numeric', value: 42 }]);
     expect(canMutate).toHaveBeenNthCalledWith(1, 'database', 'flow', 'actor');
     expect(canMutate).toHaveBeenNthCalledWith(2, 'database', 'score', 'actor');
     expect(commitExecution).toHaveBeenCalledTimes(1);
@@ -294,7 +294,7 @@ describe('FlowExecutionService', () => {
     );
 
     expect(outcome.summary.callback).toBe('Sala: Laboratório 01');
-    expect(outcome.updatedValues).toEqual([{ columnId: 'room', value: optionId }]);
+    expect(outcome.updatedValues).toEqual([{ columnId: 'room', columnType: 'select', value: optionId }]);
     expect(commitExecution.mock.calls[0]![0]).toMatchObject({
       values: [{ columnId: 'room', data: JSON.stringify({ value: optionId }) }],
     });

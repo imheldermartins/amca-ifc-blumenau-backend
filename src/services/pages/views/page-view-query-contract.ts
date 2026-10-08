@@ -14,6 +14,8 @@ export type PageViewQueryScope =
   | { type: 'calendar'; from: string; to: string; day?: string }
   | { type: 'graph'; parentId: string };
 export interface PageViewQueryRequest {
+  /** Kind efetivo que o frontend está projetando; o backend confere contra o snapshot. */
+  view?: QueryViewKind;
   filters?: QueryFilters;
   scope?: PageViewQueryScope;
   cursor?: string | null;

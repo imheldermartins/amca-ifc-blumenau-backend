@@ -174,6 +174,7 @@ describe("SocketServer + channels com clientes reais", () => {
     await publisher.cellUpdated({
       rowId: ROW_ID,
       columnId: COLUMN_ID,
+      columnType: "checkbox",
       value: false,
       originUserId: OWNER_ID,
     });
@@ -182,6 +183,7 @@ describe("SocketServer + channels com clientes reais", () => {
       pageId: PAGE_ID,
       rowId: ROW_ID,
       columnId: COLUMN_ID,
+      columnType: "checkbox",
       value: false,
       updatedAt: UPDATED_AT,
       originUserId: OWNER_ID,
@@ -273,6 +275,7 @@ describe("SocketServer + channels com clientes reais", () => {
     await publisher.cellUpdated({
       rowId: ROW_ID,
       columnId: COLUMN_ID,
+      columnType: "numeric",
       value: 0,
       originUserId: COLLABORATOR_ID,
     });
@@ -286,6 +289,7 @@ describe("SocketServer + channels com clientes reais", () => {
     await publisher.cellUpdated({
       rowId: ROW_ID,
       columnId: COLUMN_ID,
+      columnType: "text",
       value: "depois-do-ack",
       originUserId: COLLABORATOR_ID,
     });

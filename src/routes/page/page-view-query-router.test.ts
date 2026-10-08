@@ -35,8 +35,8 @@ describe('paginated view HTTP routes', () => {
   });
   it('uses the authenticated actor and temporary request filters', async () => {
     const filters = { version: 2, clauses: [{ columnId: 'page_title', condition: 'contains', values: ['ação'] }], groupBy: [] };
-    const response = await fetch(`${base}/${ROOT}/views/${VIEW}/query`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filters, limit: 50 }) });
-    expect(response.status).toBe(200); expect(query).toHaveBeenCalledWith(ROOT, VIEW, USER, { filters, limit: 50 });
+    const response = await fetch(`${base}/${ROOT}/views/${VIEW}/query`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ view: 'table', filters, limit: 50 }) });
+    expect(response.status).toBe(200); expect(query).toHaveBeenCalledWith(ROOT, VIEW, USER, { view: 'table', filters, limit: 50 });
   });
   it('rejects oversized requests before reaching the repository', async () => {
     const response = await fetch(`${base}/${ROOT}/views/${VIEW}/query`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit: 51 }) });

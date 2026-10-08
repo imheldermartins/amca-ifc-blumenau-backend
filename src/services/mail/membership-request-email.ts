@@ -1,6 +1,6 @@
 import { Template } from "@/services/mail/template";
 import { validateEmailActionUrl } from "@/services/mail/email-action-url";
-import type { MailMessage, MembershipRequestEmailInput } from "@/services/mail/types/mail.types";
+import type { EmailDraft, MembershipRequestEmailInput } from "@/services/mail/types/mail.types";
 
 export class MembershipRequestEmail {
   private readonly template = Template.fromFiles<{
@@ -17,8 +17,8 @@ export class MembershipRequestEmail {
     text: new URL("./templates/membership-request.txt", import.meta.url),
   });
 
-  public create(input: MembershipRequestEmailInput): MailMessage {
-    const body = this.template.render({
+  public create(input: MembershipRequestEmailInput): EmailDraft {
+    return this.template.render({
       recipient_name: input.recipient.name,
       recipient_email: input.recipient.email,
       requester_name: input.requester.name,
@@ -27,7 +27,6 @@ export class MembershipRequestEmail {
       scope_type: input.scopeType,
       review_url: validateEmailActionUrl(input.reviewUrl),
     });
-    return { to: input.recipient, subject: body.subject, html: body.bodyHtml, text: body.bodyText };
   }
 }
 

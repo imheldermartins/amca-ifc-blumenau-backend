@@ -1,7 +1,7 @@
 import store, { PageViewQueryStore, QUERY_FALLBACK_VIEW } from '@/repositories/page-view-query-repository';
 import { PageViewQueryError } from '@/repositories/page-view-query-cursor';
 import { isUlid } from '@/utils/ulid';
-import type { PageViewQueryRequest, PageViewQueryScope, QueryFilters } from '@/services/pages/views/page-view-query-contract';
+import type { PageViewQueryRequest, PageViewQueryScope, QueryFilters, QueryViewKind } from '@/services/pages/views/page-view-query-contract';
 
 function record(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
 function keys(value: Record<string, unknown>, allowed: string[]): boolean { return Object.keys(value).every((key) => allowed.includes(key)); }
@@ -9,7 +9,8 @@ function date(value: unknown): value is string { return typeof value === 'string
 function fail(): never { throw new PageViewQueryError(400, 'Consulta de visualização inválida'); }
 
 export function parsePageViewQueryRequest(raw: unknown): PageViewQueryRequest {
-  if (!record(raw) || !keys(raw, ['filters', 'scope', 'cursor', 'groupCursor', 'direction', 'limit', 'visibleGroupKeys', 'anchorId', 'metadataOnly'])) fail();
+  if (!record(raw) || !keys(raw, ['view', 'filters', 'scope', 'cursor', 'groupCursor', 'direction', 'limit', 'visibleGroupKeys', 'anchorId', 'metadataOnly'])) fail();
+  if (raw.view !== undefined && !['table', 'grid', 'board', 'calendar', 'timeline', 'graph', 'form'].includes(String(raw.view))) fail();
   if (raw.metadataOnly !== undefined && typeof raw.metadataOnly !== 'boolean') fail();
   if (raw.limit !== undefined && (typeof raw.limit !== 'number' || !Number.isInteger(raw.limit) || raw.limit < 1 || raw.limit > 50)) fail();
   if (raw.direction !== undefined && !['next', 'previous'].includes(String(raw.direction))) fail();
@@ -53,7 +54,7 @@ export function parsePageViewQueryRequest(raw: unknown): PageViewQueryRequest {
       default: fail();
     }
   }
-  return { ...(filters && { filters }), ...(scope && { scope }), ...(raw.cursor !== undefined && { cursor: raw.cursor as string | null }),
+  return { ...(raw.view !== undefined && { view: raw.view as QueryViewKind }), ...(filters && { filters }), ...(scope && { scope }), ...(raw.cursor !== undefined && { cursor: raw.cursor as string | null }),
     ...(raw.groupCursor !== undefined && { groupCursor: raw.groupCursor as string | null }), ...(raw.direction !== undefined && { direction: raw.direction as 'next' | 'previous' }),
     ...(raw.limit !== undefined && { limit: raw.limit as number }), ...(raw.visibleGroupKeys !== undefined && { visibleGroupKeys: raw.visibleGroupKeys as string[] }),
     ...(raw.anchorId !== undefined && { anchorId: raw.anchorId as string }), ...(raw.metadataOnly !== undefined && { metadataOnly: raw.metadataOnly as boolean }) };

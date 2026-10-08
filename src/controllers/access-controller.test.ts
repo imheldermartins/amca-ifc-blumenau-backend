@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/repositories/scoped-access-repository', () => ({ default: mocks.access, ULID_RE: /^[0-9A-HJKMNP-TV-Z]{26}$/i }));
 vi.mock('@/repositories/role-repository', () => ({ default: mocks.roles }));
 vi.mock('@/repositories/membership-request-repository', () => ({ default: mocks.requests }));
-vi.mock('@/services/mail/smtp-service', () => ({ SmtpService: { fromEnvironment: () => ({ send: mocks.send, close: mocks.close }) } }));
+vi.mock('@/services/mail/send-email', () => ({ SendEmail: { fromEnvironment: () => ({ send: mocks.send, close: mocks.close }) } }));
 import controller from './access-controller.js';
 const scopeId = ulid(), actor = ulid(), requester = ulid(), requestId = ulid(), roleId = ulid();
 beforeEach(() => {
@@ -52,7 +52,10 @@ describe('AccessController', () => {
   it('registra o destinatário somente após SMTP aceitar a mensagem', async () => {
     const result = await controller.request('page',scopeId,requester);
     expect(result).toMatchObject({ok:true,data:{notificationPending:false}});
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({to:{name:'Responsável',email:'approver@example.test'},html:expect.stringContaining('/requests/'+requestId)}));
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      to:{name:'Responsável',email:'approver@example.test'},
+      content:{html:expect.stringContaining('/requests/'+requestId),text:expect.any(String)},
+    }));
     expect(mocks.requests.recordNotification).toHaveBeenCalledWith('page',requestId,'approver@example.test');
     expect(mocks.send.mock.invocationCallOrder[0]).toBeLessThan(mocks.requests.recordNotification.mock.invocationCallOrder[0]!);
     expect(mocks.close).toHaveBeenCalledOnce();

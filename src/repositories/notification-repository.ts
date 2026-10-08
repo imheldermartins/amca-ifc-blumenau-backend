@@ -117,13 +117,17 @@ export class NotificationStore {
     }, 'execute');
   }
 
-  public async markFailed(id: NonEmptyString, nextAttemptAt: string): Promise<void> {
+  public async markFailed(
+    id: NonEmptyString,
+    nextAttemptAt: string,
+    errorCode: string,
+  ): Promise<void> {
     await db.sqlRaw({
       text: `UPDATE notification_deliveries
-        SET status = 'failed', last_error = 'delivery_failed', locked_at = NULL,
+        SET status = 'failed', last_error = ?, locked_at = NULL,
           next_attempt_at = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND status = 'processing'`,
-      values: [nextAttemptAt, id],
+      values: [errorCode, nextAttemptAt, id],
     }, 'execute');
   }
 }

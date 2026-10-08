@@ -9,8 +9,7 @@ export interface NotificationRow extends Omit<Schema.Notification, 'data'> {
 export interface EmailOutboxPayload {
   to: { name: string; email: string };
   subject: string;
-  html: string;
-  text: string;
+  content: { html: string; text?: string };
 }
 
 export interface NotificationDeliveryRow extends Omit<Schema.NotificationDelivery, 'payload'> {

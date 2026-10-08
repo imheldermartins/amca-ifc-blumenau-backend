@@ -4,7 +4,7 @@ import notificationStore, { NotificationStore } from '@/repositories/notificatio
 import scheduleStore, { ScheduleStore } from '@/repositories/schedule-repository';
 import type { EmailOutboxPayload } from '@/repositories/types/notification-repository.types';
 import { scheduleReminderMail } from '@/services/notifications/schedule-notification-mail';
-import { SmtpService } from '@/services/mail/smtp-service';
+import { emailFailureFeedback, SendEmail } from '@/services/mail/send-email';
 import { projectScheduleInterval, scheduleStartInstant } from '@/services/schedule/schedule-date';
 import { VALUE_CODECS } from '@/services/value-codec';
 
@@ -26,12 +26,20 @@ function emailPayload(value: unknown): EmailOutboxPayload | null {
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
   const payload = parsed as Partial<EmailOutboxPayload>;
-  if (
-    !payload.to || typeof payload.to.name !== 'string' || typeof payload.to.email !== 'string'
-    || typeof payload.subject !== 'string' || typeof payload.html !== 'string'
-    || typeof payload.text !== 'string'
-  ) return null;
-  return payload as EmailOutboxPayload;
+  if (!payload.to || typeof payload.to.name !== 'string' || typeof payload.to.email !== 'string'
+    || typeof payload.subject !== 'string') return null;
+  if (payload.content && typeof payload.content.html === 'string'
+    && (payload.content.text === undefined || typeof payload.content.text === 'string')) {
+    return payload as EmailOutboxPayload;
+  }
+  // Compatibilidade com entregas persistidas antes da introdução de `content`.
+  const legacy = parsed as { html?: unknown; text?: unknown };
+  if (typeof legacy.html !== 'string' || typeof legacy.text !== 'string') return null;
+  return {
+    to: payload.to,
+    subject: payload.subject,
+    content: { html: legacy.html, text: legacy.text },
+  };
 }
 
 function retryAt(now: Date, attempt: number): string {
@@ -115,6 +123,10 @@ export class NotificationWorker {
 
         const title = candidate.page_title ?? 'Sem título';
         const dedupeKey = `schedule-reminder:${candidate.pin_id}:${start.toISOString()}`;
+        const recipient = {
+          name: candidate.user_name || candidate.user_email,
+          email: candidate.user_email,
+        };
         await this.notifications.enqueue({
           id: ulid() as NonEmptyString,
           deliveryId: ulid() as NonEmptyString,
@@ -131,15 +143,15 @@ export class NotificationWorker {
             allDay: interval.allDay,
           },
           dedupeKey,
-          email: scheduleReminderMail({
-            recipient: {
-              name: candidate.user_name || candidate.user_email,
-              email: candidate.user_email,
-            },
-            pageTitle: title,
-            start: interval.start,
-            allDay: interval.allDay,
-          }),
+          email: {
+            to: recipient,
+            ...scheduleReminderMail({
+              recipient,
+              pageTitle: title,
+              start: interval.start,
+              allDay: interval.allDay,
+            }),
+          },
         });
       }
     }
@@ -151,7 +163,7 @@ export class NotificationWorker {
     const staleBefore = new Date(now.getTime() - STALE_LOCK_MS).toISOString();
     const rows = await this.notifications.listDueDeliveries(now.toISOString(), staleBefore);
     if (!rows.length) return;
-    const smtp = SmtpService.fromEnvironment();
+    const emailSender = SendEmail.fromEnvironment();
     try {
       for (const row of rows) {
         const claimed = await this.notifications.claimDelivery(
@@ -162,18 +174,27 @@ export class NotificationWorker {
         if (!claimed) continue;
         const payload = emailPayload(row.payload);
         if (!payload) {
-          await this.notifications.markFailed(row.id, retryAt(now, row.attempts + 1));
+          await this.notifications.markFailed(
+            row.id,
+            retryAt(now, row.attempts + 1),
+            'invalid_message',
+          );
           continue;
         }
         try {
-          const sent = await smtp.send(payload);
+          const sent = await emailSender.send(payload);
           await this.notifications.markSent(row.id, sent.messageId);
-        } catch {
-          await this.notifications.markFailed(row.id, retryAt(now, row.attempts + 1));
+        } catch (error) {
+          const failure = emailFailureFeedback(error);
+          await this.notifications.markFailed(
+            row.id,
+            retryAt(now, row.attempts + 1),
+            failure.code,
+          );
         }
       }
     } finally {
-      smtp.close();
+      emailSender.close();
     }
   }
 }

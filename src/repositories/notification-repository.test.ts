@@ -116,8 +116,7 @@ describe('NotificationStore', () => {
       email: {
         to: { name: 'Pessoa', email: 'person@example.test' },
         subject: 'Lembrete',
-        html: '<p>Lembrete</p>',
-        text: 'Lembrete',
+        content: { html: '<p>Lembrete</p>', text: 'Lembrete' },
       },
     };
 
@@ -149,8 +148,7 @@ describe('NotificationStore', () => {
       email: {
         to: { name: 'Pessoa', email: 'person@example.test' },
         subject: 'Lembrete',
-        html: '<p>Lembrete</p>',
-        text: 'Lembrete',
+        content: { html: '<p>Lembrete</p>', text: 'Lembrete' },
       },
     });
 
@@ -195,6 +193,22 @@ describe('NotificationStore', () => {
       status: 'sent',
       attempts: 2,
       provider_message_id: 'provider-id',
+      locked_at: null,
+    });
+
+    sqlite.prepare(`UPDATE notification_deliveries
+      SET status = 'processing', locked_at = '2026-09-30T10:31:00.000Z'
+      WHERE id = ?`).run(DELIVERY_ID);
+    await store.markFailed(
+      DELIVERY_ID,
+      '2026-09-30T10:35:00.000Z',
+      'authentication',
+    );
+    expect(sqlite.prepare(`SELECT status, last_error, next_attempt_at, locked_at
+      FROM notification_deliveries WHERE id = ?`).get(DELIVERY_ID)).toEqual({
+      status: 'failed',
+      last_error: 'authentication',
+      next_attempt_at: '2026-09-30T10:35:00.000Z',
       locked_at: null,
     });
   });

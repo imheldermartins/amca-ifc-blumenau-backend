@@ -1,8 +1,15 @@
 # SMTP, validação de conta e convites
 
-`src/services/mail/smtp-service.ts` centraliza conexão, verificação e envio SMTP com
-Nodemailer. A configuração é lida quando `SmtpService.fromEnvironment()` é
-chamado. A API pode continuar iniciando sem SMTP configurado.
+O envio tem três responsabilidades separadas:
+
+- os builders/templates produzem somente `{ subject, content }`;
+- `SendEmail` monta o envelope simples `{ from, to, subject, content }`, valida
+  os endereços e é a única camada usada pelos casos de uso e pela outbox;
+- `Smtp` adapta esse envelope para o Nodemailer e controla conexão, verificação,
+  aceitação, fechamento e classificação das falhas do provedor.
+
+A configuração é lida somente quando `SendEmail.fromEnvironment()` é chamado.
+A API pode continuar iniciando sem SMTP configurado.
 
 Preencha `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_REQUIRE_TLS`,
 `SMTP_FROM_NAME` e `SMTP_FROM_EMAIL` no arquivo de ambiente utilizado. Se houver
@@ -13,25 +20,36 @@ A porta 587 usa STARTTLS; a porta 465 usa TLS desde a conexão. Produção exige
 Um capturador local em desenvolvimento pode usar `SMTP_REQUIRE_TLS=false`.
 
 ```ts
-import { SmtpService } from "@/services/mail/smtp-service";
+import { SendEmail } from "@/services/mail/send-email";
 import { accountVerificationEmail } from "@/services/mail/account-verification-email";
 
-const smtp = SmtpService.fromEnvironment();
+const sender = SendEmail.fromEnvironment();
 try {
-  await smtp.verify();
-  await smtp.send(accountVerificationEmail.create({
+  await sender.verify();
+  const email = accountVerificationEmail.create({
     name: recipient.name,
     email: recipient.email,
     verificationUrl,
-  }));
+  });
+  await sender.send({
+    to: recipient,
+    subject: email.subject,
+    content: email.content,
+  });
 } finally {
-  smtp.close();
+  sender.close();
 }
 ```
 
-O template tem HTML e texto simples, escapa dados do destinatário e usa um link
-de ação validado. O retorno de `send` indica aceitação pelo SMTP, sem afirmar
-entrega na caixa de entrada. Erros do provedor são sanitizados.
+`content` aceita HTML e texto simples opcional. `SendEmail` não cria, mocka nem
+reescreve esse conteúdo: apenas o entrega ao `Smtp`. Isso permite substituir os
+arquivos atuais por templates vindos do banco sem alterar o transporte.
+
+O retorno de `send` indica aceitação pelo SMTP, sem afirmar entrega na caixa de
+entrada. Falhas são sanitizadas e tipadas como `configuration`,
+`invalid_message`, `authentication`, `connection`, `recipient_rejected` ou
+`delivery`. Credenciais recusadas orientam a conferir `SMTP_USER` e
+`SMTP_PASSWORD`, mas respostas e segredos do provedor nunca são propagados.
 
 ## Editar templates e macros
 
@@ -46,9 +64,10 @@ Os arquivos ficam em `src/services/mail/templates/`:
   Macros: `scope_type`, `scope_name`, `author_name`, `role_name`,
   `recipient_email`, `invite_url`, `expiry_text`.
 
-Use `{{macro}}` no arquivo. `Template.render` retorna `subject`, `bodyHtml` e
-`bodyText`; os builders concretos ligam as variáveis do sistema às macros e validam
-o endereço de ação. Valores inseridos no HTML são escapados automaticamente.
+Use `{{macro}}` no arquivo. `Template.render` retorna `subject` e
+`content: { html, text }`; os builders concretos ligam as variáveis do sistema
+às macros e validam o endereço de ação. Eles não escolhem remetente/destinatário
+nem enviam. Valores inseridos no HTML são escapados automaticamente.
 Macros ausentes falham antes do envio. Não há execução de código no template.
 Reinicie o processo após editar os arquivos. `npm run build` copia os templates
 para `dist/services/mail/templates` junto ao JavaScript compilado.
@@ -76,10 +95,13 @@ O link de solicitação abre a revisão autenticada; não aprova por GET. O endp
 de aceite revalida `add_members`, o template escolhido e a delegação, persistindo
 o usuário da sessão em `accepted_by` na mesma transação da membership.
 `notified_emails` registra somente destinatários aceitos pelo SMTP. Falhas de
-envio preservam o pedido para revisão pela interface. Veja
+envio preservam o pedido para revisão pela interface. Na outbox,
+`notification_deliveries.last_error` guarda apenas o código sanitizado da falha
+para diagnóstico e política de retry. Payloads antigos com `html`/`text` no
+nível raiz são convertidos ao novo `content` durante a leitura. Veja
 [PERMISSOES.md](PERMISSOES.md) para as tabelas e rotas.
 
-A classe aceita transporte injetado. Os testes não enviam mensagens externas e
+As classes aceitam transporte injetado. Os testes não enviam mensagens externas e
 não gravam credenciais ou convites reais. SMTP configurado no ambiente é
 necessário para entregar mensagens; o código não inventa um provedor.
 

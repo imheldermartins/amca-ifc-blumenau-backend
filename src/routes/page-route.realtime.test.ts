@@ -40,6 +40,7 @@ const doubles = vi.hoisted(() => ({
     updateValue: vi.fn(),
     deleteValue: vi.fn(),
   },
+  flow: { execute: vi.fn() },
   collaborators: {
     listCollaborators: vi.fn(),
     getCollaborator: vi.fn(),
@@ -90,6 +91,7 @@ vi.mock("@/controllers/page-hierarchy-controller", () => ({ default: doubles.hie
 vi.mock("@/controllers/page-column-controller", () => ({ default: doubles.column }));
 vi.mock("@/controllers/page-column-reset-controller", () => ({ default: doubles.columnReset }));
 vi.mock("@/controllers/page-column-value-controller", () => ({ default: doubles.value }));
+vi.mock("@/controllers/flow-controller", () => ({ default: doubles.flow }));
 vi.mock("@/controllers/page-collaborator-controller", () => ({
   default: doubles.collaborators,
 }));
@@ -155,6 +157,15 @@ async function request(
 }
 
 describe("PageRouter: publicação realtime somente pós-commit", () => {
+  it('confirma os valores alterados pelo Flow no HTTP mesmo sem assinatura socket', async () => {
+    const summary = { executionId: 'exec', status: 'succeeded', effects: { valuesUpdated: 1, emailsQueued: 0 } };
+    const updatedValues = [{ columnId: COLUMN_ID, columnType: 'select', value: 'option-done' }];
+    doubles.flow.execute.mockResolvedValueOnce({ ok: true, data: { summary, updatedValues } });
+    const response = await request(`/pages/${ROW_ID}/column/${COLUMN_ID}/flow/execute`, 'POST', {});
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ...summary, updatedValues });
+    expect(doubles.publisher.cellUpdated).toHaveBeenCalledWith(expect.objectContaining(updatedValues[0]));
+  });
   it.each(['POST', 'PUT'] as const)('encaminha flowButton na rota de colunas %s e publica o valor confirmado', async (method) => {
     const flowButton = { label: 'Conferir', icon: 'lucide:play' };
     const column = { id: COLUMN_ID, parent_id: PARENT_ID, type: 'flow', data: { flowButton } };
@@ -276,13 +287,14 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
       pageId: PAGE_ID,
       columnId: COLUMN_ID,
       column,
+      columnType: column.type,
       cells: resetCells,
       originUserId: USER_ID,
     });
   });
 
   it("preserva false, 0, string vazia e null no publisher de célula", async () => {
-    doubles.value.createValue.mockResolvedValueOnce({ ok: true, data: { value: false } });
+    doubles.value.createValue.mockResolvedValueOnce({ ok: true, data: { type: "checkbox", value: false } });
     expect((await request(
       `/pages/${ROW_ID}/column/${COLUMN_ID}/value`,
       "POST",
@@ -290,8 +302,8 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
     )).status).toBe(201);
 
     doubles.value.updateValue
-      .mockResolvedValueOnce({ ok: true, data: { value: 0 } })
-      .mockResolvedValueOnce({ ok: true, data: { value: "" } });
+      .mockResolvedValueOnce({ ok: true, data: { type: "numeric", value: 0 } })
+      .mockResolvedValueOnce({ ok: true, data: { type: "text", value: "" } });
     expect((await request(
       `/pages/${ROW_ID}/column/${COLUMN_ID}/value`,
       "PUT",
@@ -303,17 +315,19 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
       { value: "" },
     )).status).toBe(200);
 
-    doubles.value.deleteValue.mockResolvedValueOnce({ ok: true, data: null });
+    doubles.value.deleteValue.mockResolvedValueOnce({ ok: true, data: { type: "text" } });
     expect((await request(
       `/pages/${ROW_ID}/column/${COLUMN_ID}/value`,
       "DELETE",
     )).status).toBe(204);
 
     const cellCalls = doubles.publisher.cellUpdated.mock.calls as unknown as Array<[
-      { value: unknown },
+      { columnType: string; value: unknown },
     ]>;
     expect(cellCalls.map(([payload]) => payload.value))
       .toEqual([false, 0, "", null]);
+    expect(cellCalls.map(([payload]) => payload.columnType))
+      .toEqual(["checkbox", "numeric", "text", "text"]);
     expect(doubles.publisher.cellUpdated).toHaveBeenCalledTimes(4);
   });
 

@@ -84,6 +84,9 @@ export class PageViewQueryStore {
     const view = viewId === QUERY_FALLBACK_VIEW ? { view: 'table' } : object(metadata.page.data[viewId]);
     if (typeof view.view !== 'string' || view.deletedAt != null) throw new PageViewQueryError(404, 'View não encontrada');
     const kind = view.view as QueryViewKind;
+    if (request.view !== undefined && request.view !== kind) {
+      throw new PageViewQueryError(409, 'A visualização mudou. Recarregue a página.', 'VIEW_CHANGED');
+    }
     const filters = request.filters ?? reconcileViewFilters(view.filters, [
       { id: 'page_title', type: 'text' }, ...metadata.columns.map((column) => ({ id: column.id, type: column.type as Schema.ColumnType,
         ...(Array.isArray(column.data?.options) && { options: column.data.options as Schema.SelectOption[] }) })),

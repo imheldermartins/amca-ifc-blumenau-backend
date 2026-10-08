@@ -154,6 +154,7 @@ export class PageColumnRouter extends ApplicationRouter {
       pageId,
       columnId,
       column: result.data.column,
+      columnType: result.data.column.type,
       cells: result.data.resetCells,
       originUserId: authenticatedUserId(request),
     });

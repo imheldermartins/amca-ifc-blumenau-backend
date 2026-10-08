@@ -62,8 +62,7 @@ describe('SchedulePinRequestStore', () => {
       email: {
         to: { name: 'Destinatário', email: 'recipient@example.test' },
         subject: 'Fixar',
-        html: '<p>Fixar</p>',
-        text: 'Fixar',
+        content: { html: '<p>Fixar</p>', text: 'Fixar' },
       },
     });
 

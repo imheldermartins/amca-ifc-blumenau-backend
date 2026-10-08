@@ -132,7 +132,7 @@ export class PageColumnValueController {
     }
   }
 
-  async deleteValue(pageId: NonEmptyString, columnId: NonEmptyString): Promise<ServiceResult<null>> {
+  async deleteValue(pageId: NonEmptyString, columnId: NonEmptyString): Promise<ServiceResult<{ type: Schema.ColumnType }>> {
     try {
       const row = await this.cells.findCell(pageId, columnId);
       if (!row) {
@@ -153,7 +153,7 @@ export class PageColumnValueController {
       const deleted = await this.cells.deleteCell(row.id, pageId);
       if (!deleted) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
-      return { ok: true, data: null };
+      return { ok: true, data: { type: column.type } };
     } catch (error) {
       return this.serverFailure(error);
     }

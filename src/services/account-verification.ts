@@ -5,7 +5,7 @@ import authOnboardingStore from '@/repositories/auth-onboarding-repository';
 import workspaceStore, { type WorkspaceSummary } from '@/repositories/workspace-repository';
 import inviteTokenService from '@/services/invitations/invite-token-service';
 import { accountVerificationEmail } from '@/services/mail/account-verification-email';
-import { SmtpService } from '@/services/mail/smtp-service';
+import { SendEmail } from '@/services/mail/send-email';
 import { createOpaqueToken, hashOpaqueToken, isOpaqueToken, opaqueTokenHint } from './opaque-token.js';
 import type { Schema } from '@/db/schemas/index';
 import type { BeginVerificationInput, BeginVerificationResult, VerificationPreview } from '@/services/types/account-verification.types';
@@ -32,19 +32,27 @@ export class AccountVerificationService {
     });
     if (!started.ok) return started;
 
-    let smtp: SmtpService | undefined;
+    let emailSender: SendEmail | undefined;
     try {
       const origin = process.env.APP_PUBLIC_URL;
       if (!origin) throw new Error('APP_PUBLIC_URL não configurada');
-      smtp = SmtpService.fromEnvironment();
+      emailSender = SendEmail.fromEnvironment();
       const verificationUrl = new URL(`/pt-br/verify-email/${encodeURIComponent(token)}`, origin);
       if (effective.context.returnTo) verificationUrl.searchParams.set('returnTo', effective.context.returnTo);
-      await smtp.send(accountVerificationEmail.create({ name: effective.name, email: effective.email, verificationUrl: verificationUrl.toString() }));
+      const email = accountVerificationEmail.create({
+        name: effective.name,
+        email: effective.email,
+        verificationUrl: verificationUrl.toString(),
+      });
+      await emailSender.send({
+        to: { name: effective.name?.trim() || effective.email, email: effective.email },
+        ...email,
+      });
       return { ok: true, email: effective.email, notificationPending: false };
     } catch {
       return { ok: true, email: effective.email, notificationPending: true };
     } finally {
-      smtp?.close();
+      emailSender?.close();
     }
   }
 

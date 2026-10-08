@@ -25,7 +25,7 @@ export class FlowExecutionError extends Error {
 
 export interface FlowExecutionOutcome {
   summary: Schema.FlowExecutionSummary;
-  updatedValues: { columnId: string; value: unknown }[];
+  updatedValues: { columnId: string; columnType: Schema.ColumnType; value: unknown }[];
 }
 
 export interface FlowExecutionAuthorization {
@@ -243,8 +243,7 @@ export class FlowExecutionService {
             payload: {
               to: { name: recipient.name, email: recipient.email },
               subject,
-              html: mailHtml(body),
-              text: body,
+              content: { html: mailHtml(body), text: body },
             },
           });
         }
@@ -263,21 +262,23 @@ export class FlowExecutionService {
         this.macros.resolve(config.value, context),
       );
       let data: string;
+      let value: unknown;
       try {
         const codec = VALUE_CODECS[target.type];
-        data = codec.encode(codec.validate(raw, target));
+        value = codec.validate(raw, target);
+        data = codec.encode(value);
       } catch (error) {
         throw new FlowExecutionError(
           'validation',
           error instanceof Error ? error.message : 'Valor de destino inválido',
         );
       }
-      valueWrites.set(target.id, { columnId: target.id, data, value: raw });
+      valueWrites.set(target.id, { columnId: target.id, data, value });
       context.values.set(
         `@columns.${target.id}`,
-        parseColumnMacroValue(target, raw),
+        parseColumnMacroValue(target, value),
       );
-      rawValues.set(target.id, raw);
+      rawValues.set(target.id, value);
     };
 
     if (definition.version === 1) {
@@ -360,7 +361,10 @@ export class FlowExecutionService {
       executionId,
       flowColumnData,
       summary,
-      updatedValues: [...valueWrites.values()].map(({ columnId: targetId, value }) => ({ columnId: targetId, value })),
+      updatedValues: [...valueWrites.values()].map(({ columnId: targetId, value }) => {
+        const columnType = source.columns.find((column) => column.id === targetId)!.type;
+        return { columnId: targetId, columnType, value };
+      }),
       values: [...valueWrites.values()].map(({ columnId: targetId, data }) => ({
         columnId: targetId as NonEmptyString,
         data,

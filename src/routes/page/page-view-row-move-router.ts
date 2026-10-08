@@ -28,7 +28,7 @@ export class PageViewRowMoveRouter extends ApplicationRouter {
       return sendPageFailure(response, result);
     }
     if (Object.prototype.hasOwnProperty.call(request.body, 'targetOptionId') && result.data.selectColumnId) {
-      await this.publisher.cellUpdated({rowId, columnId: result.data.selectColumnId, value: result.data.optionId ?? null, originUserId: userId});
+      await this.publisher.cellUpdated({rowId, columnId: result.data.selectColumnId, columnType: 'select', value: result.data.optionId ?? null, originUserId: userId});
     }
     await this.publisher.rowOrderUpdated(pageId, viewId, rowId, result.data.orderRevision, userId);
     return response.status(StatusCode.OK).json(result.data);

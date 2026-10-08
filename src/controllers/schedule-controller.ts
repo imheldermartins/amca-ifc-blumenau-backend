@@ -258,6 +258,10 @@ export class ScheduleController {
       const requestId = ulid() as NonEmptyString;
       const requesterName = context.actor_name || context.actor_email;
       const pageTitle = context.page_title ?? 'Sem título';
+      const recipientAddress = {
+        name: recipient.name || recipient.email,
+        email: recipient.email,
+      };
       const created = await this.requests.create({
         requestId,
         notificationId: ulid() as NonEmptyString,
@@ -276,11 +280,14 @@ export class ScheduleController {
           colorColumnId,
           requesterName,
         },
-        email: schedulePinRequestMail({
-          recipient: { name: recipient.name || recipient.email, email: recipient.email },
-          requesterName,
-          pageTitle,
-        }),
+        email: {
+          to: recipientAddress,
+          ...schedulePinRequestMail({
+            recipient: recipientAddress,
+            requesterName,
+            pageTitle,
+          }),
+        },
       });
       return created
         ? { ok: true, data: { id: requestId, status: 'pending', recipient, emailQueued: true } }

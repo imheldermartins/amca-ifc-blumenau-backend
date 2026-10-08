@@ -1,5 +1,6 @@
 import type {
   CellUpdatedPayload,
+  CellColumnType,
   ColumnCreatedPayload,
   ColumnPayload,
   ColumnUpdatedPayload,
@@ -40,6 +41,7 @@ export interface PublishMetadataInput {
 export interface CellUpdatedInput extends PublishMetadataInput {
   rowId: string;
   columnId: string;
+  columnType: CellColumnType;
   value: unknown;
 }
 
@@ -70,6 +72,7 @@ export interface ColumnCreatedInput extends ColumnChangedInput {
 }
 
 export interface ColumnResetInput extends ColumnUpdatedInput {
+  columnType: CellColumnType;
   cells: readonly { rowId: string; value: unknown }[];
 }
 

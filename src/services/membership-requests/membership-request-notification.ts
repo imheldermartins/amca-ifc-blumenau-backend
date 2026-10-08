@@ -2,7 +2,7 @@ import requestStore from '@/repositories/membership-request-repository';
 import access from '@/repositories/scoped-access-repository';
 import type { AccessScope } from '@/services/auth/permissions';
 import { membershipRequestEmail } from '@/services/mail/membership-request-email';
-import { SmtpService } from '@/services/mail/smtp-service';
+import { SendEmail } from '@/services/mail/send-email';
 import type {
   MembershipRequestNotificationInput,
   MembershipRequestNotificationResult,
@@ -18,14 +18,14 @@ const SCOPE_LABELS = {
 /** Envia a solicitação persistida somente a quem ainda pode aprovar o acesso. */
 export class MembershipRequestNotificationService implements MembershipRequestNotifier {
   async notify(input: MembershipRequestNotificationInput): Promise<MembershipRequestNotificationResult> {
-    let smtp: SmtpService | undefined;
+    let emailSender: SendEmail | undefined;
     let notificationPending = false;
 
     try {
       const origin = process.env.APP_PUBLIC_URL;
       if (!origin) throw new Error('APP_PUBLIC_URL não configurada');
 
-      smtp = SmtpService.fromEnvironment();
+      emailSender = SendEmail.fromEnvironment();
       const context = await requestStore.notificationContext(input.scope, input.scopeId, input.requesterId);
       if (!context.requester || !context.approvers.length) {
         throw new Error('Destinatários indisponíveis');
@@ -43,11 +43,12 @@ export class MembershipRequestNotificationService implements MembershipRequestNo
           );
           if (!canApprove) continue;
 
-          await smtp.send(membershipRequestEmail.create({
-            recipient: {
-              name: approver.name || approver.email,
-              email: approver.email,
-            },
+          const recipient = {
+            name: approver.name || approver.email,
+            email: approver.email,
+          };
+          const email = membershipRequestEmail.create({
+            recipient,
             requester: {
               name: context.requester.name || context.requester.email,
               email: context.requester.email,
@@ -58,7 +59,8 @@ export class MembershipRequestNotificationService implements MembershipRequestNo
               `/pt-br/access/${input.scope}/${input.scopeId}/requests/${input.requestId}`,
               origin,
             ).toString(),
-          }));
+          });
+          await emailSender.send({ to: recipient, ...email });
           await requestStore.recordNotification(input.scope, input.requestId, approver.email);
         } catch {
           notificationPending = true;
@@ -67,7 +69,7 @@ export class MembershipRequestNotificationService implements MembershipRequestNo
     } catch {
       notificationPending = true;
     } finally {
-      smtp?.close();
+      emailSender?.close();
     }
 
     return { notificationPending };

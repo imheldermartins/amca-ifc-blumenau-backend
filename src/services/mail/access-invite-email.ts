@@ -1,6 +1,6 @@
 import { Template } from "@/services/mail/template";
 import { validateEmailActionUrl } from "@/services/mail/email-action-url";
-import type { AccessInviteEmailInput, MailMessage } from "@/services/mail/types/mail.types";
+import type { AccessInviteEmailInput, EmailDraft } from "@/services/mail/types/mail.types";
 
 export class AccessInviteEmail {
   private readonly template = Template.fromFiles<{
@@ -17,7 +17,7 @@ export class AccessInviteEmail {
     text: new URL("./templates/access-invite.txt", import.meta.url),
   });
 
-  public create(input: AccessInviteEmailInput): MailMessage {
+  public create(input: AccessInviteEmailInput): EmailDraft {
     const body = this.template.render({
       scope_type: input.scopeType,
       scope_name: input.scopeName,
@@ -29,12 +29,7 @@ export class AccessInviteEmail {
         ? `Válido até ${new Date(input.expiresAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}.`
         : "Este link não tem prazo de expiração.",
     });
-    return {
-      to: { name: input.recipientEmail, email: input.recipientEmail },
-      subject: body.subject,
-      html: body.bodyHtml,
-      text: body.bodyText,
-    };
+    return body;
   }
 }
 

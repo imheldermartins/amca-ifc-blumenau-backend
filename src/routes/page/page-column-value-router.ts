@@ -3,6 +3,7 @@ import pageColumnValueController, {
   PageColumnValueController,
 } from "@/controllers/page-column-value-controller";
 import type { Input } from "@/db/schemas/inputs";
+import type { Schema } from "@/db/schemas/index";
 import { ApplicationRouter } from "@/routes/application-router";
 import { sendPageFailure } from "@/routes/page/page-route-responder";
 import { authenticatedUserId, routeParam } from "@/routes/request-values";
@@ -65,7 +66,7 @@ export class PageColumnValueRouter extends ApplicationRouter {
     });
     if (!result.ok) return sendPageFailure(response, result);
 
-    await this.publish(request, result.data.value);
+    await this.publish(request, result.data.type, result.data.value);
     return response.status(StatusCode.CREATED).json(result.data);
   }
 
@@ -92,7 +93,7 @@ export class PageColumnValueRouter extends ApplicationRouter {
     );
     if (!result.ok) return sendPageFailure(response, result);
 
-    await this.publish(request, result.data.value);
+    await this.publish(request, result.data.type, result.data.value);
     return response.status(StatusCode.OK).json(result.data);
   }
 
@@ -103,14 +104,15 @@ export class PageColumnValueRouter extends ApplicationRouter {
     );
     if (!result.ok) return sendPageFailure(response, result);
 
-    await this.publish(request, null);
+    await this.publish(request, result.data.type, null);
     return response.status(StatusCode.NO_CONTENT).send();
   }
 
-  private publish(request: Request, value: unknown): Promise<void> {
+  private publish(request: Request, columnType: Schema.ColumnType, value: unknown): Promise<void> {
     return this.realtime.cellUpdated({
       rowId: routeParam(request, "id"),
       columnId: routeParam(request, "column_id"),
+      columnType,
       value,
       originUserId: authenticatedUserId(request),
     });

@@ -186,7 +186,7 @@ describe("channels realtime v1", () => {
     collaborator.clear();
 
     const base = { pageId: PAGE_ID, updatedAt: UPDATED_AT, originUserId: OWNER_ID };
-    pageEdit.emitCellUpdated({ ...base, rowId: ROW_ID, columnId: COLUMN_ID, value: false });
+    pageEdit.emitCellUpdated({ ...base, rowId: ROW_ID, columnId: COLUMN_ID, columnType: "checkbox", value: false });
     pageEdit.emitPageUpdated({ ...base, title: "Nova pagina" });
     pageEdit.emitDatabaseUpdated(base);
     pageEdit.emitColumnCreated({
@@ -199,7 +199,7 @@ describe("channels realtime v1", () => {
 
     for (const socket of [owner, collaborator]) {
       expect(socket.payloads("cell-updated")).toEqual([
-        { ...base, rowId: ROW_ID, columnId: COLUMN_ID, value: false },
+        { ...base, rowId: ROW_ID, columnId: COLUMN_ID, columnType: "checkbox", value: false },
       ]);
       expect(socket.payloads("page-updated")).toEqual([{ ...base, title: "Nova pagina" }]);
       expect(socket.payloads("database-updated")).toEqual([base]);

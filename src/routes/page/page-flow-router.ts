@@ -107,6 +107,7 @@ export class PageFlowRouter extends ApplicationRouter {
       await this.realtime.cellUpdated({
         rowId,
         columnId: value.columnId,
+        columnType: value.columnType,
         value: value.value,
         originUserId: actorId,
       });
@@ -114,10 +115,11 @@ export class PageFlowRouter extends ApplicationRouter {
     await this.realtime.cellUpdated({
       rowId,
       columnId,
+      columnType: 'flow',
       value: result.data.summary,
       originUserId: actorId,
     });
-    return response.status(StatusCode.OK).json(result.data.summary);
+    return response.status(StatusCode.OK).json({ ...result.data.summary, updatedValues: result.data.updatedValues });
   }
 }
 

@@ -41,9 +41,13 @@ export interface ColumnResizingPayload {
 
 export type ResizeColumnCommand = Omit<ColumnResizingPayload, "originUserId">;
 
+export type CellColumnType = "text" | "numeric" | "select" | "date" | "checkbox" | "flow";
+
 export interface CellUpdatedPayload extends RealtimePayload {
   rowId: string;
   columnId: string;
+  /** Tipo confirmado da coluna no mesmo commit que originou o valor. */
+  columnType: CellColumnType;
   /** Valor sem o envelope `{ value }`; `null` representa celula vazia. */
   value: unknown;
 }

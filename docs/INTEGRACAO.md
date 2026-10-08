@@ -508,9 +508,11 @@ retornam o mesmo 403 `{ message }`; nunca confie só na ausência de um link.
 ## 6. Projeções paginadas das visualizações
 
 `GET /pages/:id/view-metadata` devolve a página e suas colunas sem linhas nem
-arrays `orderedRows`. `POST /pages/:id/views/:viewId/query` recebe os filtros
-efetivos da sessão, um escopo (`root`, Board/opção, caminho de grupo,
+arrays `orderedRows`. `POST /pages/:id/views/:viewId/query` recebe a `view`
+efetiva do frontend, os filtros da sessão, um escopo (`root`, Board/opção, caminho de grupo,
 período/dia do calendário ou parent do grafo), cursor e `limit` de 1 a 50.
+O backend confere a `view` solicitada contra o snapshot para não devolver uma
+projeção de outro tipo quando o catálogo mudou durante a navegação.
 O contrato portátil é `src/services/pages/views/page-view-query-contract.ts`;
 `npm run database:contract:check` confere a cópia do frontend.
 
@@ -532,6 +534,18 @@ ordem. Uma mudança invalida o token com `409 { message, code: "STALE_CURSOR" }`
 `anchorId` permite reconciliar a faixa já carregada. Movimentos usam
 `POST /pages/:id/views/:viewId/rows/:rowId/move`, âncoras e `expectedOrderRevision`,
 preservando linhas não carregadas e confirmando select/ordem no mesmo commit.
+
+O frontend aplica primeiro a mudança no estado React: célula, coluna do Board,
+posição relativa e contadores já carregados. Drag, edição de célula e Flow usam
+a mesma camada de mutação local. Enquanto a escrita está pendente, respostas
+de consultas anteriores não substituem esse estado. A confirmação HTTP libera
+a reconciliação em background; falha restaura somente as células/posição da
+operação ainda atual, preservando outras edições e cards carregados.
+`POST /pages/:id/column/:column_id/flow/execute` devolve o resumo e
+`updatedValues: [{ columnId, columnType, value }]`, permitindo confirmar as
+alterações mesmo sem socket. A prévia local do Flow usa apenas valores
+resolvíveis no cliente; macros que dependem de contexto do servidor aguardam
+essa confirmação. A API continua responsável por executar e autorizar o Flow.
 
 A migration
 `20261004220750243_5ed96b46_add_paginated_database_projections_and_row_order`

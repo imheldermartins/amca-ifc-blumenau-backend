@@ -53,6 +53,17 @@ function fixture(count = 100) {
 }
 
 describe('SQL view projections', () => {
+  it('confere o kind enviado pela sessão contra a view persistida', async () => {
+    const f = fixture(1);
+    try {
+      await expect(f.query({ view: 'table' })).resolves.toMatchObject({ kind: 'table' });
+      await expect(f.query({ view: 'board' })).rejects.toMatchObject({
+        status: 409,
+        code: 'VIEW_CHANGED',
+      });
+    } finally { f.close(); }
+  });
+
   it('bounds a 10,000-row collection before loading cells and keeps metadata small', async () => {
     const f = fixture(10_000);
     try {

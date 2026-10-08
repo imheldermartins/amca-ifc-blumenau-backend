@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import type { EmailBody } from "@/services/mail/types/mail.types";
+import type { EmailDraft } from "@/services/mail/types/mail.types";
 
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -9,19 +9,21 @@ export function escapeHtml(value: string): string {
 
 /** Templates editáveis em arquivos. Macros são dados, nunca código ou HTML executável. */
 export class Template<Macros extends Record<string, string>> {
-  constructor(private readonly source: EmailBody) {}
+  constructor(private readonly source: EmailDraft) {}
 
   static fromFiles<Macros extends Record<string, string>>(input: {
     subject: string; html: URL; text: URL;
   }): Template<Macros> {
     return new Template<Macros>({
       subject: input.subject,
-      bodyHtml: readFileSync(input.html, "utf8"),
-      bodyText: readFileSync(input.text, "utf8"),
+      content: {
+        html: readFileSync(input.html, "utf8"),
+        text: readFileSync(input.text, "utf8"),
+      },
     });
   }
 
-  render(macros: Macros): EmailBody {
+  render(macros: Macros): EmailDraft {
     const expand = (source: string, html: boolean) => source.replace(
       /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g,
       (_match, key: string) => {
@@ -35,8 +37,12 @@ export class Template<Macros extends Record<string, string>> {
     if (/[\r\n]/.test(subject)) throw new Error("Assunto do template inválido.");
     return {
       subject,
-      bodyHtml: expand(this.source.bodyHtml, true),
-      bodyText: expand(this.source.bodyText, false),
+      content: {
+        html: expand(this.source.content.html, true),
+        ...(this.source.content.text !== undefined
+          ? { text: expand(this.source.content.text, false) }
+          : {}),
+      },
     };
   }
 }

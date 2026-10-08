@@ -21,7 +21,7 @@ describe('entrega de eventos após mudança de permissões',()=>{
   const socket={data:{userId:'reader'},rooms:new Set(['page-database:p2']),emit:vi.fn(),leave:vi.fn()};
   access.can.mockImplementation(async(_scope,id)=>id==='p2');
   const io={sockets:{sockets:new Map([['a',socket]]),adapter:{rooms:new Map([['page-database:p2',new Set(['a'])]])}}} as unknown as CubsSocketServer;
-  delivery.deliver(io,'cell-updated',{pageId:'p2',rowId:'hidden',columnId:'col',value:'secret',updatedAt:'2026-01-01T00:00:00.000Z',originUserId:'owner'});
+  delivery.deliver(io,'cell-updated',{pageId:'p2',rowId:'hidden',columnId:'col',columnType:'text',value:'secret',updatedAt:'2026-01-01T00:00:00.000Z',originUserId:'owner'});
   await vi.waitFor(()=>expect(access.can).toHaveBeenCalledWith('page','hidden','reader','read','view'));
   expect(socket.emit).not.toHaveBeenCalled();
  });

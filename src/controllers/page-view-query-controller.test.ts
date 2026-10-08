@@ -4,7 +4,10 @@ import { parsePageViewQueryRequest } from './page-view-query-controller.js';
 describe('query input boundaries', () => {
   it('accepts temporary effective filters without persisting the view', () => {
     const filters = { version: 2, clauses: [{ columnId: 'page_title', condition: 'contains', values: ['ação'] }], groupBy: [], passthrough: [], updatedAt: null };
-    expect(parsePageViewQueryRequest({ filters, limit: 50 })).toEqual({ filters: { version: 2, clauses: filters.clauses, groupBy: [] }, limit: 50 });
+    expect(parsePageViewQueryRequest({ view: 'table', filters, limit: 50 })).toEqual({ view: 'table', filters: { version: 2, clauses: filters.clauses, groupBy: [] }, limit: 50 });
+  });
+  it('rejects an unknown view kind', () => {
+    expect(() => parsePageViewQueryRequest({ view: 'kanban' })).toThrow(/inválida/);
   });
   it.each([0, 51, -1, 1.1, '50'])('rejects a limit outside the bounded contract: %s', (limit) => {
     expect(() => parsePageViewQueryRequest({ limit })).toThrow(/inválida/);

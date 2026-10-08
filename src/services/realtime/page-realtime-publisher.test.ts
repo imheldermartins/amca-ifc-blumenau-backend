@@ -68,9 +68,14 @@ describe("PageRealtimePublisher", () => {
       originUserId: USER_ID,
     });
   });
-  it.each([false, 0, "", null])("preserva valor falsy confirmado da celula: %j", async (value) => {
+  it.each([
+    [false, "checkbox"],
+    [0, "numeric"],
+    ["", "text"],
+    [null, "text"],
+  ] as const)("preserva valor falsy confirmado da celula: %j", async (value, columnType) => {
     const { realtime, edits, getParentId } = publisher();
-    await realtime.cellUpdated({ rowId: ROW_ID, columnId: COLUMN_ID, value, originUserId: USER_ID });
+    await realtime.cellUpdated({ rowId: ROW_ID, columnId: COLUMN_ID, columnType, value, originUserId: USER_ID });
 
     expect(getParentId).toHaveBeenCalledWith(ROW_ID);
     expect(edits.emitCellUpdated).toHaveBeenCalledOnce();
@@ -78,6 +83,7 @@ describe("PageRealtimePublisher", () => {
       pageId: PARENT_ID,
       rowId: ROW_ID,
       columnId: COLUMN_ID,
+      columnType,
       value,
       updatedAt: UPDATED_AT,
       originUserId: USER_ID,
@@ -89,6 +95,7 @@ describe("PageRealtimePublisher", () => {
     await realtime.cellUpdated({
       rowId: ROW_ID,
       columnId: COLUMN_ID,
+      columnType: "text",
       value: "x",
       originUserId: USER_ID,
     });
@@ -168,6 +175,7 @@ describe("PageRealtimePublisher", () => {
       pageId: PAGE_ID,
       columnId: COLUMN_ID,
       column: { id: COLUMN_ID, type: "checkbox" },
+      columnType: "checkbox",
       cells: [
         { rowId: ROW_ID, value: false },
         { rowId: ROW_ID_2, value: 0 },
@@ -182,6 +190,11 @@ describe("PageRealtimePublisher", () => {
       false,
       0,
       "",
+    ]);
+    expect(edits.emitCellUpdated.mock.calls.map(([payload]) => payload.columnType)).toEqual([
+      "checkbox",
+      "checkbox",
+      "checkbox",
     ]);
     expect(
       edits.emitCellUpdated.mock.calls.map(([payload]) => payload.updatedAt),
@@ -251,6 +264,7 @@ describe("PageRealtimePublisher", () => {
     await expect(realtime.cellUpdated({
       rowId: ROW_ID,
       columnId: COLUMN_ID,
+      columnType: "text",
       value: "persistido",
       originUserId: USER_ID,
     })).resolves.toBeUndefined();
