@@ -6,11 +6,9 @@ import columnLockStore, { ColumnLockStore } from '@/repositories/column-lock-rep
 import formStore, { FormStore } from '@/repositories/form-repository';
 import flowStore, { FlowStore } from '@/repositories/flow-repository';
 import type { FormPublicationRecord } from '@/repositories/types/form-repository.types';
-import flowExecutionService, {
-  FlowExecutionError,
-  FlowExecutionService,
-  type FlowExecutionAuthorization,
-} from '@/services/flows/flow-execution-service';
+import { FlowExecutionError } from '@/services/flows/flow-execution-error';
+import flowExecutionService, { FlowExecutionService } from '@/services/flows/flow-execution-service';
+import type { FlowExecutionAuthorization } from '@/services/flows/types/flow-execution.types';
 import {
   assertFormFlowColumn,
   isJsonRecord,

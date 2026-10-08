@@ -2,45 +2,22 @@ import type { ServiceResult } from '@/controllers/types/service-result.types';
 import type { Schema } from '@/db/schemas/index';
 import columnLockStore, { ColumnLockStore } from '@/repositories/column-lock-repository';
 import flowStore, { FlowStore } from '@/repositories/flow-repository';
-import flowDefinitionService, { FlowDefinitionService, flowMacroInputs, flowRecipientKeys } from '@/services/flows/flow-definition-service';
-import flowExecutionService, {
-  FlowExecutionError,
-  FlowExecutionService,
-  type FlowExecutionOutcome,
-} from '@/services/flows/flow-execution-service';
+import flowDefinitionService, { FlowDefinitionService } from '@/services/flows/flow-definition-service';
+import { FlowExecutionError } from '@/services/flows/flow-execution-error';
+import flowExecutionService, { FlowExecutionService } from '@/services/flows/flow-execution-service';
+import { validateFlowConfigurationActions } from '@/services/flows/shared/flow-configuration-validator';
+import { flowMacroInputs } from '@/services/flows/shared/flow-definition-utils';
+import type {
+  FlowConfigurationDto,
+  FlowMacroCatalogDto,
+} from '@/services/flows/types/flow-configuration.types';
+import type { FlowExecutionOutcome } from '@/services/flows/types/flow-execution.types';
 import macroService, { MacroService } from '@/services/macros/macro-service';
 
-export interface FlowConfigurationDto {
-  flow: Schema.FlowDefinition | null;
-}
-
-export interface FlowMacroCatalogDto {
-  macros: Schema.MacroDescriptor[];
-}
-
-type FlowConfigurableAction = Schema.FlowEmailNode | Schema.FlowSetValueNode
-  | Schema.FlowEmailStepV2 | Schema.FlowSetValueStepV2;
-
-function configurableActions(flow: Schema.FlowDefinition): FlowConfigurableAction[] {
-  if (flow.version === 1) {
-    return flow.nodes.filter((node): node is Schema.FlowEmailNode | Schema.FlowSetValueNode => (
-      node.type === 'email' || node.type === 'set_value'
-    ));
-  }
-  const actions: FlowConfigurableAction[] = [];
-  const visit = (steps: readonly Schema.FlowStepV2[]) => {
-    for (const step of steps) {
-      if (step.type === 'switch') {
-        visit(step.config.whenTrue);
-        visit(step.config.whenFalse);
-      } else {
-        actions.push(step);
-      }
-    }
-  };
-  visit(flow.nodes.slice(1, -1) as Schema.FlowStepV2[]);
-  return actions;
-}
+export type {
+  FlowConfigurationDto,
+  FlowMacroCatalogDto,
+} from '@/services/flows/types/flow-configuration.types';
 
 export class FlowController {
   public constructor(
@@ -99,31 +76,12 @@ export class FlowController {
         return { ok: false, reason: 'validation', message: error instanceof Error ? error.message : 'Macro inválida' };
       }
 
-      for (const node of configurableActions(flow)) {
-        if (node.type === 'email') {
-          const recipients = flowRecipientKeys(node.config.to);
-          const incompatible = recipients.find((key) => {
-            const recipient = catalog.descriptors.find((macro) => macro.key === key);
-            return !recipient || !(
-              (recipient.kind === 'person' && recipient.valueType === 'email')
-              || (recipient.kind === 'column' && recipient.valueType === 'email')
-              || recipient.key === '@page.title'
-            );
-          });
-          if (incompatible) {
-            return { ok: false, reason: 'validation', message: 'Escolha membros ou variáveis de e-mail disponíveis' };
-          }
-        }
-        if (node.type === 'set_value') {
-          const target = source.columns.find((candidate) => candidate.id === node.config.columnId);
-          if (!target || target.type === 'flow') {
-            return { ok: false, reason: 'validation', message: 'Coluna de destino inválida' };
-          }
-          if (!await this.locks.canMutate(parentId, target.id, actorId)) {
-            return { ok: false, reason: 'forbidden', message: `A coluna ${target.name ?? 'de destino'} está bloqueada` };
-          }
-        }
-      }
+      const actionFailure = await validateFlowConfigurationActions(flow, {
+        columns: source.columns,
+        descriptors: catalog.descriptors,
+        canMutate: (targetId) => this.locks.canMutate(parentId, targetId, actorId),
+      });
+      if (actionFailure) return { ok: false, ...actionFailure };
 
       const saved = await this.store.saveDefinition(parentId, columnId, flow);
       return saved
