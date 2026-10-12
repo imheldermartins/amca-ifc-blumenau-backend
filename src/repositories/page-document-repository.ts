@@ -26,24 +26,26 @@ function decode(row: RawPageDocument | undefined): PageDocumentRecord | null {
 }
 
 export class PageDocumentStore {
+  public constructor(private readonly execute: typeof db.sqlRaw = db.sqlRaw) {}
+
   public async find(pageId: string): Promise<PageDocumentRecord | null> {
-    const rows = await db.sqlRaw<RawPageDocument>({
-      text: 'SELECT * FROM page_documents WHERE page_id = ? LIMIT 1',
+    const rows = await this.execute<RawPageDocument>({
+      text: 'SELECT * FROM page_blocks WHERE page_id = ? LIMIT 1',
       values: [pageId],
     }, 'query');
     return decode(rows[0]);
   }
 
   public async save(pageId: string, content: Record<string, unknown>): Promise<PageDocumentRecord | null> {
-    const rows = await db.sqlRaw<RawPageDocument>({
-      text: `INSERT INTO page_documents (id, page_id, content, revision)
+    const rows = await this.execute<RawPageDocument>({
+      text: `INSERT INTO page_blocks (id, page_id, content, revision)
         SELECT ?, id, json(?), 1 FROM pages WHERE id = ? AND deleted_at IS NULL
         ON CONFLICT(page_id) DO UPDATE SET
           content = excluded.content,
-          revision = page_documents.revision + 1,
+          revision = page_blocks.revision + 1,
           updated_at = CURRENT_TIMESTAMP
         RETURNING *`,
-      values: [ulid(), pageId, JSON.stringify(content), pageId],
+      values: [ulid(), JSON.stringify(content), pageId],
     }, 'request');
     return decode(rows[0]);
   }

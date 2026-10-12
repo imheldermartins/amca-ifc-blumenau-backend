@@ -10,9 +10,7 @@ import {migration as flow} from '../db/migrations/20260930031603388_4569bf7a_add
 import {migration as recipients} from '../db/migrations/20261001052915696_6534e769_allow_external_notification_recipients.js';
 import {migration as forms} from '../db/migrations/20261002205813488_79c27e84_add_form_publications_and_submissions.js';
 import {migration as documents} from '../db/migrations/20261002211726828_d11f844f_add_page_documents.js';
-import {migration as pagination} from '../db/migrations/20261004220750243_5ed96b46_add_paginated_database_projections_and_row_order.js';
-import {migration as checkboxIndex} from '../db/migrations/20261005042200087_ab97d31a_index_paginated_checkbox_predicates.js';
-import {CELL_PROJECTION_FIELDS,cellProjectionValues,titleValueProjection} from './page-value-projection.js';
+import {migration as jsonSchema} from '../db/migrations/20261012152810732_f6fcf9c3_json_values_edge_view_order_and_page_blocks.js';
 import {PageViewQueryStore} from './page-view-query-repository.js';
 import {PageViewQueryCursor} from './page-view-query-cursor.js';
 import type {QuerySqlFragment} from './page-view-query-filters.js';
@@ -47,26 +45,26 @@ function report(scenario:string,projection:PageViewQueryProjection,milliseconds:
 
 beforeAll(()=>{
   sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');
-  for(const migration of [initial,timestamps,schedule,notifications,flow,recipients,forms,documents,pagination,checkboxIndex]) {
+  for(const migration of [initial,timestamps,schedule,notifications,flow,recipients,forms,documents,jsonSchema]) {
     sqlite.exec('BEGIN');for(const text of migration.up)sqlite.exec(text);sqlite.exec('COMMIT');
   }
   sqlite.prepare('INSERT INTO users(id,email) VALUES (?,?)').run(OWNER,'query-plan@test.local');
-  const addPage=sqlite.prepare('INSERT INTO pages(id,title,title_search,projection_version,owner_id,data) VALUES (?,?,?,1,?,?)');
-  addPage.run(ROOT,'Base','base',OWNER,'{}');setView('table');
+  const addPage=sqlite.prepare('INSERT INTO pages(id,title,owner_id,data) VALUES (?,?,?,?)');
+  addPage.run(ROOT,'Base',OWNER,'{}');setView('table');
   const addColumn=sqlite.prepare('INSERT INTO page_columns(id,name,type,parent_id,data) VALUES (?,?,?,?,?)');
   addColumn.run(SELECT,'Status','select',ROOT,JSON.stringify({options:[{id:A,value:'A',color:'pink'},{id:B,value:'B',color:'orange'}]}));
   for(const [column,type] of [[NUMBER,'numeric'],[TEXT,'text'],[DATE,'date'],[CHECKBOX,'checkbox']])addColumn.run(column!,type!,type!,ROOT,'{}');
   const addEdge=sqlite.prepare('INSERT INTO page_edges(id,parent_id,child_id) VALUES (?,?,?)');
-  const addRank=sqlite.prepare('INSERT INTO page_view_row_order(id,parent_id,view_id,row_id,rank) VALUES (?,?,?,?,?)');
-  const addCell=sqlite.prepare(`INSERT INTO page_columns_values(id,page_id,page_column_id,data,${CELL_PROJECTION_FIELDS.join(',')}) VALUES (?,?,?,?,${CELL_PROJECTION_FIELDS.map(()=>'?').join(',')})`);
+  const addRank=sqlite.prepare('INSERT INTO page_view_row_order(id,edge_id,view_id,rank) VALUES (?,?,?,?)');
+  const addCell=sqlite.prepare('INSERT INTO page_columns_values(id,page_id,page_column_id,data) VALUES (?,?,?,?)');
   const ranks=generateNKeysBetween(null,null,10_000);
   sqlite.exec('BEGIN');
   for(let row=1;row<=10_000;row++) {
     const rowId=id(row),title=`Página ${row}`,date=`2026-10-${String(row%28+1).padStart(2,'0')}T00:00:00.000Z`;
-    addPage.run(rowId,title,titleValueProjection(title).title_search!,OWNER,'{}');
-    addEdge.run(id(100000+row),ROOT,rowId);addRank.run(id(200000+row),ROOT,VIEW,rowId,ranks[row-1]!);
+    addPage.run(rowId,title,OWNER,'{}');
+    addEdge.run(id(100000+row),ROOT,rowId);addRank.run(id(200000+row),id(100000+row),VIEW,ranks[row-1]!);
     for(const [index,column,value] of [[0,SELECT,row%3===0?null:row%3===1?A:B],[1,NUMBER,row],[2,TEXT,`ÁREA ${row%257}`],[3,DATE,date],[4,CHECKBOX,row%1000===0]] as const) {
-      const data=JSON.stringify({value});addCell.run(id(300000+row*5+index),rowId,column,data,...cellProjectionValues(data) as SQLInputValue[]);
+      const data=JSON.stringify({value});addCell.run(id(300000+row*5+index),rowId,column,data);
     }
   }
   sqlite.exec('COMMIT');sqlite.exec('ANALYZE');
@@ -96,13 +94,18 @@ describe('EXPLAIN actual SQL on an isolated 10,000-page database',()=>{
     expect(second.windows[0]?.rows[0]?.page_id).toBe(id(51));expect(secondEvidence.result.payloadPages).toBe(50);
     expect(secondEvidence.indexes).toContain('idx_page_view_row_order_cursor');
   },20_000);
-  it('uses normalized title, numeric and typed cell search indexes for actual filtered projections',async()=>{
-    const scenarios:{name:string;columnId:string;condition:'equals'|'greaterThan'|'between';values:string[];index:string|RegExp}[]=[
-      {name:'title equality',columnId:'page_title',condition:'equals',values:['PÁGINA 9876'],index:'idx_pages_title_search'},
-      {name:'numeric range',columnId:NUMBER,condition:'greaterThan',values:['9870'],index:'idx_page_values_number'},
-      {name:'select equality',columnId:SELECT,condition:'equals',values:[A],index:'idx_page_values_select'},
-      {name:'text equality',columnId:TEXT,condition:'equals',values:['área 127'],index:'idx_page_values_search'},
-      {name:'date overlap',columnId:DATE,condition:'between',values:['2026-10-10','2026-10-12'],index:/idx_page_values_date_(start|end)/},
+  it('filters the normalized page.title directly, without a duplicate title column',async()=>{
+    const start=performance.now();
+    const projection=await store.query(ROOT,VIEW,OWNER,{filters:{version:2,groupBy:[],clauses:[{columnId:'page_title',condition:'equals',values:['PÁGINA 9876']}]}});
+    report('title equality without duplicate column',projection,performance.now()-start);
+    expect(projection.total).toBe(1);expect(projection.windows[0]?.rows[0]?.page_title).toBe('Página 9876');
+  },20_000);
+  it('filters canonical JSON with indexed cell identity and no typed storage',async()=>{
+    const scenarios:{name:string;columnId:string;condition:'equals'|'greaterThan'|'between';values:string[]}[]=[
+      {name:'numeric range',columnId:NUMBER,condition:'greaterThan',values:['9870']},
+      {name:'select equality',columnId:SELECT,condition:'equals',values:[A]},
+      {name:'text equality',columnId:TEXT,condition:'equals',values:['área 127']},
+      {name:'date overlap',columnId:DATE,condition:'between',values:['2026-10-10','2026-10-12']},
     ];
     for(const scenario of scenarios) {
       reads.length=0;
@@ -111,7 +114,7 @@ describe('EXPLAIN actual SQL on an isolated 10,000-page database',()=>{
       const evidence=report(scenario.name,projection,performance.now()-start);
       expect(evidence.result.payloadPages).toBeLessThanOrEqual(50);expect(evidence.result.maximumHydratedRows).toBeLessThanOrEqual(50);
       expect(projection.total).toBeGreaterThan(0);
-      expect(evidence.indexes.some(index=>typeof scenario.index==='string'?index===scenario.index:scenario.index.test(index))).toBe(true);
+      expect(evidence.indexes).toContain('idx_page_columns_values_cell');
     }
   },20_000);
   it('shares the Board preview budget across options without hydrating every card',async()=>{
@@ -122,7 +125,7 @@ describe('EXPLAIN actual SQL on an isolated 10,000-page database',()=>{
     expect(projection.windows.every(window=>window.rows.length<=50)).toBe(true);expect(evidence.indexes).toContain('idx_page_view_row_order_cursor');
     expect(reads.every(read=>read.returned<=50)).toBe(true);
   },20_000);
-  it('uses the checkbox index for rare true values and keeps the unique-cell left join for false or absence',async()=>{
+  it('reads true/false from JSON and keeps absent checkboxes matching false',async()=>{
     for(const value of ['true','false']) {
       reads.length=0;
       // An absent checkbox keeps matching false, so filtering cannot turn this into an inner join.
@@ -130,7 +133,7 @@ describe('EXPLAIN actual SQL on an isolated 10,000-page database',()=>{
       const start=performance.now(),projection=await store.query(ROOT,VIEW,OWNER,{filters:{version:2,groupBy:[],clauses:[{columnId:CHECKBOX,condition:'equals',values:[value]}]}});
       const evidence=report(`checkbox ${value}`,projection,performance.now()-start);
       expect(projection.total).toBe(value==='true'?10:9990);expect(evidence.result.payloadPages).toBe(value==='true'?10:50);
-      expect(evidence.indexes).toContain(value==='true'?'idx_page_values_checkbox':'idx_page_columns_values_cell');
+      expect(evidence.indexes).toContain('idx_page_columns_values_cell');
       expect(evidence.result.maximumHydratedRows).toBeLessThanOrEqual(50);
     }
   },20_000);

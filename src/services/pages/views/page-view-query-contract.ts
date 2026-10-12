@@ -3,7 +3,7 @@ export const PAGE_VIEW_QUERY_VERSION = 1 as const;
 export const PAGE_VIEW_BATCH_SIZE = 50;
 export const PAGE_VIEW_CACHE_ROWS = 250;
 export const PAGE_VIEW_UNASSIGNED = '__unassigned__';
-export type QueryViewKind = 'table' | 'grid' | 'board' | 'calendar' | 'timeline' | 'graph' | 'form';
+export type QueryViewKind = 'table' | 'grid' | 'board' | 'calendar' | 'timeline' | 'graph' | 'form' | 'heatmap';
 export interface QueryFilterClause { columnId: string; condition: 'equals' | 'contains' | 'greaterThan' | 'lessThan' | 'between'; values: string[] }
 export interface QueryFilters { version: 2; clauses: QueryFilterClause[]; groupBy: string[]; passthrough?: [string, string][]; updatedAt?: string | null }
 export interface QueryGroupValue { columnId: string; value: string | null }
@@ -12,6 +12,7 @@ export type PageViewQueryScope =
   | { type: 'board'; optionId: string }
   | { type: 'group'; path: QueryGroupValue[] }
   | { type: 'calendar'; from: string; to: string; day?: string }
+  | { type: 'heatmap'; from: string; to: string; day?: string }
   | { type: 'graph'; parentId: string };
 export interface PageViewQueryRequest {
   /** Kind efetivo que o frontend está projetando; o backend confere contra o snapshot. */
@@ -32,7 +33,7 @@ export interface QueryDatasetCell {
   row_id: string | null;
   row_data: string | null;
   column_name: string | null;
-  column_type: 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow' | null;
+  column_type: 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow' | 'relation' | 'rollup' | null;
   column_data: string | null;
 }
 export interface QueryDatasetRow { page_id: string; page_title: string | null; page_columns: Record<string, QueryDatasetCell> }
@@ -63,7 +64,6 @@ export interface PageViewQueryProjection {
   viewId: string;
   queryKey: string;
   orderRevision: number;
-  datasetRevision?: number;
   total: number;
   windows: PageViewQueryWindow[];
   groups?: PageViewQueryGroup[];
@@ -73,6 +73,10 @@ export interface PageViewQueryProjection {
   initialDate?: string;
   selectColumnId?: string;
   dateColumnId?: string;
+  checkboxColumnId?: string;
+  relationTargets?: Record<string, { id: string; title: string | null }>;
+  heatmapDays?: Record<string, { total: number; checked: number }>;
+  ignoredRanges?: number;
 }
 export interface PageViewRowMoveInput {
   rowId: string;
@@ -91,6 +95,7 @@ export function pageViewScopeKey(scope: PageViewQueryScope): string {
     case 'board': return `board:${scope.optionId}`;
     case 'group': return `group:${JSON.stringify(scope.path)}`;
     case 'calendar': return `calendar:${scope.from}:${scope.to}:${scope.day ?? ''}`;
+    case 'heatmap': return `heatmap:${scope.from}:${scope.to}:${scope.day ?? ''}`;
     case 'graph': return `graph:${scope.parentId}`;
   }
 }

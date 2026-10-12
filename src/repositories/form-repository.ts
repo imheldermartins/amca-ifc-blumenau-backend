@@ -1,5 +1,4 @@
 import { ulid } from 'ulid';
-import {titleValueProjection} from '@/repositories/page-value-projection';
 import {appendCreatedRowOrderStatements, checkedOrderWrite, withPageRowOrderLock} from '@/repositories/page-view-row-order';
 
 import { rqlite } from '@/db/client-db';
@@ -143,10 +142,10 @@ export class FormStore {
       ? [input.expectedSubmitTokenHash]
       : [];
     const statements: RqliteStatement[] = [[
-      `INSERT INTO pages (id, title, data, owner_id, title_search, projection_version)
-       SELECT ?, ?, '{}', created_by_user_id, ?, 1 FROM page_form_publications
+      `INSERT INTO pages (id, title, data, owner_id)
+       SELECT ?, ?, '{}', created_by_user_id FROM page_form_publications
        WHERE id = ? AND page_id = ? ${publicationGuard}`,
-      input.rowId, input.title, titleValueProjection(input.title).title_search, input.publication.id, input.publication.page_id,
+      input.rowId, input.title, input.publication.id, input.publication.page_id,
       ...publicationGuardValues,
     ]];
     statements.push(SystemRoleFactory.defaultStatement('page', input.rowId));

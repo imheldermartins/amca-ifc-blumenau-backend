@@ -5,6 +5,7 @@ import type {
   ColumnUpdatedPayload,
   DatabaseUpdatedPayload,
   PageUpdatedPayload,
+  ProjectionInvalidatedPayload,
   RowPayload,
   RowUpdatedPayload,
   RowOrderUpdatedPayload,
@@ -27,6 +28,7 @@ export class PageEditChannel implements RealtimeChannel {
     "row-order-updated",
     "page-updated",
     "database-updated",
+    "projection-invalidated",
     "column-updated",
     "view-updated",
     "row-created",
@@ -65,6 +67,10 @@ export class PageEditChannel implements RealtimeChannel {
 
   emitDatabaseUpdated(payload: DatabaseUpdatedPayload): void {
     this.emit("database-updated", payload);
+  }
+
+  emitProjectionInvalidated(payload: ProjectionInvalidatedPayload): void {
+    this.emit("projection-invalidated", payload);
   }
 
   emitColumnUpdated(payload: ColumnUpdatedPayload): void {

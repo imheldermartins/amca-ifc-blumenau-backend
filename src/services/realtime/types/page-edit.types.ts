@@ -7,6 +7,7 @@ export type PageEditEventName =
   | "row-order-updated"
   | "page-updated"
   | "database-updated"
+  | "projection-invalidated"
   | "column-updated"
   | "view-updated"
   | "row-created"

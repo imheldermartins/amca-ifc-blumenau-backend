@@ -4,7 +4,6 @@ import type { Schema } from "@/db/schemas/index";
 import { SystemRoleFactory } from "@/repositories/system-role-factory";
 import { pageActivityTouchStatement, readPageLatestUpdatedAt } from '@/repositories/page-activity';
 import { ulid } from "ulid";
-import {titleValueProjection} from '@/repositories/page-value-projection';
 import {stripPageQueryInternals} from '@/services/pages/views/page-query-serialization';
 import {initializePageViewSnapshot, prepareInitialPageViewSnapshot} from '@/repositories/page-view-initial-snapshot';
 import {withPageRowOrderLock} from '@/repositories/page-view-row-order';
@@ -57,8 +56,7 @@ export class PageController implements IBaseController<Schema.Page> {
     try {
       const pageId = ulid();
       const createdPage = await this.db.createWithId(pageId, {...data,
-        ...(data.data !== undefined && {data:initializePageViewSnapshot(data.data) as Schema.Page['data']}),
-        ...titleValueProjection(data.title)}, {
+        ...(data.data !== undefined && {data:initializePageViewSnapshot(data.data) as Schema.Page['data']})}, {
         after: [SystemRoleFactory.defaultStatement("page", pageId)],
       });
 
@@ -83,8 +81,7 @@ export class PageController implements IBaseController<Schema.Page> {
       const targets = [...new Set([...(pageId ? [pageId] : []), ...databasePageIds])];
       const update = async () => {
         const snapshot = data.data !== undefined && pageId ? await prepareInitialPageViewSnapshot(pageId,data.data) : null;
-        const payload = {...data, ...(snapshot && {data:snapshot.data as Schema.Page['data']}),
-          ...(data.title !== undefined && titleValueProjection(data.title))};
+        const payload = {...data, ...(snapshot && {data:snapshot.data as Schema.Page['data']})};
         return this.db.updateAndFind(payload, lookup, {
           ...(snapshot && {before:snapshot.before}),
           after:[...(snapshot?.after ?? []),...targets.map(pageActivityTouchStatement)],

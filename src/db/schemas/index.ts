@@ -55,10 +55,6 @@ export namespace Schema {
 
   // --- 3. PAGES ---
   export interface Page extends EntityBase, SoftDeletableEntity {
-    /** Internal query projection; omitted from public page responses. */
-    title_search?: string | null;
-    projection_version?: number;
-    dataset_revision?: number;
     title: string | null;
     data: Record<string, unknown>;
     owner_id: NonEmptyString; // ID do usuário dono (ULID)
@@ -101,7 +97,27 @@ export namespace Schema {
   export interface PageEdges extends PageEdge {}
 
   // --- 5. PAGE COLUMNS (Configurações de Colunas) ---
-  export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow';
+  export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow' | 'relation' | 'rollup';
+
+  export interface RelationConfig {
+    version: 1;
+    targetDatabaseId: NonEmptyString;
+  }
+
+  export type RollupOperation = 'count' | 'sum' | 'min' | 'max';
+
+  export interface RollupConfig {
+    version: 1;
+    relationColumnId: NonEmptyString;
+    operation: RollupOperation;
+    targetColumnId?: NonEmptyString;
+  }
+
+  export interface RollupResult {
+    type: 'numeric';
+    format?: NumberFormat;
+    currency?: CurrencyCode;
+  }
 
   export type FlowSwitchOperator =
     | 'equals'
@@ -308,6 +324,10 @@ export namespace Schema {
     reservedOptionKeys?: string[];
     /** Contrato autoritativo do Flow Cards. Configurado apenas pela rota de flow. */
     flow?: FlowDefinition;
+    relation?: RelationConfig;
+    rollup?: RollupConfig;
+    /** Resolvido na leitura; não é requisito de persistência da coluna. */
+    rollupResult?: RollupResult;
   }
 
   export interface PageColumn extends EntityBase, SoftDeletableEntity {
@@ -320,14 +340,6 @@ export namespace Schema {
 
   // --- 6. PAGE COLUMNS VALUES (Valores das Colunas) ---
   export interface PageColumnValue extends EntityBase {
-    search_text?: string | null;
-    number_value?: number | null;
-    select_option_id?: string | null;
-    checkbox_value?: number | null;
-    date_start_ms?: number | null;
-    date_end_ms?: number | null;
-    value_kind?: string;
-    projection_version?: number;
     /** Envelope JSON ainda serializado; somente o codec o transforma em valor. */
     data: string;
     page_column_id: NonEmptyString | null;

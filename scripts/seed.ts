@@ -4,8 +4,7 @@ import { ulid } from "ulid";
 import db from "@models/index";
 import type { Schema } from "@/db/schemas/index";
 import { VALUE_CODECS } from "@/services/value-codec";
-import {deriveCellProjection,titleValueProjection} from '@/repositories/page-value-projection';
-import {backfillDatabaseValueProjections,backfillDatabaseViewOrders} from '@/repositories/page-projection-backfill';
+import {backfillDatabaseViewOrders} from '@/repositories/page-projection-backfill';
 
 interface SeedProfessor {
   name: string;
@@ -191,7 +190,6 @@ async function ensureWorkspaceWithRoot(
       await db.pages.create({
         id: workspace.id,
         title: name,
-        ...titleValueProjection(name),
         owner_id: ownerId,
         data: {},
       } as unknown as CreateValues<Schema.Page>),
@@ -253,7 +251,6 @@ async function ensureChildPage(
     page = track(
       await db.pages.create({
         title,
-        ...titleValueProjection(title),
         owner_id: ownerId,
         data: {},
       } as unknown as CreateValues<Schema.Page>),
@@ -321,7 +318,6 @@ async function ensureValue(
   track(
     await db.pageColumnValues.create({
       data: encoded,
-      ...deriveCellProjection(encoded),
       page_id: page.id,
       page_column_id: column.id,
     } as unknown as CreateValues<Schema.PageColumnValue>),
@@ -505,7 +501,6 @@ async function main(): Promise<void> {
     }
   }
 
-  await backfillDatabaseValueProjections();
   await backfillDatabaseViewOrders();
   console.log(
     `[Seed] Concluído: ${stats.created} registros criados, ${stats.skipped} já existiam.`,

@@ -6,6 +6,7 @@ import type {
   ColumnUpdatedPayload,
   DatabaseUpdatedPayload,
   PageUpdatedPayload,
+  ProjectionInvalidatedPayload,
   RowPayload,
   RowUpdatedPayload,
   RowOrderUpdatedPayload,
@@ -26,6 +27,7 @@ export interface PageEditEmitter {
   emitRowOrderUpdated?(payload: RowOrderUpdatedPayload): void;
   emitPageUpdated(payload: PageUpdatedPayload): void;
   emitDatabaseUpdated(payload: DatabaseUpdatedPayload): void;
+  emitProjectionInvalidated?(payload: ProjectionInvalidatedPayload): void;
   emitColumnUpdated(payload: ColumnUpdatedPayload): void;
   emitViewUpdated(payload: ViewUpdatedPayload): void;
   emitRowCreated(payload: RowPayload): void;

@@ -8,7 +8,7 @@ import { VALUE_CODECS } from "@/services/value-codec";
 /** Fronteira entre o payload HTTP da célula e o envelope persistido. */
 export class PageCellValueMapper implements PageCellValueMapperContract {
   public supports(column: Schema.PageColumn): boolean {
-    return VALUE_CODECS[column.type] !== undefined;
+    return column.type !== 'rollup' && VALUE_CODECS[column.type] !== undefined;
   }
 
   public encode(column: Schema.PageColumn, input: PageCellValueInput): string {

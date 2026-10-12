@@ -13,7 +13,16 @@ export type PageViewKind =
   | "calendar"
   | "timeline"
   | "graph"
-  | "form";
+  | "form"
+  | "heatmap";
+
+export interface PageViewHeatmapConfig {
+  version: 1;
+  dateColumnId: string;
+  checkboxColumnId: string;
+  period: { mode: 'months'; monthCount: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 }
+    | { mode: 'year' };
+}
 
 export interface PageViewFormConfig {
   version: 1;
@@ -45,6 +54,7 @@ export interface PageViewCreateInput {
   name: string;
   title: PageViewTitleInput;
   form?: PageViewFormConfig;
+  heatmap?: PageViewHeatmapConfig;
 }
 
 export interface PageViewContext {

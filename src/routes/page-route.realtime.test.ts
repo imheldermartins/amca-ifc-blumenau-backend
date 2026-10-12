@@ -81,6 +81,8 @@ const doubles = vi.hoisted(() => ({
     columnReset: vi.fn(async () => undefined),
     columnDeleted: vi.fn(async () => undefined),
     cellUpdated: vi.fn(async () => undefined),
+    relationUpdated: vi.fn(async () => undefined),
+    dependentPageChanged: vi.fn(async () => undefined),
   },
 }));
 
@@ -174,10 +176,10 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
     const response = await request(`/pages/parent/${PARENT_ID}/columns${method === 'PUT' ? `/${COLUMN_ID}` : ''}`, method, { type: 'flow', flowButton });
     expect(response.status).toBe(method === 'POST' ? 201 : 200);
     if (method === 'POST') {
-      expect(doubles.column.createColumn).toHaveBeenCalledWith(expect.objectContaining({ flowButton }));
+      expect(doubles.column.createColumn).toHaveBeenCalledWith(expect.objectContaining({ flowButton }), USER_ID);
       expect(doubles.publisher.columnCreated).toHaveBeenCalledWith(expect.objectContaining({ column }));
     } else {
-      expect(doubles.column.updateColumn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ flowButton }));
+      expect(doubles.column.updateColumn).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ flowButton }), USER_ID);
       expect(doubles.publisher.columnUpdated).toHaveBeenCalledWith(expect.objectContaining({ column }));
     }
   });

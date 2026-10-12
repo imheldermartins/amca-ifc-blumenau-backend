@@ -1425,6 +1425,96 @@
       "unique": []
     },
     {
+      "name": "page_blocks",
+      "className": "PageBlockSchema",
+      "columns": [
+        {
+          "property": "id",
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": true,
+          "tsType": "string",
+          "generated": "ulid"
+        },
+        {
+          "property": "created_at",
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "created",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "updated_at",
+          "name": "updated_at",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string",
+          "managed": "updated",
+          "default": {
+            "kind": "expression",
+            "value": "CURRENT_TIMESTAMP"
+          }
+        },
+        {
+          "property": "page_id",
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "string"
+        },
+        {
+          "property": "content",
+          "name": "content",
+          "type": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "Record<string, unknown>",
+          "codec": "json"
+        },
+        {
+          "property": "revision",
+          "name": "revision",
+          "type": "REAL",
+          "nullable": false,
+          "primaryKey": false,
+          "tsType": "number",
+          "default": {
+            "kind": "literal",
+            "value": 1
+          }
+        }
+      ],
+      "indexes": [],
+      "foreignKeys": [
+        {
+          "columns": [
+            "page_id"
+          ],
+          "table": "pages",
+          "references": [
+            "id"
+          ]
+        }
+      ],
+      "checks": [
+        "length(id) = 26"
+      ],
+      "unique": [
+        [
+          "page_id"
+        ]
+      ]
+    },
+    {
       "name": "page_collaborators",
       "className": "PageCollaboratorSchema",
       "columns": [
@@ -1681,7 +1771,7 @@
       ],
       "checks": [
         "length(id) = 26",
-        "type IN ('text', 'numeric', 'select', 'date', 'checkbox', 'flow')"
+        "type IN ('text', 'numeric', 'select', 'date', 'checkbox', 'flow', 'relation', 'rollup')"
       ],
       "unique": [],
       "softDelete": "deleted_at"
@@ -1738,102 +1828,6 @@
           }
         },
         {
-          "property": "search_text",
-          "name": "search_text",
-          "type": "TEXT",
-          "nullable": true,
-          "primaryKey": false,
-          "tsType": "null | string",
-          "default": {
-            "kind": "literal",
-            "value": null
-          }
-        },
-        {
-          "property": "number_value",
-          "name": "number_value",
-          "type": "REAL",
-          "nullable": true,
-          "primaryKey": false,
-          "tsType": "null | number",
-          "default": {
-            "kind": "literal",
-            "value": null
-          }
-        },
-        {
-          "property": "select_option_id",
-          "name": "select_option_id",
-          "type": "TEXT",
-          "nullable": true,
-          "primaryKey": false,
-          "tsType": "null | string",
-          "default": {
-            "kind": "literal",
-            "value": null
-          }
-        },
-        {
-          "property": "checkbox_value",
-          "name": "checkbox_value",
-          "type": "INTEGER",
-          "nullable": true,
-          "primaryKey": false,
-          "tsType": "null | number",
-          "default": {
-            "kind": "literal",
-            "value": null
-          }
-        },
-        {
-          "property": "date_start_ms",
-          "name": "date_start_ms",
-          "type": "INTEGER",
-          "nullable": true,
-          "primaryKey": false,
-          "tsType": "null | number",
-          "default": {
-            "kind": "literal",
-            "value": null
-          }
-        },
-        {
-          "property": "date_end_ms",
-          "name": "date_end_ms",
-          "type": "INTEGER",
-          "nullable": true,
-          "primaryKey": false,
-          "tsType": "null | number",
-          "default": {
-            "kind": "literal",
-            "value": null
-          }
-        },
-        {
-          "property": "value_kind",
-          "name": "value_kind",
-          "type": "TEXT",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "string",
-          "default": {
-            "kind": "literal",
-            "value": "missing"
-          }
-        },
-        {
-          "property": "projection_version",
-          "name": "projection_version",
-          "type": "INTEGER",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "number",
-          "default": {
-            "kind": "literal",
-            "value": 0
-          }
-        },
-        {
           "property": "page_column_id",
           "name": "page_column_id",
           "type": "TEXT",
@@ -1866,51 +1860,6 @@
             "page_column_id"
           ],
           "unique": true
-        },
-        {
-          "name": "idx_page_values_select",
-          "columns": [
-            "page_column_id",
-            "select_option_id",
-            "page_id"
-          ],
-          "where": "select_option_id IS NOT NULL"
-        },
-        {
-          "name": "idx_page_values_number",
-          "columns": [
-            "page_column_id",
-            "number_value",
-            "page_id"
-          ],
-          "where": "number_value IS NOT NULL"
-        },
-        {
-          "name": "idx_page_values_date_start",
-          "columns": [
-            "page_column_id",
-            "date_start_ms",
-            "page_id"
-          ],
-          "where": "date_start_ms IS NOT NULL"
-        },
-        {
-          "name": "idx_page_values_date_end",
-          "columns": [
-            "page_column_id",
-            "date_end_ms",
-            "page_id"
-          ],
-          "where": "date_end_ms IS NOT NULL"
-        },
-        {
-          "name": "idx_page_values_search",
-          "columns": [
-            "page_column_id",
-            "search_text",
-            "page_id"
-          ],
-          "where": "search_text IS NOT NULL"
         }
       ],
       "foreignKeys": [
@@ -1937,96 +1886,6 @@
         "length(id) = 26"
       ],
       "unique": []
-    },
-    {
-      "name": "page_documents",
-      "className": "PageDocumentSchema",
-      "columns": [
-        {
-          "property": "id",
-          "name": "id",
-          "type": "TEXT",
-          "nullable": false,
-          "primaryKey": true,
-          "tsType": "string",
-          "generated": "ulid"
-        },
-        {
-          "property": "created_at",
-          "name": "created_at",
-          "type": "TEXT",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "string",
-          "managed": "created",
-          "default": {
-            "kind": "expression",
-            "value": "CURRENT_TIMESTAMP"
-          }
-        },
-        {
-          "property": "updated_at",
-          "name": "updated_at",
-          "type": "TEXT",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "string",
-          "managed": "updated",
-          "default": {
-            "kind": "expression",
-            "value": "CURRENT_TIMESTAMP"
-          }
-        },
-        {
-          "property": "page_id",
-          "name": "page_id",
-          "type": "TEXT",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "string"
-        },
-        {
-          "property": "content",
-          "name": "content",
-          "type": "TEXT",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "Record<string, unknown>",
-          "codec": "json"
-        },
-        {
-          "property": "revision",
-          "name": "revision",
-          "type": "REAL",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "number",
-          "default": {
-            "kind": "literal",
-            "value": 1
-          }
-        }
-      ],
-      "indexes": [],
-      "foreignKeys": [
-        {
-          "columns": [
-            "page_id"
-          ],
-          "table": "pages",
-          "references": [
-            "id"
-          ]
-        }
-      ],
-      "checks": [
-        "length(id) = 26"
-      ],
-      "unique": [
-        [
-          "page_id"
-        ]
-      ]
     },
     {
       "name": "page_edges",
@@ -2815,8 +2674,8 @@
           }
         },
         {
-          "property": "parent_id",
-          "name": "parent_id",
+          "property": "edge_id",
+          "name": "edge_id",
           "type": "TEXT",
           "nullable": false,
           "primaryKey": false,
@@ -2825,14 +2684,6 @@
         {
           "property": "view_id",
           "name": "view_id",
-          "type": "TEXT",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "string"
-        },
-        {
-          "property": "row_id",
-          "name": "row_id",
           "type": "TEXT",
           "nullable": false,
           "primaryKey": false,
@@ -2849,40 +2700,28 @@
       ],
       "indexes": [
         {
-          "name": "idx_page_view_row_order_row",
+          "name": "idx_page_view_row_order_edge_view",
           "columns": [
-            "parent_id",
-            "view_id",
-            "row_id"
+            "edge_id",
+            "view_id"
           ],
           "unique": true
         },
         {
           "name": "idx_page_view_row_order_cursor",
           "columns": [
-            "parent_id",
             "view_id",
             "rank",
-            "row_id"
+            "edge_id"
           ]
         }
       ],
       "foreignKeys": [
         {
           "columns": [
-            "parent_id"
+            "edge_id"
           ],
-          "table": "pages",
-          "references": [
-            "id"
-          ],
-          "onDelete": "CASCADE"
-        },
-        {
-          "columns": [
-            "row_id"
-          ],
-          "table": "pages",
+          "table": "page_edges",
           "references": [
             "id"
           ],
@@ -2946,42 +2785,6 @@
           }
         },
         {
-          "property": "title_search",
-          "name": "title_search",
-          "type": "TEXT",
-          "nullable": true,
-          "primaryKey": false,
-          "tsType": "null | string",
-          "default": {
-            "kind": "literal",
-            "value": null
-          }
-        },
-        {
-          "property": "projection_version",
-          "name": "projection_version",
-          "type": "INTEGER",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "number",
-          "default": {
-            "kind": "literal",
-            "value": 0
-          }
-        },
-        {
-          "property": "dataset_revision",
-          "name": "dataset_revision",
-          "type": "INTEGER",
-          "nullable": false,
-          "primaryKey": false,
-          "tsType": "number",
-          "default": {
-            "kind": "literal",
-            "value": 0
-          }
-        },
-        {
           "property": "data",
           "name": "data",
           "type": "TEXT",
@@ -3027,14 +2830,6 @@
           "columns": [
             "owner_id"
           ]
-        },
-        {
-          "name": "idx_pages_title_search",
-          "columns": [
-            "title_search",
-            "id"
-          ],
-          "where": "deleted_at IS NULL"
         }
       ],
       "foreignKeys": [

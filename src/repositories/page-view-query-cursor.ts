@@ -4,7 +4,7 @@ const runtimeSecret = randomBytes(32);
 export class PageViewQueryError extends Error {
   constructor(public readonly status: 400 | 404 | 409, message: string, public readonly code?: string) { super(message); }
 }
-export interface QueryCursorContext { queryKey: string; userId: string; datasetRevision: number; orderRevision: number; scopeKey: string }
+export interface QueryCursorContext { queryKey: string; userId: string; orderRevision: number; scopeKey: string }
 export interface QueryCursorPosition { rank: string; id: string }
 interface CursorDocument extends QueryCursorContext, QueryCursorPosition { version: 1; purpose: 'rows' | 'groups' }
 export function queryFingerprint(value: unknown): string { return createHash('sha256').update(JSON.stringify(value)).digest('base64url'); }
@@ -30,7 +30,7 @@ export class PageViewQueryCursor {
       || document.queryKey !== context.queryKey || document.userId !== context.userId || document.scopeKey !== context.scopeKey) {
       throw new PageViewQueryError(400, 'Cursor incompatível com a consulta');
     }
-    if (document.datasetRevision !== context.datasetRevision || document.orderRevision !== context.orderRevision) {
+    if (document.orderRevision !== context.orderRevision) {
       throw new PageViewQueryError(409, 'A listagem mudou. Atualize a posição da paginação.', 'STALE_CURSOR');
     }
     return { rank: document.rank, id: document.id };

@@ -1,4 +1,5 @@
 import pageHierarchyStore from "@/repositories/page-hierarchy-repository";
+import pageRelationRepository from '@/repositories/page-relation-repository';
 import { readPageLatestUpdatedAt } from '@/repositories/page-activity';
 import { sanitizeViewSnapshot } from '@/services/pages/views/page-query-serialization';
 import type { ColumnPayload, RowPayload } from "@/services/realtime/contracts/realtime-contract-v1";
@@ -73,6 +74,26 @@ export class PageRealtimePublisher {
     await this.emitDatabaseUpdated(pageId, input.originUserId);
   }
 
+  /** Recarrega metadados/janelas sem expor o conteúdo da relação no socket. */
+  async projectionInvalidated(pageId: string, originUserId: string): Promise<void> {
+    if (!this.emitter.emitProjectionInvalidated) return;
+    const metadata = this.metadata({ originUserId });
+    this.safeEmit("projection-invalidated", pageId, () =>
+      this.emitter.emitProjectionInvalidated!(
+        this.factory.create({ pageId }, metadata),
+      ),
+    );
+  }
+
+  async relationUpdated(input: Pick<CellUpdatedInput, 'rowId' | 'originUserId'>): Promise<void> {
+    const pageId = await this.resolveParent(input.rowId, "projection-invalidated");
+    if (pageId) await this.projectionInvalidated(pageId, input.originUserId);
+  }
+
+  async dependentPageChanged(rowId: string, originUserId: string): Promise<void> {
+    await this.invalidateDependentPages(rowId, originUserId);
+  }
+
   /**
    * Um unico relogio alimenta o chrome da propria pagina e a linha exibida na
    * parent. Falha num broadcast nao impede a tentativa do outro.
@@ -108,6 +129,7 @@ export class PageRealtimePublisher {
           ),
         ),
       );
+      await this.invalidateDependentPages(input.pageId, input.originUserId);
     }
   }
 
@@ -122,6 +144,7 @@ export class PageRealtimePublisher {
         ),
       ),
     );
+    await this.invalidateDependentDatabase(input.pageId, input.originUserId);
   }
 
   async rowCreated(input: RowChangedInput): Promise<void> {
@@ -135,6 +158,7 @@ export class PageRealtimePublisher {
 
   async rowDeleted(input: RowChangedInput): Promise<void> {
     await this.emitRowChange("row-deleted", input, (payload) => this.emitter.emitRowDeleted(payload));
+    await this.invalidateDependentPages(input.rowId, input.originUserId);
   }
 
   async columnCreated(input: ColumnCreatedInput): Promise<void> {
@@ -154,6 +178,7 @@ export class PageRealtimePublisher {
     await this.emitColumnChange("column-deleted", input, (payload) =>
       this.emitter.emitColumnDeleted(payload),
     );
+    await this.invalidateDependentDatabase(input.pageId, input.originUserId);
   }
 
   /** Coluna e todas as celulas resetadas compartilham exatamente o mesmo ISO. */
@@ -228,6 +253,24 @@ export class PageRealtimePublisher {
       );
     } catch (error) {
       this.log(`[cubs:realtime] Falha ao ler a ultima edicao da pagina ${pageId}`, error);
+    }
+  }
+
+  private async invalidateDependentPages(targetPageId: string, originUserId: string): Promise<void> {
+    try {
+      const dependents = await pageRelationRepository.invalidateDatabasesReferencingPage(targetPageId);
+      await Promise.all(dependents.map((entry) => this.projectionInvalidated(entry.pageId, originUserId)));
+    } catch (error) {
+      this.log(`[cubs:realtime] Falha ao invalidar projecoes dependentes da pagina ${targetPageId}`, error);
+    }
+  }
+
+  private async invalidateDependentDatabase(targetDatabaseId: string, originUserId: string): Promise<void> {
+    try {
+      const dependents = await pageRelationRepository.invalidateDatabasesReferencingDatabase(targetDatabaseId);
+      await Promise.all(dependents.map((entry) => this.projectionInvalidated(entry.pageId, originUserId)));
+    } catch (error) {
+      this.log(`[cubs:realtime] Falha ao invalidar projecoes dependentes da database ${targetDatabaseId}`, error);
     }
   }
 

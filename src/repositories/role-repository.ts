@@ -122,8 +122,8 @@ export class RoleStore {
     const statements: RqliteStatement[] = [];
     const rootId = ulid();
     if (scope === "workspace") {
-      statements.push([`INSERT INTO pages (id, title, data, owner_id, title_search, projection_version)
-        SELECT ?, 'Base de dados', '{}', ?, 'base de dados', 1 WHERE ${condition.text}`, rootId, userId, ...condition.values]);
+      statements.push([`INSERT INTO pages (id, title, data, owner_id)
+        SELECT ?, 'Base de dados', '{}', ? WHERE ${condition.text}`, rootId, userId, ...condition.values]);
     }
     statements.push([`INSERT INTO ${SCOPE_TABLES[scope].members} (
       id, ${scope}_id, user_id, ${scope}_member_role_id ${scope === "workspace" ? ', page_root_id' : ''})

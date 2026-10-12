@@ -11,7 +11,5 @@ export function sanitizeViewSnapshot(data: unknown): unknown {
 }
 
 export function stripPageQueryInternals<T extends {data: unknown}>(page: T): T {
-  const {title_search: _search, projection_version: _version, dataset_revision: _revision, ...publicPage} =
-    page as T & {title_search?: unknown; projection_version?: unknown; dataset_revision?: unknown};
-  return {...publicPage, data: sanitizeViewSnapshot(page.data)} as T;
+  return {...page, data: sanitizeViewSnapshot(page.data)};
 }

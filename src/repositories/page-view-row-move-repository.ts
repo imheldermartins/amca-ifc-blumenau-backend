@@ -11,7 +11,7 @@ import {isActivePageView, isJsonRecord} from '@/services/pages/views/page-view-p
 import {VALUE_CODECS} from '@/services/value-codec';
 import type {Schema} from '@/db/schemas/index';
 import {checkedOrderWrite, compactViewRowRanks, ensurePageViewRowOrder, incrementOrderRevisionStatement,
-  readOrderRevision, rowOrderPath, withPageRowOrderLock} from '@/repositories/page-view-row-order';
+  PAGE_VIEW_ORDER_SQL, readOrderRevision, rowOrderPath, withPageRowOrderLock} from '@/repositories/page-view-row-order';
 
 export class PageViewRowMoveError extends Error {
   constructor(public readonly reason: 'not_found' | 'validation' | 'forbidden' | 'conflict' | 'server_error',
@@ -63,7 +63,7 @@ export class PageViewRowMoveStore {
       const [parents, columns, positions] = await rqlite<ParentState | Schema.PageColumn | MovingRow>([
         ['SELECT data FROM pages WHERE id = ? AND deleted_at IS NULL', parentId],
         ['SELECT * FROM page_columns WHERE parent_id = ? AND deleted_at IS NULL ORDER BY id', parentId],
-        [`SELECT position.row_id, position.rank, value.data AS cell_data FROM page_view_row_order position
+        [`SELECT position.row_id, position.rank, value.data AS cell_data FROM (${PAGE_VIEW_ORDER_SQL}) position
           JOIN pages row ON row.id = position.row_id AND row.deleted_at IS NULL
           JOIN page_edges edge ON edge.child_id = row.id AND edge.parent_id = position.parent_id
           LEFT JOIN page_columns_values value ON value.page_id = row.id
@@ -121,7 +121,7 @@ export class PageViewRowMoveStore {
       const optionValues: unknown[] = column ? [JSON.stringify(column.data?.options ?? []), BOARD_UNASSIGNED, destinationOptionKey] : [];
       const cellJoin = column ? 'LEFT JOIN page_columns_values cell ON cell.page_id = position.row_id AND cell.page_column_id = ?' : '';
       const cellJoinValues = column ? [column.id] : [];
-      const orderedSql = `SELECT position.row_id, position.rank, ${column ? 'cell.data' : 'NULL'} AS cell_data FROM page_view_row_order position
+      const orderedSql = `SELECT position.row_id, position.rank, ${column ? 'cell.data' : 'NULL'} AS cell_data FROM (${PAGE_VIEW_ORDER_SQL}) position
         JOIN pages row ON row.id = position.row_id AND row.deleted_at IS NULL ${cellJoin}
         WHERE position.parent_id = ? AND position.view_id = ? AND position.row_id <> ? ${optionPredicate}`;
       const orderedValues = [...cellJoinValues, parentId, viewId, input.rowId, ...optionValues];
@@ -150,7 +150,7 @@ export class PageViewRowMoveStore {
       // Neighbors from other groups and filtered-out pages remain untouched.
       // An empty Board still uses the complete global tail rather than inventing an unpersisted slot.
       if (!lower && !upper && column) {
-        const [tails] = await rqlite<MovingRow>([[`SELECT row_id, rank FROM page_view_row_order
+        const [tails] = await rqlite<MovingRow>([[`SELECT row_id, rank FROM (${PAGE_VIEW_ORDER_SQL})
           WHERE parent_id = ? AND view_id = ? AND row_id <> ? ORDER BY rank COLLATE BINARY DESC, row_id DESC LIMIT 1`,
         parentId, viewId, input.rowId]], 'query');
         lower = tails?.[0];
@@ -161,7 +161,7 @@ export class PageViewRowMoveStore {
       const boundary=insertBefore && upper ? upper : lower;
       if (boundary) {
         const direction=insertBefore && upper ? '<' : '>';
-        const [adjacent] = await rqlite<MovingRow>([[`SELECT row_id,rank FROM page_view_row_order
+        const [adjacent] = await rqlite<MovingRow>([[`SELECT row_id,rank FROM (${PAGE_VIEW_ORDER_SQL})
           WHERE parent_id=? AND view_id=? AND row_id<>? AND (rank,row_id) ${direction} (?,?)
           ORDER BY rank COLLATE BINARY ${direction==='<' ? 'DESC' : 'ASC'},row_id ${direction==='<' ? 'DESC' : 'ASC'} LIMIT 1`,
         parentId,viewId,input.rowId,boundary.rank,boundary.row_id]],'query');
@@ -208,7 +208,7 @@ export class PageViewRowMoveStore {
       }
       if (anchor) {
         const anchorGuard = accessGuard('page', anchor.row_id, userId, 'read', 'view');
-        guardSql += ` AND ${anchorGuard.text} AND EXISTS (SELECT 1 FROM page_view_row_order position JOIN pages anchor ON anchor.id = position.row_id
+        guardSql += ` AND ${anchorGuard.text} AND EXISTS (SELECT 1 FROM (${PAGE_VIEW_ORDER_SQL}) position JOIN pages anchor ON anchor.id = position.row_id
           WHERE position.parent_id = ? AND position.view_id = ? AND position.row_id = ? AND position.rank = ? AND anchor.deleted_at IS NULL)`;
         guardValues.push(...anchorGuard.values, parentId, viewId, anchor.row_id, anchor.rank);
         if (column) {
@@ -222,8 +222,8 @@ export class PageViewRowMoveStore {
           ? ['DELETE FROM page_columns_values WHERE page_id = ? AND page_column_id = ?', input.rowId, column!.id]
           : pageCellUpsertStatement(input.rowId, column!.id, VALUE_CODECS.select.encode(input.targetOptionId)));
       }
-      writes.push(['UPDATE page_view_row_order SET rank = ?, updated_at = CURRENT_TIMESTAMP WHERE parent_id = ? AND view_id = ? AND row_id = ?',
-        rank, parentId, viewId, input.rowId], pageActivityTouchStatement(parentId));
+      writes.push(['UPDATE page_view_row_order SET rank = ?, updated_at = CURRENT_TIMESTAMP WHERE view_id = ? AND edge_id = (SELECT id FROM page_edges WHERE parent_id = ? AND child_id = ?)',
+        rank, viewId, parentId, input.rowId], pageActivityTouchStatement(parentId));
       try {
         await rqlite(writes.flatMap(checkedOrderWrite), 'execute', {transaction: true});
       } catch {

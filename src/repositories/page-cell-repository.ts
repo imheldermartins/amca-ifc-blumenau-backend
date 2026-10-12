@@ -6,7 +6,6 @@ import type {
 } from "@/repositories/types/page-cell-repository.types";
 import db from "@models/index";
 import type { Schema } from "@/db/schemas/index";
-import {deriveCellProjection} from '@/repositories/page-value-projection';
 
 /**
  * Persistência das células e da relação estrutural row/column.
@@ -51,18 +50,15 @@ export class PageCellStore implements PageCellStoreContract {
       page_id: input.pageId,
       page_column_id: input.columnId,
       data: input.data,
-      ...deriveCellProjection(input.data),
     } satisfies CreateValues<Schema.PageColumnValue>;
 
-    return this.cells.create(values, {
-      after: [pageActivityTouchStatement(input.pageId)],
-    });
+    return this.cells.create(values, { after: [pageActivityTouchStatement(input.pageId)] });
   }
 
   public async updateCell(input: PageCellUpdate): Promise<Schema.PageColumnValue | null> {
     const lookup = { id: input.cellId } satisfies LookupValues<Schema.PageColumnValue>;
     const updated = await this.cells.update(
-      { data: input.data, ...deriveCellProjection(input.data) } satisfies UpdateValues<Schema.PageColumnValue>,
+      { data: input.data } satisfies UpdateValues<Schema.PageColumnValue>,
       lookup,
       { after: [pageActivityTouchStatement(input.pageId)] },
     );
@@ -75,6 +71,7 @@ export class PageCellStore implements PageCellStoreContract {
       { after: [pageActivityTouchStatement(pageId)] },
     );
   }
+
 }
 
 export default new PageCellStore();

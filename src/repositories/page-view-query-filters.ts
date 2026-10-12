@@ -1,12 +1,13 @@
 import type { QueryFilterClause } from '@/services/pages/views/page-view-query-contract';
-import { normalizeSearchText } from '@/repositories/page-value-projection';
+import {simplifySqlText, simplifyText} from '@/utils/slugify';
+import {cellDateIntervalSql, cellTypeSql, cellValueSql} from '@/repositories/page-json-value-sql';
 
-export interface QueryColumn { id: string; name: string | null; type: string | null; data: Record<string, unknown> | null }
+export interface QueryColumn { id: string; name: string | null; type: string | null; data: Record<string, unknown> | null; parent_id?: string | null }
 export interface QuerySqlFragment { text: string; values: unknown[] }
 export interface CompiledQueryFilters { joins: QuerySqlFragment; where: QuerySqlFragment }
 
 export function normalizeQueryText(value: string): string {
-  return normalizeSearchText(value);
+  return simplifyText(value);
 }
 
 function dateOperand(value: string): { start: number; end: number } | null {
@@ -26,25 +27,27 @@ export function compileQueryFilters(columns: readonly QueryColumn[], clauses: re
     if (!type || type === 'flow') continue;
     const alias = `filter_${joins.length}`;
     let predicate = '', expected: unknown[] = [];
-    const textValue = title ? 'candidate.title_search' : `${alias}.search_text`;
-    const kind = title ? "CASE WHEN candidate.title IS NULL THEN 'null' ELSE 'string' END" : `${alias}.value_kind`;
+    const value = cellValueSql(alias);
+    const textValue = simplifySqlText(title ? 'candidate.title' : value);
+    const kind = title ? "CASE WHEN candidate.title IS NULL THEN 'null' ELSE 'text' END" : cellTypeSql(alias);
     if (type === 'text' && operands.length === 1 && (clause.condition === 'equals' || clause.condition === 'contains' && operands[0]!.length > 0)) {
-      predicate = `${kind} = 'string' AND ${clause.condition === 'equals' ? `${textValue} = ?` : `instr(${textValue}, ?) > 0`}`;
+      predicate = `${kind} = 'text' AND ${clause.condition === 'equals' ? `${textValue} = ?` : `instr(${textValue}, ?) > 0`}`;
       expected = [normalizeQueryText(operands[0]!)];
     } else if (type === 'numeric' && operands.length === 1 && operands[0]!.trim() && Number.isFinite(Number(operands[0])) && ['equals', 'greaterThan', 'lessThan'].includes(clause.condition)) {
-      predicate = `${kind} = 'number' AND ${alias}.number_value ${clause.condition === 'equals' ? '=' : clause.condition === 'greaterThan' ? '>' : '<'} ?`;
+      predicate = `${kind} IN ('integer','real') AND ${value} ${clause.condition === 'equals' ? '=' : clause.condition === 'greaterThan' ? '>' : '<'} ?`;
       expected = [Number(operands[0])];
     } else if (type === 'select' && clause.condition === 'equals' && operands.length > 0 && operands.every((value) => value.trim().length > 0)) {
-      predicate = `${kind} = 'string' AND ${alias}.select_option_id IN (${operands.map(() => '?').join(',')})`;
+      predicate = `${kind} = 'text' AND ${value} IN (${operands.map(() => '?').join(',')})`;
       expected = [...operands];
     } else if (type === 'checkbox' && clause.condition === 'equals' && operands.length === 1 && ['true', 'false'].includes(operands[0]!)) {
-      predicate = operands[0] === 'true' ? `${kind} = 'boolean' AND ${alias}.checkbox_value = 1`
-        : `(${kind} = 'boolean' AND ${alias}.checkbox_value = 0 OR ${alias}.id IS NULL OR ${kind} IN ('null', 'missing'))`;
+      predicate = operands[0] === 'true' ? `${kind} = 'true'`
+        : `(${kind} = 'false' OR ${kind} IS NULL OR ${kind} = 'null')`;
     } else if (type === 'date' && (clause.condition === 'equals' && operands.length === 1 || clause.condition === 'between' && operands.length === 2)) {
       const dates = operands.map(dateOperand);
       if (dates.some((date) => date === null)) continue;
       const intervals = dates as { start: number; end: number }[];
-      predicate = `${alias}.date_start_ms <= ? AND ${alias}.date_end_ms >= ?`;
+      const interval = cellDateIntervalSql(alias);
+      predicate = `${interval.start} <= ? AND ${interval.end} >= ?`;
       expected = [Math.max(...intervals.map((date) => date.end)), Math.min(...intervals.map((date) => date.start))];
     }
     if (!predicate) continue;

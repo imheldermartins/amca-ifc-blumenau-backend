@@ -5,6 +5,8 @@ import { readOrderRevision } from '@/repositories/page-view-row-order';
 import { compileQueryFilters, type QueryColumn, type QuerySqlFragment } from '@/repositories/page-view-query-filters';
 import { PageViewQueryCursor, PageViewQueryError, queryFingerprint, type QueryCursorContext } from '@/repositories/page-view-query-cursor';
 import { reconcileViewFilters } from '@/services/view-filters-v2';
+import pageRelationRepository, { type PageRelationRepository } from '@/repositories/page-relation-repository';
+import {cellDateIntervalSql, cellTypeSql, cellValueSql} from '@/repositories/page-json-value-sql';
 import {
   PAGE_VIEW_BATCH_SIZE, PAGE_VIEW_UNASSIGNED, pageViewScopeKey,
   type PageViewQueryGroup, type PageViewQueryProjection, type PageViewQueryRequest, type PageViewQueryScope, type PageViewQueryWindow,
@@ -13,7 +15,7 @@ import {
 
 export const QUERY_FALLBACK_VIEW = '01KXVZ0000FALLBACKTABLE001';
 type QueryExecutor = <T>(statement: QuerySqlFragment) => Promise<T[]>;
-interface MetadataPage { id: string; title: string | null; owner_id: string; created_at: string; updated_at: string; dataset_revision: number; data: Record<string, unknown> }
+interface MetadataPage { id: string; title: string | null; owner_id: string; created_at: string; updated_at: string; data: Record<string, unknown> }
 export interface PageViewQueryMetadata { page: MetadataPage; columns: QueryColumn[] }
 interface SqlPage extends Omit<MetadataPage, 'data'> { data: string }
 interface SqlColumn extends Omit<QueryColumn, 'data'> { data: string | null }
@@ -21,8 +23,8 @@ interface QueryContext extends PageViewQueryMetadata { view: Record<string, unkn
 interface SqlRow { id: string; title: string | null; rank_key: string; window_key?: string; page_columns?: string }
 interface SqlGroup { group_json: string; total: number; first_rank: string; first_id: string }
 interface SqlCount { total: number }
-interface SqlDay { day: string; total: number }
-interface BaseQuery { sql: QuerySqlFragment; groupColumnIds: string[]; selectColumn?: QueryColumn; dateColumn?: QueryColumn }
+interface SqlDay { day: string; total: number; checked?: number }
+interface BaseQuery { sql: QuerySqlFragment; groupColumnIds: string[]; selectColumn?: QueryColumn; dateColumn?: QueryColumn; checkboxColumn?: QueryColumn }
 interface AllocatedStream { scope: PageViewQueryScope; total: number; quota: number }
 function object(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function parseData(value: string | null): Record<string, unknown> { try { return object(value ? JSON.parse(value) : null); } catch { return {}; } }
@@ -30,11 +32,12 @@ function stringList(value: unknown): string[] { return Array.isArray(value) ? va
 function utcDay(value: string): number { return Date.parse(`${value.slice(0, 10)}T00:00:00.000Z`); }
 function dateBound(value: string, end: boolean): number { return /^\d{4}-\d{2}-\d{2}$/.test(value) ? utcDay(value) + (end ? 86_400_000 - 1 : 0) : Date.parse(value); }
 function groupToken(alias: string): string {
-  return `CASE WHEN ${alias}.id IS NULL OR ${alias}.value_kind IN ('missing','null') THEN NULL
-    WHEN ${alias}.value_kind = 'boolean' THEN 'boolean:' || CASE WHEN ${alias}.checkbox_value = 1 THEN 'true' ELSE 'false' END
-    WHEN ${alias}.value_kind = 'number' THEN 'number:' || CAST(${alias}.number_value AS TEXT)
-    WHEN ${alias}.value_kind = 'string' THEN 'string:' || CAST(json_extract(${alias}.data, '$.value') AS TEXT)
-    ELSE ${alias}.value_kind || ':' || json(json_extract(${alias}.data, '$.value')) END`;
+  const kind = cellTypeSql(alias), value = cellValueSql(alias);
+  return `CASE WHEN ${kind} IS NULL OR ${kind} = 'null' THEN NULL
+    WHEN ${kind} IN ('true','false') THEN 'boolean:' || ${kind}
+    WHEN ${kind} IN ('integer','real') THEN 'number:' || CAST(${value} AS TEXT)
+    WHEN ${kind} = 'text' THEN 'string:' || CAST(${value} AS TEXT)
+    ELSE ${kind} || ':' || json(${value}) END`;
 }
 function titleToken(): string { return "CASE WHEN candidate.title IS NULL THEN NULL ELSE 'string:' || candidate.title END"; }
 
@@ -44,39 +47,38 @@ export class PageViewQueryStore {
     private readonly execute: QueryExecutor = (statement) => db.sqlRaw(statement as SqlStatement, 'query'),
     private readonly readRevision: (view: unknown) => number = readOrderRevision,
     private readonly cursor = new PageViewQueryCursor(),
+    private readonly relations: PageRelationRepository = pageRelationRepository,
   ) {}
 
   async metadata(pageId: string, userId: string): Promise<PageViewQueryMetadata> {
     const guard = accessGuard('page', pageId, userId, 'read', 'view');
     const [page] = await this.execute<SqlPage>({
-      text: `SELECT id,title,owner_id,created_at,updated_at,dataset_revision,
+      text: `SELECT id,title,owner_id,created_at,updated_at,
         COALESCE((SELECT json_group_object(entry.key, json(CASE WHEN entry.type = 'object' THEN json_remove(entry.value, '$.orderedRows') ELSE json_quote(entry.value) END))
           FROM json_each(CASE WHEN json_valid(pages.data) THEN pages.data ELSE '{}' END) entry), '{}') AS data
         FROM pages WHERE id = ? AND deleted_at IS NULL AND ${guard.text}`,
       values: [pageId, ...guard.values],
     });
     if (!page) throw new PageViewQueryError(404, '"Page" não encontrado');
-    const columns = await this.execute<SqlColumn>({ text: 'SELECT id,name,type,data FROM page_columns WHERE parent_id = ? AND deleted_at IS NULL ORDER BY id', values: [pageId] });
-    return { page: { ...page, data: parseData(page.data) }, columns: columns.map((column) => ({ ...column, data: parseData(column.data) })) };
+    const columns = await this.execute<SqlColumn>({ text: 'SELECT id,name,type,data,parent_id FROM page_columns WHERE parent_id = ? AND deleted_at IS NULL ORDER BY id', values: [pageId] });
+    const parsed = columns.map((column) => ({ ...column, data: parseData(column.data) }));
+    return { page: { ...page, data: parseData(page.data) }, columns: await this.relations.resolveColumnMetadata(parsed, userId) };
   }
 
   async query(pageId: string, viewId: string, userId: string, request: PageViewQueryRequest): Promise<PageViewQueryProjection> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const projection = await this.readProjection(pageId, viewId, userId, request);
-      const graphParent = request.scope?.type === 'graph' && request.scope.parentId !== pageId ? request.scope.parentId : null;
-      const guard = accessGuard('page', pageId, userId, 'read', 'view');
-      const [fence] = await this.execute<{ dataset_revision: number; order_revision: number }>({
-        text: `SELECT pages.dataset_revision + COALESCE((SELECT branch.dataset_revision FROM pages branch WHERE branch.id=? AND branch.deleted_at IS NULL),0) AS dataset_revision,
-          COALESCE(json_extract(pages.data,?),0) AS order_revision FROM pages WHERE id=? AND deleted_at IS NULL AND ${guard.text}`,
-        values: [graphParent, viewId === QUERY_FALLBACK_VIEW ? '$.__fallback_order_revision__' : `$."${viewId}".rowOrder.revision`, pageId, ...guard.values],
-      });
-      if (!fence) throw new PageViewQueryError(404, '"Page" não encontrado');
-      if (fence.dataset_revision === projection.datasetRevision && fence.order_revision === projection.orderRevision) return projection;
-      if (request.cursor || request.groupCursor || attempt === 1) {
-        throw new PageViewQueryError(409, 'A listagem mudou. Atualize a posição da paginação.', 'STALE_CURSOR');
-      }
-    }
-    throw new PageViewQueryError(409, 'A listagem mudou. Atualize a posição da paginação.', 'STALE_CURSOR');
+    const projection = await this.readProjection(pageId, viewId, userId, request);
+    await this.requirePageAccess(pageId, userId);
+    return projection;
+  }
+
+  /** Revalida a autorização ao final sem depender de contador ou revisão persistida. */
+  private async requirePageAccess(pageId: string, userId: string): Promise<void> {
+    const guard = accessGuard('page', pageId, userId, 'read', 'view');
+    const [allowed] = await this.execute<{allowed: number}>({
+      text: `SELECT 1 AS allowed FROM pages WHERE id = ? AND deleted_at IS NULL AND ${guard.text}`,
+      values: [pageId, ...guard.values],
+    });
+    if (!allowed) throw new PageViewQueryError(404, '"Page" não encontrado');
   }
 
   private async readProjection(pageId: string, viewId: string, userId: string, request: PageViewQueryRequest): Promise<PageViewQueryProjection> {
@@ -93,24 +95,19 @@ export class PageViewQueryStore {
     ]);
     if (viewId !== QUERY_FALLBACK_VIEW && kind !== 'form') await this.requireReadyOrder(pageId, viewId, view);
     const orderRevision = viewId === QUERY_FALLBACK_VIEW ? 0 : this.readRevision(view);
-    if (request.scope?.type === 'graph' && request.scope.parentId !== pageId) {
-      const [branch] = await this.execute<{ dataset_revision: number }>({ text: 'SELECT dataset_revision FROM pages WHERE id=? AND deleted_at IS NULL', values: [request.scope.parentId] });
-      if (!branch) throw new PageViewQueryError(404, 'Ramo não encontrado');
-      metadata.page.dataset_revision += branch.dataset_revision;
-    }
     const context: QueryContext = { ...metadata, view, kind, filters, orderRevision, userId, rankParentId: pageId,
-      queryKey: queryFingerprint({ pageId, viewId, kind, filters: { clauses: filters.clauses, groupBy: filters.groupBy }, board: view.board, dateColumnId: view.dateColumnId }),
+      queryKey: queryFingerprint({ pageId, viewId, kind, filters: { clauses: filters.clauses, groupBy: filters.groupBy }, board: view.board, dateColumnId: view.dateColumnId, heatmap: view.heatmap }),
     };
-    if (kind === 'form') return { version: 1, kind, pageId, viewId, queryKey: context.queryKey, orderRevision,
-      datasetRevision: metadata.page.dataset_revision, total: 0, windows: [] };
+    if (kind === 'form') return { version: 1, kind, pageId, viewId, queryKey: context.queryKey, orderRevision, total: 0, windows: [] };
     const base = await this.baseQuery(context, viewId, request.scope);
     const [count] = await this.execute<SqlCount>({ text: `WITH filtered AS (${base.sql.text}) SELECT COUNT(*) AS total FROM filtered`, values: base.sql.values });
     const projection: PageViewQueryProjection = { version: 1, kind, pageId, viewId, queryKey: context.queryKey, orderRevision,
-      datasetRevision: metadata.page.dataset_revision, total: count?.total ?? 0, windows: [] };
+      total: count?.total ?? 0, windows: [] };
     const limit = request.limit ?? PAGE_VIEW_BATCH_SIZE;
     if (request.scope && request.scope.type !== 'root') {
       if (request.scope.type === 'board' && kind !== 'board' || request.scope.type === 'group' && kind !== 'table'
-        || request.scope.type === 'calendar' && !['calendar', 'timeline'].includes(kind) || request.scope.type === 'graph' && kind !== 'graph') {
+        || request.scope.type === 'calendar' && !['calendar', 'timeline'].includes(kind)
+        || request.scope.type === 'heatmap' && kind !== 'heatmap' || request.scope.type === 'graph' && kind !== 'graph') {
         throw new PageViewQueryError(400, 'Escopo incompatível com a visualização');
       }
       const scoped = this.scopeCondition(base, request.scope);
@@ -119,13 +116,23 @@ export class PageViewQueryStore {
       else if (kind === 'calendar' && request.scope.type === 'calendar' && request.scope.day === undefined) {
         projection.days = await this.calendarCounts(base, request.scope.from, request.scope.to);
         projection.windows = [await this.readCalendarPreview(context, base, request.scope, limit, scopeCount?.total ?? 0)];
+      } else if (kind === 'heatmap' && request.scope.type === 'heatmap' && request.scope.day === undefined) {
+        const aggregate = await this.heatmapCounts(base, request.scope.from, request.scope.to);
+        projection.heatmapDays = aggregate.days;
+        projection.ignoredRanges = aggregate.ignoredRanges;
       } else projection.windows = [await this.readWindow(context, base, request.scope, scopeCount?.total ?? 0, limit, request)];
       if (base.selectColumn) projection.selectColumnId = base.selectColumn.id;
       if (base.dateColumn) projection.dateColumnId = base.dateColumn.id;
+      if (base.checkboxColumn) projection.checkboxColumnId = base.checkboxColumn.id;
       if (request.scope.type === 'calendar' && !projection.days) projection.days = await this.calendarCounts(base, request.scope.from, request.scope.to);
+      if (request.scope.type === 'heatmap' && !projection.heatmapDays) {
+        const aggregate = await this.heatmapCounts(base, request.scope.from, request.scope.to);
+        projection.heatmapDays = aggregate.days;
+        projection.ignoredRanges = aggregate.ignoredRanges;
+      }
       if (kind === 'board') projection.groups = await this.boardGroups(base, context);
       if (projection.groups) this.attachWindows(projection.groups, projection.windows);
-      return projection;
+      return this.enrichProjection(projection, context);
     }
     if (kind === 'board') {
       if (!base.selectColumn) return projection;
@@ -167,17 +174,35 @@ export class PageViewQueryStore {
       projection.windows = [kind === 'calendar'
         ? await this.readCalendarPreview(context, base, scope, limit, periodCount?.total ?? 0)
         : await this.readWindow(context, base, scope, periodCount?.total ?? 0, limit, request)];
+    } else if (kind === 'heatmap') {
+      if (!base.dateColumn || !base.checkboxColumn) return projection;
+      projection.dateColumnId = base.dateColumn.id;
+      projection.checkboxColumnId = base.checkboxColumn.id;
+      const config = object(view.heatmap), period = object(config.period), now = new Date();
+      let from: string, to: string;
+      if (period.mode === 'year') {
+        from = `${now.getUTCFullYear()}-01-01`;
+        to = `${now.getUTCFullYear()}-12-31`;
+      } else {
+        const count = Math.min(12, Math.max(1, Number(period.monthCount) || 1));
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - count + 1, 1));
+        const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+        from = start.toISOString().slice(0, 10); to = end.toISOString().slice(0, 10);
+      }
+      const aggregate = await this.heatmapCounts(base, from, to);
+      projection.heatmapDays = aggregate.days;
+      projection.ignoredRanges = aggregate.ignoredRanges;
     } else {
       const scope: PageViewQueryScope = kind === 'graph' ? { type: 'graph', parentId: pageId } : { type: 'root' };
       if (!request.metadataOnly) projection.windows = [await this.readWindow(context, base, scope, projection.total, limit, request)];
     }
-    return projection;
+    return this.enrichProjection(projection, context);
   }
 
   private async requireReadyOrder(parentId: string, viewId: string, view: Record<string, unknown>): Promise<void> {
     if (object(view.rowOrder).version !== 2) throw new PageViewQueryError(409, 'A paginação precisa ser preparada pelo administrador.', 'PAGINATION_NOT_READY');
     const [missing] = await this.execute<{ missing: number }>({ text: `SELECT EXISTS(SELECT 1 FROM page_edges edge JOIN pages child ON child.id=edge.child_id AND child.deleted_at IS NULL
-      WHERE edge.parent_id=? AND NOT EXISTS(SELECT 1 FROM page_view_row_order position WHERE position.parent_id=edge.parent_id AND position.view_id=? AND position.row_id=edge.child_id)) AS missing`, values: [parentId, viewId] });
+      WHERE edge.parent_id=? AND NOT EXISTS(SELECT 1 FROM page_view_row_order position WHERE position.edge_id=edge.id AND position.view_id=?)) AS missing`, values: [parentId, viewId] });
     if (missing?.missing) throw new PageViewQueryError(409, 'A paginação precisa ser preparada pelo administrador.', 'PAGINATION_NOT_READY');
   }
 
@@ -189,27 +214,35 @@ export class PageViewQueryStore {
         SELECT 1 AS allowed FROM branch WHERE id = ? AND ${guard.text}`, values: [context.page.id, parentId, ...guard.values] });
       if (!allowed) throw new PageViewQueryError(404, 'Ramo não encontrado');
     }
-    const [unprepared] = await this.execute<{ missing: number }>({ text: `SELECT EXISTS(SELECT 1 FROM page_edges edge JOIN pages child ON child.id=edge.child_id AND child.deleted_at IS NULL
-      WHERE edge.parent_id=? AND (child.projection_version<>1 OR EXISTS(SELECT 1 FROM page_columns_values cell JOIN page_columns definition ON definition.id=cell.page_column_id AND definition.deleted_at IS NULL WHERE cell.page_id=child.id AND cell.projection_version<>1))) AS missing`, values: [parentId] });
-    if (unprepared?.missing) throw new PageViewQueryError(409, 'A paginação precisa ser preparada pelo administrador.', 'PAGINATION_NOT_READY');
     // The legacy Graph applied view filters to roots; explicitly opened branches
     // show their authorized children independently of the root's column schema.
     const filters = compileQueryFilters(context.columns, scope?.type === 'graph' && parentId !== context.page.id ? [] : context.filters.clauses);
-    const groupColumnIds = context.kind === 'table' ? [...new Set(context.filters.groupBy.filter((id) => id === 'page_title' || context.columns.some((column) => column.id === id && column.type !== 'flow')))] : [];
+    const groupColumnIds = context.kind === 'table' ? [...new Set(context.filters.groupBy.filter((id) => id === 'page_title' || context.columns.some((column) => column.id === id && !['flow', 'relation', 'rollup'].includes(String(column.type)))))] : [];
     const board = object(context.view.board);
     const selectColumn = context.kind === 'board' ? board.selectColumnId === undefined ? context.columns.find((column) => column.type === 'select')
       : context.columns.find((column) => column.id === board.selectColumnId && column.type === 'select') : undefined;
+    const heatmap = object(context.view.heatmap);
     const dateColumn = ['calendar', 'timeline'].includes(context.kind) || scope?.type === 'calendar' ? context.view.dateColumnId === undefined ? context.columns.find((column) => column.type === 'date')
-      : context.columns.find((column) => column.id === context.view.dateColumnId && column.type === 'date') : undefined;
+      : context.columns.find((column) => column.id === context.view.dateColumnId && column.type === 'date')
+      : context.kind === 'heatmap' || scope?.type === 'heatmap' ? context.columns.find((column) => column.id === heatmap.dateColumnId && column.type === 'date') : undefined;
+    const checkboxColumn = context.kind === 'heatmap' || scope?.type === 'heatmap'
+      ? context.columns.find((column) => column.id === heatmap.checkboxColumnId && column.type === 'checkbox') : undefined;
     const joins: string[] = [], joinValues: unknown[] = [], projected: string[] = [];
     if (selectColumn) {
       joins.push('LEFT JOIN page_columns_values board_value ON board_value.page_id = candidate.id AND board_value.page_column_id = ?'); joinValues.push(selectColumn.id);
       const options = stringList((Array.isArray(selectColumn.data?.options) ? selectColumn.data.options : []).map((option) => object(option).id));
-      projected.push(`CASE WHEN board_value.value_kind = 'string' AND board_value.select_option_id IN (${options.length ? options.map(() => '?').join(',') : 'NULL'}) THEN board_value.select_option_id ELSE '${PAGE_VIEW_UNASSIGNED}' END AS board_key`);
+      const value = cellValueSql('board_value');
+      projected.push(`CASE WHEN ${cellTypeSql('board_value')} = 'text' AND ${value} IN (${options.length ? options.map(() => '?').join(',') : 'NULL'}) THEN ${value} ELSE '${PAGE_VIEW_UNASSIGNED}' END AS board_key`);
     }
     if (dateColumn) {
       joins.push('LEFT JOIN page_columns_values date_value ON date_value.page_id = candidate.id AND date_value.page_column_id = ?'); joinValues.push(dateColumn.id);
-      projected.push('date_value.date_start_ms', 'date_value.date_end_ms');
+      const interval = cellDateIntervalSql('date_value');
+      projected.push(`${interval.start} AS date_start_ms`, `${interval.end} AS date_end_ms`);
+    }
+    if (checkboxColumn) {
+      joins.push('LEFT JOIN page_columns_values heatmap_checkbox ON heatmap_checkbox.page_id = candidate.id AND heatmap_checkbox.page_column_id = ?');
+      joinValues.push(checkboxColumn.id);
+      projected.push(`CASE WHEN ${cellTypeSql('heatmap_checkbox')}='true' THEN 1 ELSE 0 END AS heatmap_checked`);
     }
     groupColumnIds.forEach((id, index) => {
       const alias = `group_value_${index}`;
@@ -219,7 +252,7 @@ export class PageViewQueryStore {
     const options = selectColumn && Array.isArray(selectColumn.data?.options) ? selectColumn.data.options.map((option) => object(option).id).filter((id): id is string => typeof id === 'string') : [];
     const natural = viewId === QUERY_FALLBACK_VIEW || parentId !== context.page.id;
     const rank = natural ? 'candidate.id' : 'row_order.rank';
-    if (!natural) { joins.unshift('JOIN page_view_row_order row_order ON row_order.row_id = candidate.id AND row_order.parent_id = ? AND row_order.view_id = ?'); joinValues.unshift(context.page.id, viewId); }
+    if (!natural) { joins.unshift('JOIN page_view_row_order row_order ON row_order.edge_id = child_edge.id AND row_order.view_id = ?'); joinValues.unshift(viewId); }
     const rowGuard = correlatedPageReadGuard('candidate.id', context.userId);
     const parentGuard = accessGuard('page', parentId, context.userId, 'read', 'subpages');
     const select = [`candidate.id`, `candidate.title`, `${rank} AS rank_key`, ...projected].join(',');
@@ -227,7 +260,7 @@ export class PageViewQueryStore {
       ${joins.join('\n')} ${filters.joins.text}
       WHERE child_edge.parent_id = ? AND candidate.deleted_at IS NULL AND ${parentGuard.text} AND ${rowGuard.text} AND ${filters.where.text}`,
       values: [...options, ...joinValues, ...filters.joins.values, parentId, ...parentGuard.values, ...rowGuard.values, ...filters.where.values] }, groupColumnIds,
-      ...(selectColumn && { selectColumn }), ...(dateColumn && { dateColumn }) };
+      ...(selectColumn && { selectColumn }), ...(dateColumn && { dateColumn }), ...(checkboxColumn && { checkboxColumn }) };
   }
 
   private scopeCondition(base: BaseQuery, scope: PageViewQueryScope): QuerySqlFragment {
@@ -240,6 +273,11 @@ export class PageViewQueryStore {
       const from = scope.day ?? scope.from, to = scope.day ?? scope.to;
       return { text: 'date_start_ms <= ? AND date_end_ms >= ?', values: [dateBound(to, true), dateBound(from, false)] };
     }
+    if (scope.type === 'heatmap') {
+      if (!base.dateColumn || !base.checkboxColumn) throw new PageViewQueryError(400, 'Escolha colunas válidas para o Mapa de calor');
+      const from = scope.day ?? scope.from, to = scope.day ?? scope.to;
+      return { text: 'date_start_ms = date_end_ms AND date_start_ms >= ? AND date_start_ms <= ?', values: [dateBound(from, false), dateBound(to, true)] };
+    }
     if (scope.type === 'group') {
       if (scope.path.length !== base.groupColumnIds.length || scope.path.some((entry, index) => entry.columnId !== base.groupColumnIds[index])) throw new PageViewQueryError(400, 'Grupo incompatível com a consulta');
       return { text: scope.path.map((entry, index) => entry.value === null ? `group_${index} IS NULL` : `group_${index} = ?`).join(' AND ') || '1', values: scope.path.flatMap((entry) => entry.value === null ? [] : [entry.value]) };
@@ -247,7 +285,7 @@ export class PageViewQueryStore {
     return { text: '1', values: [] };
   }
   private cursorContext(context: QueryContext, scope: PageViewQueryScope): QueryCursorContext {
-    return { queryKey: context.queryKey, userId: context.userId, datasetRevision: context.page.dataset_revision, orderRevision: context.orderRevision, scopeKey: pageViewScopeKey(scope) };
+    return { queryKey: context.queryKey, userId: context.userId, orderRevision: context.orderRevision, scopeKey: pageViewScopeKey(scope) };
   }
   private datasetSql(selected: string): string {
     return `WITH selected AS (${selected}) SELECT selected.id, selected.title, selected.rank_key, selected.window_key,
@@ -289,7 +327,7 @@ export class PageViewQueryStore {
     // Only the IDs/ranks include a sentinel. Full cells belong exclusively to
     // the visible slice, and the aggregate restores order for backward paging.
     // Re-evaluate ACL, filters and scope in the hydration statement: membership
-    // changes need not increment dataset_revision between these two reads.
+    // changes can happen between these two reads, so membership is re-evaluated.
     const selected = `SELECT id,title,rank_key,? AS window_key FROM (${base.sql.text})
       WHERE id IN (${selectedPositions.map(() => '?').join(',')}) AND ${where.join(' AND ')}`;
     const rows = selectedPositions.length ? await this.execute<SqlRow>({ text: this.datasetSql(selected),
@@ -407,6 +445,85 @@ export class PageViewQueryStore {
     if (token.startsWith('boolean:')) return raw === 'true' ? '✓' : '✕';
     return raw || 'Sem valor';
   }
+
+  private async enrichProjection(projection: PageViewQueryProjection, context: QueryContext): Promise<PageViewQueryProjection> {
+    const rows = [...new Map(projection.windows.flatMap((window) => window.rows).map((row) => [row.page_id, row] as const)).values()];
+    if (!rows.length) return projection;
+
+    const relationColumns = context.columns.filter((column) => column.type === 'relation');
+    const targetIds: string[] = [];
+    const decoded = new Map<string, string[]>();
+    for (const row of rows) {
+      for (const column of relationColumns) {
+        const cell = row.page_columns[column.id];
+        if (!cell?.row_data) continue;
+        try {
+          const value = (JSON.parse(cell.row_data) as { value?: unknown }).value;
+          const ids = Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+          decoded.set(`${row.page_id}:${column.id}`, ids);
+          targetIds.push(...ids);
+        } catch {
+          decoded.set(`${row.page_id}:${column.id}`, []);
+        }
+      }
+    }
+    const relationTargets = await this.relations.resolveVisibleTargets(targetIds, context.userId);
+    for (const row of rows) {
+      for (const column of relationColumns) {
+        const cell = row.page_columns[column.id];
+        if (!cell) continue;
+        const visible = (decoded.get(`${row.page_id}:${column.id}`) ?? []).filter((id) => relationTargets[id]);
+        cell.row_data = JSON.stringify({ value: visible });
+      }
+    }
+
+    for (const column of context.columns.filter((candidate) => candidate.type === 'rollup' && candidate.data?.rollupResult)) {
+      const values = await this.relations.resolveRollupValues({ data: column.data as Schema.PageColumnData }, rows.map((row) => row.page_id), context.userId);
+      for (const row of rows) {
+        const value = values[row.page_id];
+        row.page_columns[column.id] = {
+          row_id: null,
+          row_data: JSON.stringify({ value }),
+          column_name: column.name,
+          column_type: 'rollup',
+          column_data: JSON.stringify(column.data),
+        };
+      }
+    }
+    return {
+      ...projection,
+      ...(Object.keys(relationTargets).length && { relationTargets }),
+    };
+  }
+
+  private async heatmapCounts(base: BaseQuery, from: string, to: string): Promise<{ days: Record<string, { total: number; checked: number }>; ignoredRanges: number }> {
+    const start = utcDay(from), end = utcDay(to);
+    const dayCount = Math.floor((end - start) / 86_400_000) + 1;
+    if (!Number.isFinite(dayCount) || dayCount < 1 || dayCount > 366) {
+      throw new PageViewQueryError(400, 'O Mapa de calor aceita períodos de até 366 dias');
+    }
+    const rows = await this.execute<SqlDay>({
+      text: `WITH RECURSIVE filtered AS (${base.sql.text}), days(day,day_ms) AS (
+          SELECT ?,? UNION ALL SELECT date(day,'+1 day'),day_ms+86400000 FROM days WHERE day < ?
+        )
+        SELECT days.day,COUNT(filtered.id) AS total,COALESCE(SUM(filtered.heatmap_checked),0) AS checked
+        FROM days LEFT JOIN filtered ON filtered.date_start_ms=filtered.date_end_ms
+          AND filtered.date_start_ms>=days.day_ms AND filtered.date_start_ms<=days.day_ms+86399999
+        GROUP BY days.day ORDER BY days.day`,
+      values: [...base.sql.values, from, start, to],
+    });
+    const [ignored] = await this.execute<{ total: number }>({
+      text: `WITH filtered AS (${base.sql.text}) SELECT COUNT(*) AS total FROM filtered
+        WHERE date_start_ms IS NOT NULL AND date_end_ms IS NOT NULL AND date_start_ms<>date_end_ms
+          AND date_start_ms<=? AND date_end_ms>=?`,
+      values: [...base.sql.values, end + 86_400_000 - 1, start],
+    });
+    return {
+      days: Object.fromEntries(rows.map((row) => [row.day, { total: row.total, checked: row.checked ?? 0 }])),
+      ignoredRanges: ignored?.total ?? 0,
+    };
+  }
+
   private async calendarCounts(base: BaseQuery, from: string, to: string): Promise<Record<string, number>> {
     const rows = await this.execute<SqlDay>({ text: `WITH RECURSIVE filtered AS (${base.sql.text}), days(day,day_ms) AS (SELECT ?,? UNION ALL SELECT date(day,'+1 day'),day_ms+86400000 FROM days WHERE day < ?)
       SELECT days.day,COUNT(filtered.id) AS total FROM days LEFT JOIN filtered ON filtered.date_start_ms <= days.day_ms+86399999 AND filtered.date_end_ms >= days.day_ms GROUP BY days.day ORDER BY days.day`,

@@ -6,6 +6,9 @@ import {isActivePageView, isJsonRecord, isUlid} from '@/services/pages/views/pag
 export const PAGE_ROW_ORDER_VERSION = 2;
 export const ROW_ORDER_BACKFILL_BATCH = 500;
 export interface PageViewOrderedRow {row_id: string; rank: string}
+/** Identity belongs to the edge; row/parent aliases exist only in read queries. */
+export const PAGE_VIEW_ORDER_SQL = `SELECT position.*, edge.parent_id, edge.child_id AS row_id
+  FROM page_view_row_order position JOIN page_edges edge ON edge.id=position.edge_id`;
 const locks = new Map<string, Promise<unknown>>();
 
 /** Serialize local order operations; SQL guards still protect the commit. */
@@ -33,9 +36,10 @@ export const checkedOrderWrite = (statement: RqliteStatement): RqliteStatement[]
   ["INSERT INTO pages (id, owner_id) SELECT '!', NULL WHERE changes() = 0"]];
 
 export function insertRowRankStatement(parentId: string, viewId: string, rowId: string, rank: string): RqliteStatement {
-  return [`INSERT INTO page_view_row_order (id, parent_id, view_id, row_id, rank)
-    VALUES (?, ?, ?, ?, ?) ON CONFLICT(parent_id, view_id, row_id) DO UPDATE SET rank = excluded.rank`,
-  ulid(), parentId, viewId, rowId, rank];
+  return [`INSERT INTO page_view_row_order (id, view_id, edge_id, rank)
+    SELECT ?, ?, id, ? FROM page_edges WHERE parent_id=? AND child_id=?
+    ON CONFLICT(edge_id, view_id) DO UPDATE SET rank = excluded.rank`,
+  ulid(), viewId, rank, parentId, rowId];
 }
 
 export function incrementOrderRevisionStatement(parentId: string, viewId: string, expectedRevision: number): RqliteStatement {
@@ -103,14 +107,13 @@ async function ensureUnlocked(parentId: string, viewId: string, importAttempt=0)
   for (;;) {
     const [missing] = await rqlite<{row_id: string}>([[
       `SELECT edge.child_id AS row_id FROM page_edges edge
-       LEFT JOIN page_view_row_order position ON position.parent_id = edge.parent_id
-        AND position.view_id = ? AND position.row_id = edge.child_id
+       LEFT JOIN page_view_row_order position ON position.edge_id = edge.id AND position.view_id = ?
        WHERE edge.parent_id = ? AND position.id IS NULL ORDER BY edge.child_id LIMIT ?`,
       viewId, parentId, ROW_ORDER_BACKFILL_BATCH,
     ]], 'query');
     if (!missing?.length) break;
     const [last] = await rqlite<{rank: string}>([[
-      `SELECT rank FROM page_view_row_order WHERE parent_id = ? AND view_id = ?
+      `SELECT rank FROM (${PAGE_VIEW_ORDER_SQL}) WHERE parent_id = ? AND view_id = ?
        ORDER BY rank COLLATE BINARY DESC, row_id DESC LIMIT 1`, parentId, viewId,
     ]], 'query');
     const keys = generateNKeysBetween(last?.[0]?.rank ?? null, null, missing.length);
@@ -140,7 +143,7 @@ export async function appendCreatedRowOrderStatements(parentId: string, rowId: s
     if (!isUlid(viewId) || !isActivePageView(view)) continue;
     const revision = await ensurePageViewRowOrder(parentId, viewId, true);
     const [tail] = await rqlite<{rank: string}>([[
-      'SELECT rank FROM page_view_row_order WHERE parent_id = ? AND view_id = ? ORDER BY rank COLLATE BINARY DESC, row_id DESC LIMIT 1',
+      `SELECT rank FROM (${PAGE_VIEW_ORDER_SQL}) WHERE parent_id = ? AND view_id = ? ORDER BY rank COLLATE BINARY DESC, row_id DESC LIMIT 1`,
       parentId, viewId,
     ]], 'query');
     statements.push(incrementOrderRevisionStatement(parentId, viewId, revision),
@@ -152,7 +155,7 @@ export async function appendCreatedRowOrderStatements(parentId: string, rowId: s
 export async function newViewRowOrderStatements(parentId: string, viewId: string, sourceViewId?: string): Promise<RqliteStatement[]> {
   if (sourceViewId) await ensurePageViewRowOrder(parentId, sourceViewId, true);
   const [rows] = await rqlite<PageViewOrderedRow>([[sourceViewId
-    ? 'SELECT row_id, rank FROM page_view_row_order WHERE parent_id = ? AND view_id = ? ORDER BY rank COLLATE BINARY, row_id'
+    ? `SELECT row_id, rank FROM (${PAGE_VIEW_ORDER_SQL}) WHERE parent_id = ? AND view_id = ? ORDER BY rank COLLATE BINARY, row_id`
     : 'SELECT child_id AS row_id FROM page_edges WHERE parent_id = ? ORDER BY child_id',
   parentId, ...(sourceViewId ? [sourceViewId] : [])]], 'query');
   const statements: RqliteStatement[] = [];
@@ -168,7 +171,7 @@ export async function newViewRowOrderStatements(parentId: string, viewId: string
 
 export async function compactViewRowRanks(parentId: string, viewId: string, revision: number): Promise<void> {
   const [rows] = await rqlite<PageViewOrderedRow>([[
-    'SELECT row_id, rank FROM page_view_row_order WHERE parent_id = ? AND view_id = ? ORDER BY rank COLLATE BINARY, row_id',
+    `SELECT row_id, rank FROM (${PAGE_VIEW_ORDER_SQL}) WHERE parent_id = ? AND view_id = ? ORDER BY rank COLLATE BINARY, row_id`,
     parentId, viewId,
   ]], 'query');
   const keys = generateNKeysBetween(null, null, rows?.length ?? 0);

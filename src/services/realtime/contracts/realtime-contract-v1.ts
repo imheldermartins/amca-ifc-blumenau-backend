@@ -41,7 +41,7 @@ export interface ColumnResizingPayload {
 
 export type ResizeColumnCommand = Omit<ColumnResizingPayload, "originUserId">;
 
-export type CellColumnType = "text" | "numeric" | "select" | "date" | "checkbox" | "flow";
+export type CellColumnType = "text" | "numeric" | "select" | "date" | "checkbox" | "flow" | "relation" | "rollup";
 
 export interface CellUpdatedPayload extends RealtimePayload {
   rowId: string;
@@ -68,6 +68,10 @@ export interface PageUpdatedPayload extends RealtimePayload {
 }
 
 export type DatabaseUpdatedPayload = RealtimePayload;
+
+/** Invalida projeções calculadas sem transportar ids ou valores de Relação. */
+export interface ProjectionInvalidatedPayload extends RealtimePayload {
+}
 
 export interface ColumnUpdatedPayload extends RealtimePayload {
   columnId: string;
@@ -104,6 +108,7 @@ export interface RealtimeServerToClientEvents {
   "row-order-updated": (payload: RowOrderUpdatedPayload) => void;
   "page-updated": (payload: PageUpdatedPayload) => void;
   "database-updated": (payload: DatabaseUpdatedPayload) => void;
+  "projection-invalidated": (payload: ProjectionInvalidatedPayload) => void;
   "column-updated": (payload: ColumnUpdatedPayload) => void;
   "column-resizing": (payload: ColumnResizingPayload) => void;
   "view-updated": (payload: ViewUpdatedPayload) => void;
@@ -151,6 +156,7 @@ export const REALTIME_SERVER_TO_CLIENT_EVENT_NAMES = [
   "row-order-updated",
   "page-updated",
   "database-updated",
+  "projection-invalidated",
   "column-updated",
   "column-resizing",
   "view-updated",
