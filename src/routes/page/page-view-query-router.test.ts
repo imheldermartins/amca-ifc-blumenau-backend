@@ -18,7 +18,7 @@ vi.mock('@/services/auth/page-access-middleware', () => ({ requirePageAccess: ()
 describe('paginated view HTTP routes', () => {
   let server: Server, base: string;
   const metadata = vi.fn(async () => ({ page: { id: ROOT, data: { [VIEW]: { view: 'table' } } }, columns: [] }));
-  const query = vi.fn(async () => ({ version: 1, kind: 'table', pageId: ROOT, viewId: VIEW, orderRevision: 0, datasetRevision: 0, total: 0, queryKey: 'test', windows: [] }));
+  const query = vi.fn(async () => ({ version: 1, kind: 'table', pageId: ROOT, viewId: VIEW, orderRevision: 0, total: 0, queryKey: 'test', windows: [] }));
   beforeAll(async () => {
     const application = express(); application.use(express.json());
     application.use('/api/v1/pages', new PageViewQueryRouter(new PageViewQueryController({ metadata, query } as unknown as PageViewQueryStore)).build());

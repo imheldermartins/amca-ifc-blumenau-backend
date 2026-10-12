@@ -10,7 +10,7 @@ function fail(): never { throw new PageViewQueryError(400, 'Consulta de visualiz
 
 export function parsePageViewQueryRequest(raw: unknown): PageViewQueryRequest {
   if (!record(raw) || !keys(raw, ['view', 'filters', 'scope', 'cursor', 'groupCursor', 'direction', 'limit', 'visibleGroupKeys', 'anchorId', 'metadataOnly'])) fail();
-  if (raw.view !== undefined && !['table', 'grid', 'board', 'calendar', 'timeline', 'graph', 'form'].includes(String(raw.view))) fail();
+  if (raw.view !== undefined && !['table', 'grid', 'board', 'calendar', 'timeline', 'graph', 'form', 'heatmap'].includes(String(raw.view))) fail();
   if (raw.metadataOnly !== undefined && typeof raw.metadataOnly !== 'boolean') fail();
   if (raw.limit !== undefined && (typeof raw.limit !== 'number' || !Number.isInteger(raw.limit) || raw.limit < 1 || raw.limit > 50)) fail();
   if (raw.direction !== undefined && !['next', 'previous'].includes(String(raw.direction))) fail();
@@ -49,6 +49,11 @@ export function parsePageViewQueryRequest(raw: unknown): PageViewQueryRequest {
           || value.to < value.from || Date.parse(value.to) - Date.parse(value.from) > 366 * 86_400_000
           || value.day !== undefined && (!date(value.day) || value.day < value.from || value.day > value.to)) fail();
         scope = { type: 'calendar', from: value.from, to: value.to, ...(value.day !== undefined && { day: value.day as string }) }; break;
+      case 'heatmap':
+        if (typeof value.from !== 'string' || typeof value.to !== 'string'
+          || !/^\d{4}-\d{2}-\d{2}$/.test(value.from) || !/^\d{4}-\d{2}-\d{2}$/.test(value.to)
+          || value.from > value.to || (value.day !== undefined && (typeof value.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.day)))) fail();
+        scope = { type: 'heatmap', from: value.from, to: value.to, ...(value.day !== undefined && { day: value.day as string }) }; break;
       case 'graph':
         if (!keys(value, ['type', 'parentId']) || !isUlid(value.parentId)) fail(); scope = { type: 'graph', parentId: value.parentId }; break;
       default: fail();

@@ -529,8 +529,8 @@ iniciais; filhos de um ramo aberto mantêm a semântica anterior e mostram todas
 as filhas autorizadas daquele parent, com paginação independente.
 
 `metadataOnly: true` atualiza grupos e contadores sem hidratar linhas. Cursores
-são assinados e vinculados ao usuário, consulta, escopo e revisões de dados e
-ordem. Uma mudança invalida o token com `409 { message, code: "STALE_CURSOR" }`;
+são assinados e vinculados ao usuário, consulta, escopo e revisão de
+ordem. Alterar a revisão de ordem invalida o token com `409 { message, code: "STALE_CURSOR" }`;
 `anchorId` permite reconciliar a faixa já carregada. Movimentos usam
 `POST /pages/:id/views/:viewId/rows/:rowId/move`, âncoras e `expectedOrderRevision`,
 preservando linhas não carregadas e confirmando select/ordem no mesmo commit.
@@ -538,8 +538,10 @@ preservando linhas não carregadas e confirmando select/ordem no mesmo commit.
 O frontend aplica primeiro a mudança no estado React: célula, coluna do Board,
 posição relativa e contadores já carregados. Drag, edição de célula e Flow usam
 a mesma camada de mutação local. Enquanto a escrita está pendente, respostas
-de consultas anteriores não substituem esse estado. A confirmação HTTP libera
-a reconciliação em background; falha restaura somente as células/posição da
+de consultas anteriores não substituem esse estado. Uma confirmação de célula
+sem dependências de filtro/grupo/período não dispara outra listagem. Movimentos
+e alterações nessas dependências reconciliam em background, incluindo valores
+que o Flow só consegue resolver no servidor; falha restaura somente as células/posição da
 operação ainda atual, preservando outras edições e cards carregados.
 `POST /pages/:id/column/:column_id/flow/execute` devolve o resumo e
 `updatedValues: [{ columnId, columnType, value }]`, permitindo confirmar as
@@ -547,23 +549,39 @@ alterações mesmo sem socket. A prévia local do Flow usa apenas valores
 resolvíveis no cliente; macros que dependem de contexto do servidor aguardam
 essa confirmação. A API continua responsável por executar e autorizar o Flow.
 
-A migration
-`20261004220750243_5ed96b46_add_paginated_database_projections_and_row_order`
-acrescenta projeções tipadas/indexadas, `dataset_revision` e
-`page_view_row_order`. Depois de aplicar as migrations no ambiente desejado,
-execute `npm run database:backfill` para diagnóstico e
-`npm run database:backfill -- --apply` para importar valores e ordens legadas no
-ambiente de desenvolvimento. Em produção, execute o mesmo script com
-`npx tsx --env-file=.env.production scripts/backfill-database-views.ts --apply`.
-Confirme que todos os contadores `remaining` são zero antes de ativar o frontend
-paginado. O backfill é idempotente e condicional aos valores canônicos; os
-novos writers mantêm derivados e posições no commit. Endpoints de consulta
-nunca aplicam migration, importação ou reparo: uma preparação incompleta retorna
-`409 { message, code: "PAGINATION_NOT_READY" }`.
+O envelope em `page_columns_values.data` é a única fonte dos valores. Filtros
+usam `json_extract`/`json_type` em leitura; títulos usam `pages.title` com a
+simplificação compartilhada, sem `title_search`, `dataset_revision` ou
+`projection_version`. Relação guarda `{ "value": ["ULID"] }`, expande o array
+em SQL e consulta `pages` com autorização, sem `page_relation_targets`.
 
-As rooms e fatos realtime pós-commit permanecem os mesmos. O frontend atualiza
-conteúdo já carregado, reconcilia metadados/faixas afetadas em background e
-revalida depois do ACK de reconexão. Linhas fora da faixa não são inventadas nem
-baixadas por evento. A cache da view mantém até 250 páginas, com exceção das
-linhas temporariamente protegidas por edição/arraste; a virtualização limita
-também os componentes montados.
+A migration `20261012152810732_f6fcf9c3_json_values_edge_view_order_and_page_blocks`
+cria `page_view_row_order(edge_id, view_id, rank)`: uma aresta possui N posições,
+no máximo uma por view, com FK e exclusão em cascata. O documento JSON inteiro
+do editor passa de `page_documents` para `page_blocks`; a API `/document` é
+mantida. As migrations das projeções tipadas foram retiradas com reset explícito
+autorizado da base LOCAL. Este histórico não deve ser aplicado como upgrade em
+outro banco que já registrou as migrations removidas.
+
+`npm run database:backfill` diagnostica somente ordens legadas;
+`npm run database:backfill -- --apply` importa essas ordens no desenvolvimento.
+Confirme `remainingViews: 0` antes de ativar a paginação sobre dados legados.
+O script não reconstrói nem escreve campos derivados de células. Os writers
+mantêm valores canônicos e posições no commit. Endpoints de consulta
+nunca aplicam migration, importação ou reparo: uma ordem de view incompleta
+retorna `409 { message, code: "PAGINATION_NOT_READY" }`.
+
+As rooms e fatos realtime pós-commit permanecem os mesmos. O frontend aplica
+mudanças locais antes de publicar React state e mescla o eco do socket sem
+empobrecer células já confirmadas. Criar uma coluna vazia só adiciona o cabeçalho;
+criar uma página adiciona uma única linha, sem reler colunas e toda a base.
+Atualizações necessárias via socket ocorrem em background, sem desmontar linhas
+nem mostrar loading que altera a altura. Reconexão continua revalidando depois
+do ACK. Um nascimento confirmado pode ser retido fora da faixa carregada; um
+update de linha desconhecida não baixa nem inventa outra página.
+
+As janelas paginadas mantêm até 250 páginas, além de proteção por edição/arraste
+e uma camada separada de nascimentos retidos até sua incorporação autoritativa.
+Essa camada ainda não tem um limite próprio; 250 não é o limite absoluto da
+memória da view. A virtualização limita os componentes montados. A análise de
+custos e limites está em [database-query-plan-report.md](database-query-plan-report.md).

@@ -58,9 +58,11 @@ export namespace Input {
     type?: Schema.ColumnType;
     options?: { id?: string; value: string; color?: Schema.ColorOptions }[];
     format?: Schema.NumberFormat;
-    currency?: Schema.CurrencyCode;
-    mask?: Schema.TextMask;
-    parent_id?: Schema.PageColumn["parent_id"];
+      currency?: Schema.CurrencyCode;
+      mask?: Schema.TextMask;
+      relation?: Schema.RelationConfig;
+      rollup?: Schema.RollupConfig;
+      parent_id?: Schema.PageColumn["parent_id"];
   };
 
   // No UPDATE, cada config aceita `null` = LIMPAR aquela chave (ex.: tirar a
@@ -71,8 +73,10 @@ export namespace Input {
     type?: Schema.ColumnType;
     options?: { id?: string; value: string; color?: Schema.ColorOptions }[] | null;
     format?: Schema.NumberFormat | null;
-    currency?: Schema.CurrencyCode | null;
-    mask?: Schema.TextMask | null;
+      currency?: Schema.CurrencyCode | null;
+      mask?: Schema.TextMask | null;
+      relation?: Schema.RelationConfig | null;
+      rollup?: Schema.RollupConfig | null;
   };
 
   // --- Page Columns Values (valor "nu", dinâmico por tipo; sem ?type) ---

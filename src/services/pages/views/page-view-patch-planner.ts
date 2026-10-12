@@ -7,8 +7,10 @@ import {
   isUlid,
   isSupportedViewKind,
   assertFormFlowColumn,
+  assertHeatmapColumns,
   parseColumnWidths,
   parsePageViewFormConfig,
+  parsePageViewHeatmapConfig,
   parsePageViewTitle,
   parseStringList,
   toColumnKeyEntities,
@@ -61,6 +63,15 @@ export class PageViewPatchPlanner {
       if (raw.form !== undefined) set("form", form);
     } else if (raw.form !== undefined) {
       throw new ViewFiltersValidationError("Configuração de formulário incompatível com a view");
+    }
+    const requestedHeatmap = raw.heatmap === undefined ? current.heatmap : parsePageViewHeatmapConfig(raw.heatmap);
+    if (targetKind === 'heatmap') {
+      if (requestedHeatmap === undefined) throw new ViewFiltersValidationError('Configuração do Mapa de calor obrigatória');
+      const heatmap = parsePageViewHeatmapConfig(requestedHeatmap);
+      assertHeatmapColumns(heatmap, columns);
+      if (raw.heatmap !== undefined) set('heatmap', heatmap);
+    } else if (raw.heatmap !== undefined) {
+      throw new ViewFiltersValidationError('Configuração de Mapa de calor incompatível com a view');
     }
 
     if (raw.name !== undefined) {

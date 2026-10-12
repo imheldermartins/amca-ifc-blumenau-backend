@@ -18,6 +18,9 @@ const supportsOperator = (
     case 'date':
     case 'checkbox':
       return operator === 'equals' || operator === 'not_equals';
+    case 'relation':
+    case 'rollup':
+      return false;
   }
 };
 
@@ -52,6 +55,10 @@ const validateComparisonValue = (
       } catch {
         throw new Error('Valor de data da condição inválido');
       }
+      return;
+    case 'relation':
+    case 'rollup':
+      throw new Error('Relação e Resumo não são aceitos em condições de Flow');
   }
 };
 

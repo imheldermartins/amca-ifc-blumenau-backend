@@ -16,6 +16,8 @@ const COLUMN_TYPES = new Set<Schema.ColumnType>([
   "date",
   "checkbox",
   "flow",
+  "relation",
+  "rollup",
 ]);
 const NUMBER_FORMATS = new Set<Schema.NumberFormat>(["percentage", "currency"]);
 const CURRENCY_CODES = new Set<Schema.CurrencyCode>(["BRL"]);
@@ -52,6 +54,8 @@ export class PageColumnConfigurationService {
     }
     if (existing?.flow) data.flow = existing.flow;
     if (existing?.flowButton) data.flowButton = existing.flowButton;
+    if (this.isRelationConfig(existing?.relation)) data.relation = existing.relation;
+    if (this.isRollupConfig(existing?.rollup)) data.rollup = existing.rollup;
     if (input.flowButton !== undefined) {
       const button = input.flowButton as Record<string, unknown> | null;
       if (!button || typeof button !== 'object' || Array.isArray(button)
@@ -112,6 +116,18 @@ export class PageColumnConfigurationService {
       data.mask = input.mask;
     }
 
+    if (input.relation === null) delete data.relation;
+    else if (input.relation !== undefined) {
+      if (!this.isRelationConfig(input.relation)) throw new Error("Configuração de Relação inválida");
+      data.relation = input.relation;
+    }
+
+    if (input.rollup === null) delete data.rollup;
+    else if (input.rollup !== undefined) {
+      if (!this.isRollupConfig(input.rollup)) throw new Error("Configuração de Resumo inválida");
+      data.rollup = input.rollup;
+    }
+
     return data;
   }
 
@@ -125,6 +141,30 @@ export class PageColumnConfigurationService {
 
   private isTextMask(value: unknown): value is Schema.TextMask {
     return typeof value === "string" && TEXT_MASKS.has(value as Schema.TextMask);
+  }
+
+  private isRelationConfig(value: unknown): value is Schema.RelationConfig {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const config = value as Record<string, unknown>;
+    return Object.keys(config).every((key) => ["version", "targetDatabaseId"].includes(key))
+      && config.version === 1
+      && typeof config.targetDatabaseId === "string"
+      && /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(config.targetDatabaseId);
+  }
+
+  private isRollupConfig(value: unknown): value is Schema.RollupConfig {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const config = value as Record<string, unknown>;
+    const operation = config.operation;
+    const targetRequired = operation !== "count";
+    return Object.keys(config).every((key) => ["version", "relationColumnId", "operation", "targetColumnId"].includes(key))
+      && config.version === 1
+      && typeof config.relationColumnId === "string"
+      && /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(config.relationColumnId)
+      && ["count", "sum", "min", "max"].includes(String(operation))
+      && (targetRequired
+        ? typeof config.targetColumnId === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(config.targetColumnId)
+        : config.targetColumnId === undefined);
   }
 }
 

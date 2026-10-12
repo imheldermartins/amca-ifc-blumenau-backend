@@ -6,6 +6,7 @@ import { ApplicationRouter } from "@/routes/application-router";
 import middleware from "@/services/auth/middleware";
 import { requireWorkspaceAbility } from "@/services/auth/workspace-access-middleware";
 import { StatusCode } from "@/services/http/status-code";
+import pageRelationRepository, { PageRelationError } from '@/repositories/page-relation-repository';
 
 export class WorkspaceRouter extends ApplicationRouter {
   public constructor() {
@@ -15,6 +16,7 @@ export class WorkspaceRouter extends ApplicationRouter {
   protected registerRoutes(): void {
     this.router.get("/", this.list.bind(this));
     this.router.post("/", this.create.bind(this));
+    this.router.get("/:id/relation-databases", requireWorkspaceAbility("read", "Workspace"), this.listRelationDatabases.bind(this));
     this.router.get("/:id/page_root", requireWorkspaceAbility("read", "WorkspaceRoot"), this.getPageRoot.bind(this));
     this.router.get("/:id/members", requireWorkspaceAbility("read", "WorkspaceMembers"), this.listMembers.bind(this));
     this.router.put("/:id/members/:userId/role", requireWorkspaceAbility("manage", "WorkspaceMembers"), this.updateMemberRole.bind(this));
@@ -40,6 +42,23 @@ export class WorkspaceRouter extends ApplicationRouter {
     return root
       ? res.status(StatusCode.OK).json(root)
       : res.status(StatusCode.NOT_FOUND).json({ message: '"Workspace" não encontrado' });
+  }
+
+  private async listRelationDatabases(req: Request, res: Response): Promise<Response> {
+    try {
+      const result = await pageRelationRepository.listDatabases(
+        req.params.id as string,
+        req.userId as string,
+        typeof req.query.search === 'string' ? req.query.search : undefined,
+        typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+        typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined,
+      );
+      return res.status(StatusCode.OK).json(result);
+    } catch (error) {
+      if (error instanceof PageRelationError) return res.status(error.status).json({ message: error.message });
+      console.error(error);
+      return res.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: 'Erro no servidor' });
+    }
   }
 
   private async listMembers(req: Request, res: Response): Promise<Response> {

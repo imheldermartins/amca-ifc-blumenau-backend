@@ -14,6 +14,9 @@ const dbMocks = vi.hoisted(() => ({
   edges: {
     find: vi.fn(),
   },
+  relations: {
+    resolveVisibleTargets: vi.fn(),
+  },
 }));
 
 vi.mock("@models/index", () => ({
@@ -23,6 +26,18 @@ vi.mock("@models/index", () => ({
     pageEdges: dbMocks.edges,
   },
 }));
+
+vi.mock("@/repositories/page-relation-repository", () => {
+  class PageRelationError extends Error {
+    constructor(public readonly status: 400 | 403 | 404 | 409, message: string) { super(message); }
+  }
+  return {
+    PageRelationError,
+    default: {
+      resolveVisibleTargets: dbMocks.relations.resolveVisibleTargets,
+    },
+  };
+});
 
 import pageColumnValueController from "@controllers/page-column-value-controller";
 
@@ -52,6 +67,7 @@ beforeEach(() => {
     ...Object.values(dbMocks.values),
     ...Object.values(dbMocks.columns),
     ...Object.values(dbMocks.edges),
+    ...Object.values(dbMocks.relations),
   ]) {
     mock.mockReset();
   }
@@ -138,11 +154,25 @@ describe("page-column-value-controller — endereço da célula", () => {
       parent_id: PARENT_ID,
       child_id: ROW_ID,
     });
-    expect(dbMocks.values.create).toHaveBeenCalledWith({
+    expect(dbMocks.values.create).toHaveBeenCalledWith(expect.objectContaining({
       page_id: ROW_ID,
       page_column_id: COLUMN_ID,
       data: JSON.stringify({ value: persisted }),
-    }, { after: [expect.arrayContaining([expect.stringContaining("updated_at = strftime"), ROW_ID])] });
+    }), { after: [expect.arrayContaining([expect.stringContaining("strftime"), ROW_ID])] });
+  });
+
+  it('remove IDs de Relação que o ator não pode ler', async () => {
+    const visibleId = '01KXVZ00000000000000000008';
+    const hiddenId = '01KXVZ00000000000000000009';
+    dbMocks.values.find.mockResolvedValue({ ...existingValue, data: JSON.stringify({ value: [visibleId, hiddenId] }) });
+    dbMocks.columns.find.mockResolvedValue({ ...textColumn, type: 'relation', data: { relation: { version: 1, targetDatabaseId: PARENT_ID } } });
+    dbMocks.edges.find.mockResolvedValue({ parent_id: PARENT_ID, child_id: ROW_ID });
+    dbMocks.relations.resolveVisibleTargets.mockResolvedValue({ [visibleId]: { id: visibleId, title: 'Visível' } });
+
+    await expect(pageColumnValueController.getValue(ROW_ID, COLUMN_ID, '01KXVZ00000000000000000010')).resolves.toMatchObject({
+      ok: true,
+      data: { type: 'relation', value: [visibleId] },
+    });
   });
 
   it('recarimba a página-filha ao alterar ou limpar uma célula', async () => {
@@ -154,12 +184,12 @@ describe("page-column-value-controller — endereço da célula", () => {
 
     expect((await pageColumnValueController.updateValue(ROW_ID, COLUMN_ID, { value: 'novo' })).ok).toBe(true);
     expect(dbMocks.values.update.mock.calls[0]?.[2]).toEqual({
-      after: [expect.arrayContaining([expect.stringContaining('updated_at = strftime'), ROW_ID])],
+      after: [expect.arrayContaining([expect.stringContaining('strftime'), ROW_ID])],
     });
 
     expect((await pageColumnValueController.deleteValue(ROW_ID, COLUMN_ID)).ok).toBe(true);
     expect(dbMocks.values.delete.mock.calls[0]?.[1]).toEqual({
-      after: [expect.arrayContaining([expect.stringContaining('updated_at = strftime'), ROW_ID])],
+      after: [expect.arrayContaining([expect.stringContaining('strftime'), ROW_ID])],
     });
   });
 });

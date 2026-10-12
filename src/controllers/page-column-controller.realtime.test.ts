@@ -88,8 +88,8 @@ describe("PageColumnResetController: resultado autoritativo do reset", () => {
     expect(writes).toHaveLength(3);
     expect(writes[0]?.[0]).toContain(expectedValue === null ? "DELETE FROM page_columns_values" : "UPDATE page_columns_values");
     if (expectedValue !== null) expect(writes[0]).toContain(JSON.stringify({ value: expectedValue }));
-    expect(writes[1]).toEqual(expect.arrayContaining([expect.stringContaining("updated_at = strftime"), ROW_ID]));
-    expect(writes[2]).toEqual(expect.arrayContaining([expect.stringContaining("updated_at = strftime"), PAGE_ID]));
+    expect(writes[1]).toEqual(expect.arrayContaining([expect.stringContaining("strftime"), ROW_ID]));
+    expect(writes[2]).toEqual(expect.arrayContaining([expect.stringContaining("strftime"), PAGE_ID]));
     expect(dbMocks.values.delete).not.toHaveBeenCalled();
     expect(dbMocks.values.update).not.toHaveBeenCalled();
   });

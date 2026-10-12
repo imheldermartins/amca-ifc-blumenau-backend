@@ -130,6 +130,17 @@ describe('FormService', () => {
     expect(definition.fields.every((field) => field.readOnly)).toBe(true);
     expect(JSON.stringify(definition)).not.toContain(USER);
   });
+  it('mantém Relação e Resumo fora do formulário v1', async () => {
+    const { instance, data } = service();
+    data.columns.push(
+      { id: '01KXVZ00000000000000000008', parent_id: PAGE, name: 'Relação', type: 'relation', data: { publicKey: { key: 'relacao', aliases: [] }, relation: { version: 1, targetDatabaseId: PAGE } }, deleted_at: null, created_at: data.now, updated_at: data.now },
+      { id: '01KXVZ00000000000000000009', parent_id: PAGE, name: 'Resumo', type: 'rollup', data: { publicKey: { key: 'resumo', aliases: [] }, rollup: { version: 1, relationColumnId: '01KXVZ00000000000000000008', operation: 'count' } }, deleted_at: null, created_at: data.now, updated_at: data.now },
+    );
+    const definition = await instance.publicDefinition(PUBLICATION, data.fillKey);
+    expect(definition.fields.map((field) => field.key)).toEqual(['email', 'nome']);
+    await expect(instance.submitPublic(PUBLICATION, data.fillKey, 'relation-field', { fields: [{ key: 'relacao', value: [PAGE] }] }))
+      .rejects.toMatchObject({ reason: 'validation' });
+  });
   it('rejects public answers to locked fields even when the publisher is allowed', async () => {
     const { instance, data, locks, forms } = service();
     locks.list.mockResolvedValue({ title: { userIds: [USER] } });

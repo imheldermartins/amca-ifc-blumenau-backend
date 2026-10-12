@@ -86,9 +86,11 @@ export class PageColumnRouter extends ApplicationRouter {
       ...(body.currency !== undefined && { currency: body.currency }),
       ...(body.mask !== undefined && { mask: body.mask }),
       ...(body.flowButton !== undefined && { flowButton: body.flowButton }),
+      ...(body.relation !== undefined && { relation: body.relation }),
+      ...(body.rollup !== undefined && { rollup: body.rollup }),
       ...(type !== undefined ? { type } : body.type !== undefined ? { type: body.type } : {}),
       parent_id: pageId,
-    });
+    }, authenticatedUserId(request));
     if (!result.ok) return sendPageFailure(response, result);
 
     await this.realtime.columnCreated({
@@ -128,9 +130,11 @@ export class PageColumnRouter extends ApplicationRouter {
       ...(body.currency !== undefined && { currency: body.currency }),
       ...(body.mask !== undefined && { mask: body.mask }),
       ...(body.flowButton !== undefined && { flowButton: body.flowButton }),
+      ...(body.relation !== undefined && { relation: body.relation }),
+      ...(body.rollup !== undefined && { rollup: body.rollup }),
       ...(type !== undefined ? { type } : body.type !== undefined ? { type: body.type } : {}),
     };
-    const result = await this.columns.updateColumn(this.lookup(request), input);
+    const result = await this.columns.updateColumn(this.lookup(request), input, authenticatedUserId(request));
     if (!result.ok) return sendPageFailure(response, result);
 
     const pageId = routeParam(request, "id");
@@ -183,7 +187,7 @@ export class PageColumnRouter extends ApplicationRouter {
   private typeFromQuery(raw: unknown): Schema.ColumnType | undefined | null {
     if (typeof raw !== "string") return undefined;
     if (raw === "number") return "numeric";
-    if (raw === "text" || raw === "numeric" || raw === "select" || raw === "date" || raw === "checkbox" || raw === "flow") {
+    if (raw === "text" || raw === "numeric" || raw === "select" || raw === "date" || raw === "checkbox" || raw === "flow" || raw === "relation" || raw === "rollup") {
       return raw;
     }
     return null;

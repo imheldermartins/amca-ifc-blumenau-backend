@@ -19,6 +19,10 @@ import pageColumnConfigurationService, {
   type PageColumnConfigurationService,
 } from "@/services/pages/columns/page-column-configuration-service";
 import { pageUsesFlowColumn } from "@/services/pages/views/page-view-parsers";
+import pageRelationRepository, {
+  PageRelationError,
+  type PageRelationRepository,
+} from "@/repositories/page-relation-repository";
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : "Erro no servidor";
@@ -33,6 +37,7 @@ export class PageColumnController {
 
   public constructor(
     private readonly configuration: PageColumnConfigurationService = pageColumnConfigurationService,
+    private readonly relations: PageRelationRepository = pageRelationRepository,
   ) {}
 
   public async listColumns(
@@ -71,6 +76,7 @@ export class PageColumnController {
 
   public async createColumn(
     input: Input.CreatePageColumn,
+    actorUserId?: string,
   ): Promise<ServiceResult<Schema.PageColumn>> {
     const type = input?.type;
     if (!this.configuration.isColumnType(type)) {
@@ -102,6 +108,16 @@ export class PageColumnController {
 
       // Parte da base do tipo e mescla o que vier no payload (whitelist).
       data = this.configuration.merge(this.configuration.base(type), input);
+      if (type === "relation") {
+        if (!data.relation || !input.parent_id || !actorUserId) throw new Error("Configuração de Relação obrigatória");
+        await this.relations.validateRelationConfig(input.parent_id, data.relation, actorUserId);
+      }
+      if (type === "rollup") {
+        if (!data.rollup || !input.parent_id || !actorUserId) throw new Error("Configuração de Resumo obrigatória");
+        data.rollupResult = await this.relations.validateRollupConfig(input.parent_id, data.rollup, actorUserId);
+      }
+      // rollupResult é um DTO resolvido; nunca faz parte da persistência.
+      delete data.rollupResult;
       data.publicKey = reconcilePublicKeyMetadata(
         name,
         "coluna",
@@ -119,6 +135,9 @@ export class PageColumnController {
         ]),
       );
     } catch (error) {
+      if (error instanceof PageRelationError && error.status === 403) {
+        return { ok: false, reason: "forbidden", message: error.message };
+      }
       return { ok: false, reason: "validation", message: messageOf(error) };
     }
 
@@ -135,7 +154,10 @@ export class PageColumnController {
 
       if (!created) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
-      return { ok: true, data: created };
+      const [resolved] = actorUserId
+        ? await this.relations.resolveColumnMetadata([created], actorUserId)
+        : [created];
+      return { ok: true, data: resolved ?? created };
     } catch (error) {
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
@@ -147,6 +169,7 @@ export class PageColumnController {
   public async updateColumn(
     lookup: LookupValues<Schema.PageColumn>,
     input: Input.UpdatePageColumn,
+    actorUserId?: string,
   ): Promise<ServiceResult<Schema.PageColumn>> {
     let existing: Schema.PageColumn | null;
     try {
@@ -177,7 +200,9 @@ export class PageColumnController {
       input.options !== undefined ||
       input.format !== undefined ||
       input.currency !== undefined ||
-      input.mask !== undefined;
+      input.mask !== undefined ||
+      input.relation !== undefined ||
+      input.rollup !== undefined;
     let siblings: Schema.PageColumn[] = [];
     let parent: Schema.Page | null = null;
     try {
@@ -210,6 +235,19 @@ export class PageColumnController {
       const nextData = hasConfig
         ? this.configuration.merge(existing.data, input)
         : this.configuration.merge(existing.data, {});
+      if (existing.type === "relation" && effectiveType !== "relation") {
+        await this.relations.assertNoDependentRollups(existing.id);
+      }
+      if (effectiveType === "relation") {
+        if (!nextData.relation || !existing.parent_id || !actorUserId) throw new Error("Configuração de Relação obrigatória");
+        await this.relations.assertRelationCanChange(existing.id, nextData.relation.targetDatabaseId);
+        await this.relations.validateRelationConfig(existing.parent_id, nextData.relation, actorUserId);
+      }
+      if (effectiveType === "rollup") {
+        if (!nextData.rollup || !existing.parent_id || !actorUserId) throw new Error("Configuração de Resumo obrigatória");
+        nextData.rollupResult = await this.relations.validateRollupConfig(existing.parent_id, nextData.rollup, actorUserId);
+      }
+      delete nextData.rollupResult;
       const reserved = collectReservedPublicKeys(
         siblings
           .filter((column) => column.id !== existing.id)
@@ -235,6 +273,12 @@ export class PageColumnController {
       );
       if (JSON.stringify(nextData) !== JSON.stringify(existing.data)) payload.data = nextData;
     } catch (error) {
+      if (error instanceof PageRelationError && error.status === 409) {
+        return { ok: false, reason: "conflict", message: error.message };
+      }
+      if (error instanceof PageRelationError && error.status === 403) {
+        return { ok: false, reason: "forbidden", message: error.message };
+      }
       return { ok: false, reason: "validation", message: messageOf(error) };
     }
 
@@ -250,7 +294,10 @@ export class PageColumnController {
       const column = await this.columns.find(lookup);
       if (!column) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
-      return { ok: true, data: column };
+      const [resolved] = actorUserId
+        ? await this.relations.resolveColumnMetadata([column], actorUserId)
+        : [column];
+      return { ok: true, data: resolved ?? column };
     } catch (error) {
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
@@ -266,6 +313,7 @@ export class PageColumnController {
       if (!existing) {
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
+      if (existing.type === "relation") await this.relations.assertNoDependentRollups(existing.id);
 
       const before: SqlStatement[] = [];
       if (existing.parent_id) {
@@ -293,6 +341,9 @@ export class PageColumnController {
       if (!deleted) return { ok: false, reason: "server_error", message: "Erro no servidor" };
       return { ok: true, data: existing };
     } catch (error) {
+      if (error instanceof PageRelationError && error.status === 409) {
+        return { ok: false, reason: "conflict", message: error.message };
+      }
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
     }

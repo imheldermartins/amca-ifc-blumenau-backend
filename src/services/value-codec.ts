@@ -151,6 +151,28 @@ const flowCodec: Schema.ColumnValueCodec<Schema.FlowExecutionSummary> = {
   decode: (data) => decodeEnvelope(data) as Schema.FlowExecutionSummary,
 };
 
+const relationCodec: Schema.ColumnValueCodec<string[]> = {
+  validate(rawValue) {
+    if (!Array.isArray(rawValue) || rawValue.length > 250
+      || rawValue.some((value) => typeof value !== "string" || !ULID_RE.test(value))
+      || new Set(rawValue).size !== rawValue.length) {
+      throw new Error("Relação inválida: informe até 250 páginas sem duplicatas");
+    }
+    return [...rawValue] as string[];
+  },
+  encode: encodeEnvelope,
+  decode: (data) => {
+    const value = decodeEnvelope(data);
+    return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string" && ULID_RE.test(entry)) : [];
+  },
+};
+
+const rollupCodec: Schema.ColumnValueCodec<never> = {
+  validate() { throw new Error('Resumo é uma coluna calculada e somente leitura'); },
+  encode: encodeEnvelope,
+  decode: () => undefined as never,
+};
+
 export const VALUE_CODECS: Record<Schema.ColumnType, Schema.ColumnValueCodec> = {
   text: textCodec,
   numeric: numericCodec,
@@ -158,4 +180,6 @@ export const VALUE_CODECS: Record<Schema.ColumnType, Schema.ColumnValueCodec> = 
   select: selectCodec,
   date: dateCodec,
   flow: flowCodec,
+  relation: relationCodec,
+  rollup: rollupCodec,
 };

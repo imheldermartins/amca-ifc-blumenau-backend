@@ -12,6 +12,7 @@ import { PageResourceRouter } from "@/routes/page/page-resource-router";
 import { PageViewRouter } from "@/routes/page/page-view-router";
 import { PageViewQueryRouter } from '@/routes/page/page-view-query-router';
 import { PageViewRowMoveRouter } from '@/routes/page/page-view-row-move-router';
+import { PageRelationRouter } from '@/routes/page/page-relation-router';
 
 /**
  * Composition root do domínio Page.
@@ -34,6 +35,7 @@ export class PageRouter extends ApplicationRouter {
     private readonly documents = new PageDocumentRouter(),
     private readonly viewQueries = new PageViewQueryRouter(),
     private readonly rowMoves = new PageViewRowMoveRouter(),
+    private readonly relations = new PageRelationRouter(),
   ) {
     super();
   }
@@ -52,6 +54,7 @@ export class PageRouter extends ApplicationRouter {
     this.router.use(this.documents.build());
     this.router.use(this.viewQueries.build());
     this.router.use(this.rowMoves.build());
+    this.router.use(this.relations.build());
   }
 }
 

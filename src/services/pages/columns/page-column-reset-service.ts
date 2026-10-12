@@ -21,6 +21,8 @@ const CELL_RESET: Record<Schema.ColumnType, { clear: true } | { clear: false; va
   select: { clear: true },
   date: { clear: true },
   flow: { clear: true },
+  relation: { clear: true },
+  rollup: { clear: true },
 };
 
 export class PageColumnResetService {

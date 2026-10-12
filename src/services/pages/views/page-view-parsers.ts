@@ -4,6 +4,7 @@ import type { FilterColumnDefinition } from "@/services/types/view-filters.types
 import type {
   PageViewCreateInput,
   PageViewFormConfig,
+  PageViewHeatmapConfig,
   PageViewKind,
   PageViewTitleInput,
 } from "@/services/pages/views/types/page-view.types";
@@ -22,6 +23,7 @@ const VIEW_KINDS = new Set<PageViewKind>([
   "timeline",
   "graph",
   "form",
+  "heatmap",
 ]);
 const TITLE_MASKS = new Set<Schema.TextMask>(["cpf", "cep", "phone-br", "date", "email"]);
 const VIEW_PATCH_FIELDS = new Set([
@@ -38,6 +40,7 @@ const VIEW_PATCH_FIELDS = new Set([
   "calendarShowPropertyLabels",
   "board",
   "form",
+  "heatmap",
 ]);
 
 const FORM_ICON_PATTERN = /^(?:cuida|lucide):[a-z0-9][a-z0-9-]*$/i;
@@ -122,6 +125,32 @@ export function parsePageViewFormConfig(value: unknown): PageViewFormConfig {
   };
 }
 
+export function parsePageViewHeatmapConfig(value: unknown): PageViewHeatmapConfig {
+  if (!isJsonRecord(value)
+    || Object.keys(value).some((key) => !['version', 'dateColumnId', 'checkboxColumnId', 'period'].includes(key))
+    || value.version !== 1 || !isUlid(value.dateColumnId) || !isUlid(value.checkboxColumnId)
+    || !isJsonRecord(value.period)) {
+    throw new ViewFiltersValidationError('Configuração do Mapa de calor inválida');
+  }
+  const period = value.period;
+  if (period.mode === 'year' && Object.keys(period).every((key) => key === 'mode')) {
+    return { version: 1, dateColumnId: value.dateColumnId, checkboxColumnId: value.checkboxColumnId, period: { mode: 'year' } };
+  }
+  if (period.mode === 'months' && Object.keys(period).every((key) => ['mode', 'monthCount'].includes(key))
+    && Number.isInteger(period.monthCount) && Number(period.monthCount) >= 1 && Number(period.monthCount) <= 12) {
+    return { version: 1, dateColumnId: value.dateColumnId, checkboxColumnId: value.checkboxColumnId,
+      period: { mode: 'months', monthCount: Number(period.monthCount) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 } };
+  }
+  throw new ViewFiltersValidationError('Período do Mapa de calor inválido');
+}
+
+export function assertHeatmapColumns(config: PageViewHeatmapConfig, columns: readonly Schema.PageColumn[]): void {
+  if (!columns.some((column) => column.id === config.dateColumnId && column.type === 'date')
+    || !columns.some((column) => column.id === config.checkboxColumnId && column.type === 'checkbox')) {
+    throw new ViewFiltersValidationError('O Mapa de calor exige uma coluna de data e uma coluna checkbox');
+  }
+}
+
 export function assertFormFlowColumn(
   config: PageViewFormConfig,
   columns: readonly Schema.PageColumn[],
@@ -152,7 +181,7 @@ export function parsePageViewCreate(
 ): PageViewCreateInput {
   if (
     !isJsonRecord(raw) ||
-    Object.keys(raw).some((key) => !["type", "view", "name", "title", "form"].includes(key))
+    Object.keys(raw).some((key) => !["type", "view", "name", "title", "form", "heatmap"].includes(key))
   ) {
     throw new ViewFiltersValidationError("View inválida");
   }
@@ -175,12 +204,15 @@ export function parsePageViewCreate(
   }
 
   const form = raw.form === undefined ? undefined : parsePageViewFormConfig(raw.form);
+  const heatmap = raw.heatmap === undefined ? undefined : parsePageViewHeatmapConfig(raw.heatmap);
   if (kind === "form" && !form) {
     throw new ViewFiltersValidationError("Configuração do formulário obrigatória");
   }
   if (kind !== "form" && form) {
     throw new ViewFiltersValidationError("Configuração de formulário incompatível com a view");
   }
+  if (kind === 'heatmap' && !heatmap) throw new ViewFiltersValidationError('Configuração do Mapa de calor obrigatória');
+  if (kind !== 'heatmap' && heatmap) throw new ViewFiltersValidationError('Configuração de Mapa de calor incompatível com a view');
 
   return {
     kind: kind as PageViewKind,
@@ -190,6 +222,7 @@ export function parsePageViewCreate(
         ? { key: "title", column_name: "Título" }
         : parsePageViewTitle(raw.title),
     ...(form && { form }),
+    ...(heatmap && { heatmap }),
   };
 }
 

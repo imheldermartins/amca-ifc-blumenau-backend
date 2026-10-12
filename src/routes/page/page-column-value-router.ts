@@ -63,7 +63,7 @@ export class PageColumnValueRouter extends ApplicationRouter {
       ...(body.value !== undefined && { value: body.value }),
       ...(body.startDate !== undefined && { startDate: body.startDate }),
       ...(body.endDate !== undefined && { endDate: body.endDate }),
-    });
+    }, authenticatedUserId(request));
     if (!result.ok) return sendPageFailure(response, result);
 
     await this.publish(request, result.data.type, result.data.value);
@@ -74,6 +74,7 @@ export class PageColumnValueRouter extends ApplicationRouter {
     const result = await this.values.getValue(
       routeParam(request, "id"),
       routeParam(request, "column_id"),
+      authenticatedUserId(request),
     );
     return result.ok
       ? response.status(StatusCode.OK).json(result.data)
@@ -90,6 +91,7 @@ export class PageColumnValueRouter extends ApplicationRouter {
         ...(body.startDate !== undefined && { startDate: body.startDate }),
         ...(body.endDate !== undefined && { endDate: body.endDate }),
       },
+      authenticatedUserId(request),
     );
     if (!result.ok) return sendPageFailure(response, result);
 
@@ -109,12 +111,17 @@ export class PageColumnValueRouter extends ApplicationRouter {
   }
 
   private publish(request: Request, columnType: Schema.ColumnType, value: unknown): Promise<void> {
+    const rowId = routeParam(request, "id");
+    const originUserId = authenticatedUserId(request);
+    if (columnType === 'relation') {
+      return this.realtime.relationUpdated({ rowId, originUserId });
+    }
     return this.realtime.cellUpdated({
-      rowId: routeParam(request, "id"),
+      rowId,
       columnId: routeParam(request, "column_id"),
       columnType,
       value,
-      originUserId: authenticatedUserId(request),
-    });
+      originUserId,
+    }).then(() => this.realtime.dependentPageChanged(rowId, originUserId));
   }
 }

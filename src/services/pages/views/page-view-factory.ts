@@ -9,6 +9,7 @@ import { collectReservedPublicKeys, reconcilePublicKeyMetadata } from "@/service
 import { readDeletedColumnKeys } from "@/services/filter-key-registry";
 import {
   assertFormFlowColumn,
+  assertHeatmapColumns,
   isJsonRecord,
   parsePageViewFormConfig,
   toColumnKeyEntities,
@@ -26,6 +27,10 @@ export class PageViewFactory {
         throw new ViewFiltersValidationError("Configuração do formulário obrigatória");
       }
       assertFormFlowColumn(input.form, columns);
+    }
+    if (input.kind === 'heatmap') {
+      if (!input.heatmap) throw new ViewFiltersValidationError('Configuração do Mapa de calor obrigatória');
+      assertHeatmapColumns(input.heatmap, columns);
     }
     const reservedTitleKeys = collectReservedPublicKeys(
       toColumnKeyEntities(columns),
@@ -63,6 +68,7 @@ export class PageViewFactory {
         orderedHeaderCols: [],
         order: snapshot.nextOrder(),
         ...(input.form && { form: input.form }),
+        ...(input.heatmap && { heatmap: input.heatmap }),
       },
     };
   }
