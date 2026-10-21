@@ -88,6 +88,7 @@ export class PageColumnRouter extends ApplicationRouter {
       ...(body.flowButton !== undefined && { flowButton: body.flowButton }),
       ...(body.relation !== undefined && { relation: body.relation }),
       ...(body.rollup !== undefined && { rollup: body.rollup }),
+      ...(body.formula !== undefined && { formula: body.formula }),
       ...(type !== undefined ? { type } : body.type !== undefined ? { type: body.type } : {}),
       parent_id: pageId,
     }, authenticatedUserId(request));
@@ -99,6 +100,8 @@ export class PageColumnRouter extends ApplicationRouter {
       column: result.data,
       originUserId: authenticatedUserId(request),
     });
+    await this.publishRelatedColumn(result, authenticatedUserId(request));
+    if (result.data.type === 'relation') await this.realtime.relationDefinitionChanged(result.data.id, authenticatedUserId(request), pageId);
     return response.status(StatusCode.CREATED).json(result.data);
   }
 
@@ -132,6 +135,7 @@ export class PageColumnRouter extends ApplicationRouter {
       ...(body.flowButton !== undefined && { flowButton: body.flowButton }),
       ...(body.relation !== undefined && { relation: body.relation }),
       ...(body.rollup !== undefined && { rollup: body.rollup }),
+      ...(body.formula !== undefined && { formula: body.formula }),
       ...(type !== undefined ? { type } : body.type !== undefined ? { type: body.type } : {}),
     };
     const result = await this.columns.updateColumn(this.lookup(request), input, authenticatedUserId(request));
@@ -145,6 +149,8 @@ export class PageColumnRouter extends ApplicationRouter {
       column: result.data,
       originUserId: authenticatedUserId(request),
     });
+    await this.publishRelatedColumn(result, authenticatedUserId(request));
+    if (result.data.type === 'relation') await this.realtime.relationDefinitionChanged(columnId, authenticatedUserId(request), pageId);
     return response.status(StatusCode.OK).json(result.data);
   }
 
@@ -184,10 +190,18 @@ export class PageColumnRouter extends ApplicationRouter {
     } as LookupValues<Schema.PageColumn>;
   }
 
+  private async publishRelatedColumn(result: {relatedColumn?: Schema.PageColumn; relatedColumnCreated?: boolean}, originUserId: string): Promise<void> {
+    const column = result.relatedColumn;
+    if (!column?.parent_id) return;
+    const payload = {pageId: column.parent_id, columnId: column.id, column, originUserId};
+    if (result.relatedColumnCreated) await this.realtime.columnCreated(payload);
+    else await this.realtime.columnUpdated(payload);
+  }
+
   private typeFromQuery(raw: unknown): Schema.ColumnType | undefined | null {
     if (typeof raw !== "string") return undefined;
     if (raw === "number") return "numeric";
-    if (raw === "text" || raw === "numeric" || raw === "select" || raw === "date" || raw === "checkbox" || raw === "flow" || raw === "relation" || raw === "rollup") {
+    if (raw === "text" || raw === "numeric" || raw === "select" || raw === "date" || raw === "checkbox" || raw === "flow" || raw === "relation" || raw === "extract_as" || raw === "formula") {
       return raw;
     }
     return null;

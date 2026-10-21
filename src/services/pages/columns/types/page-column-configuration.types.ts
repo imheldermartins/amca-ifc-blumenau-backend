@@ -6,4 +6,5 @@ export interface PageColumnConfigurationInput {
   mask?: unknown;
   relation?: unknown;
   rollup?: unknown;
+  formula?: unknown;
 }

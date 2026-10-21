@@ -21,6 +21,7 @@ const doubles = vi.hoisted(() => ({
   hierarchy: {
     createChild: vi.fn(),
     getDataset: vi.fn(),
+    resolveFormulas: vi.fn(async (_parent: string, _user: string, rows: unknown[]) => rows),
     getBreadcrumb: vi.fn(),
     getParentId: vi.fn(),
   },
@@ -82,6 +83,7 @@ const doubles = vi.hoisted(() => ({
     columnDeleted: vi.fn(async () => undefined),
     cellUpdated: vi.fn(async () => undefined),
     relationUpdated: vi.fn(async () => undefined),
+    relationDefinitionChanged: vi.fn(async () => undefined),
     dependentPageChanged: vi.fn(async () => undefined),
   },
 }));
@@ -159,6 +161,17 @@ async function request(
 }
 
 describe("PageRouter: publicação realtime somente pós-commit", () => {
+  it.each([true, false])('publica a propriedade inversa confirmada sem expor seus valores (criação=%s)', async (created) => {
+    const column = {id:COLUMN_ID,parent_id:PARENT_ID,type:'relation',data:{relation:{version:1,targetDatabaseId:PAGE_ID}}};
+    const inverse = {id:VIEW_ID,parent_id:PAGE_ID,type:'relation',data:{relation:{version:1,targetDatabaseId:PARENT_ID}}};
+    doubles.column.updateColumn.mockResolvedValueOnce({ok:true,data:column,relatedColumn:inverse,relatedColumnCreated:created});
+    const response = await request(`/pages/parent/${PARENT_ID}/columns/${COLUMN_ID}`,'PUT',{relation:{version:1,targetDatabaseId:PAGE_ID,bidirectional:created}});
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(column);
+    expect(created ? doubles.publisher.columnCreated : doubles.publisher.columnUpdated)
+      .toHaveBeenCalledWith({pageId:PAGE_ID,columnId:VIEW_ID,column:inverse,originUserId:USER_ID});
+    expect(doubles.publisher.relationDefinitionChanged).toHaveBeenCalledWith(COLUMN_ID,USER_ID,PARENT_ID);
+  });
   it('confirma os valores alterados pelo Flow no HTTP mesmo sem assinatura socket', async () => {
     const summary = { executionId: 'exec', status: 'succeeded', effects: { valuesUpdated: 1, emailsQueued: 0 } };
     const updatedValues = [{ columnId: COLUMN_ID, columnType: 'select', value: 'option-done' }];

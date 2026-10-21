@@ -61,6 +61,24 @@
       "file": "20261012152810732_f6fcf9c3_json_values_edge_view_order_and_page_blocks.ts",
       "snapshot": "20261012152810732_f6fcf9c3_json_values_edge_view_order_and_page_blocks.snapshot.json",
       "checksum": "7ad391cf266c0f0dd5ac63d2798ff4ebc6c6b36030d1497f1be21f41a1460d89"
+    },
+    {
+      "id": "20261019171931405_91dfff02_formula_and_extract_as_columns",
+      "file": "20261019171931405_91dfff02_formula_and_extract_as_columns.ts",
+      "snapshot": "20261019171931405_91dfff02_formula_and_extract_as_columns.snapshot.json",
+      "checksum": "b9a2d625dfaf9299ccbda8523cea54a8a5428a85aeb7b196002ed51b840dbd05"
+    },
+    {
+      "id": "20261020022641135_27e708b6_relation_links_and_cardinality",
+      "file": "20261020022641135_27e708b6_relation_links_and_cardinality.ts",
+      "snapshot": "20261020022641135_27e708b6_relation_links_and_cardinality.snapshot.json",
+      "checksum": "ef4d0d88347e3cb6aad6dc7fa222574a51e07a53d80870d8e85dd5b4e65f27c6"
+    },
+    {
+      "id": "20261020023101397_c32e8cfa_relation_snapshot_invariants",
+      "file": "20261020023101397_c32e8cfa_relation_snapshot_invariants.ts",
+      "snapshot": "20261020023101397_c32e8cfa_relation_snapshot_invariants.snapshot.json",
+      "checksum": "b33a96e58a0f7d14ea8ab83819e2c65a45ba951770bce7a4e4b7b0a4efddfae2"
     }
   ]
 }

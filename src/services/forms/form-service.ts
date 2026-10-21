@@ -474,7 +474,7 @@ export class FormService {
       optionKeysById: new Map(),
     }];
     for (const column of context.columns) {
-      if (column.type === 'flow' || column.type === 'relation' || column.type === 'rollup') continue;
+      if (column.type === 'flow' || column.type === 'relation' || column.type === 'formula' || column.type === 'extract_as') continue;
       const key = sanitizePublicKeyMetadata(column.data?.publicKey);
       if (!key) throw new FormError('conflict', 'Chaves públicas do formulário precisam ser reconciliadas');
       const options = column.type === 'select' ? (column.data?.options ?? []).map((option) => {

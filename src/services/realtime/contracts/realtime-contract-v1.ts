@@ -41,7 +41,7 @@ export interface ColumnResizingPayload {
 
 export type ResizeColumnCommand = Omit<ColumnResizingPayload, "originUserId">;
 
-export type CellColumnType = "text" | "numeric" | "select" | "date" | "checkbox" | "flow" | "relation" | "rollup";
+export type CellColumnType = "text" | "numeric" | "select" | "date" | "checkbox" | "flow" | "relation" | "extract_as" | "formula";
 
 export interface CellUpdatedPayload extends RealtimePayload {
   rowId: string;

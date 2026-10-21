@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { PageEditEmitter } from "@/services/realtime/page-realtime-publisher";
 import { PageRealtimePublisher } from "@/services/realtime/page-realtime-publisher";
 import { RealtimeEventFactory } from "@/services/realtime/realtime-event-factory";
+import formulas from '@/repositories/page-formula-repository';
+import relations from '@/repositories/page-relation-repository';
 
 const PAGE_ID = "01KXDN4B182DJGAKPX0940H54N";
 const PARENT_ID = "01KXDN4B182DJGAKPX0940H55A";
@@ -49,6 +51,34 @@ function publisher(options?: {
 }
 
 describe("PageRealtimePublisher", () => {
+  it('invalidates both databases after relation edits, including removal of the last link', async () => {
+    const target = vi.spyOn(relations, 'targetDatabase').mockResolvedValue(PARENT_ID);
+    const dependents = vi.spyOn(relations, 'invalidateDatabasesReferencingDatabase').mockResolvedValue([]);
+    const affected = vi.spyOn(formulas, 'affectedDatabases').mockResolvedValue([]);
+    const edits = {...emitter(), emitProjectionInvalidated: vi.fn()};
+    const realtime = new PageRealtimePublisher(edits, {getParentId: async () => PAGE_ID}, new RealtimeEventFactory(), vi.fn());
+    try {
+      await realtime.relationUpdated({rowId: ROW_ID, columnId: COLUMN_ID, originUserId: USER_ID});
+      expect(edits.emitProjectionInvalidated.mock.calls.map(([event]) => event.pageId)).toEqual([PAGE_ID, PARENT_ID]);
+      expect(target).toHaveBeenCalledWith(COLUMN_ID);
+      expect(edits.emitCellUpdated).not.toHaveBeenCalled();
+    } finally {target.mockRestore(); dependents.mockRestore(); affected.mockRestore();}
+  });
+  it('invalidates computed projections after formula creation and source changes without sending computed values', async () => {
+    const affected = vi.spyOn(formulas, 'affectedDatabases').mockResolvedValue([PAGE_ID, PARENT_ID]);
+    const edits = {...emitter(), emitProjectionInvalidated: vi.fn()};
+    const realtime = new PageRealtimePublisher(edits, {getParentId: async () => PAGE_ID}, new RealtimeEventFactory(() => new Date(UPDATED_AT)), vi.fn(), {getUpdatedAt: async () => DATABASE_UPDATED_AT});
+    try {
+      await realtime.columnCreated({pageId: PAGE_ID, columnId: COLUMN_ID, column: {type: 'numeric'}, originUserId: USER_ID});
+      expect(affected).not.toHaveBeenCalled();
+      await realtime.columnCreated({pageId: PAGE_ID, columnId: COLUMN_ID, column: {type: 'formula'}, originUserId: USER_ID});
+      expect(edits.emitProjectionInvalidated.mock.calls.map(([event]) => event.pageId)).toEqual([PAGE_ID, PARENT_ID]);
+      edits.emitProjectionInvalidated.mockClear();
+      await realtime.cellUpdated({rowId: ROW_ID, columnId: COLUMN_ID, columnType: 'numeric', value: 5, originUserId: USER_ID});
+      expect(edits.emitProjectionInvalidated).toHaveBeenCalledTimes(2);
+      expect(edits.emitProjectionInvalidated.mock.calls[0]![0]).toEqual({pageId: PAGE_ID, updatedAt: UPDATED_AT, originUserId: USER_ID});
+    } finally {affected.mockRestore();}
+  });
   it("publica movimento confirmado sem transmitir a lista de linhas", async () => {
     const { realtime, edits } = publisher();
     await realtime.rowOrderUpdated(PAGE_ID, "view-1", ROW_ID, 7, USER_ID);

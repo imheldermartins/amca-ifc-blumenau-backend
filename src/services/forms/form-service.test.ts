@@ -134,7 +134,7 @@ describe('FormService', () => {
     const { instance, data } = service();
     data.columns.push(
       { id: '01KXVZ00000000000000000008', parent_id: PAGE, name: 'Relação', type: 'relation', data: { publicKey: { key: 'relacao', aliases: [] }, relation: { version: 1, targetDatabaseId: PAGE } }, deleted_at: null, created_at: data.now, updated_at: data.now },
-      { id: '01KXVZ00000000000000000009', parent_id: PAGE, name: 'Resumo', type: 'rollup', data: { publicKey: { key: 'resumo', aliases: [] }, rollup: { version: 1, relationColumnId: '01KXVZ00000000000000000008', operation: 'count' } }, deleted_at: null, created_at: data.now, updated_at: data.now },
+      { id: '01KXVZ00000000000000000009', parent_id: PAGE, name: 'Resumo', type: 'extract_as', data: { publicKey: { key: 'resumo', aliases: [] }, rollup: { version: 1, relationColumnId: '01KXVZ00000000000000000008', operation: 'count' } }, deleted_at: null, created_at: data.now, updated_at: data.now },
     );
     const definition = await instance.publicDefinition(PUBLICATION, data.fillKey);
     expect(definition.fields.map((field) => field.key)).toEqual(['email', 'nome']);

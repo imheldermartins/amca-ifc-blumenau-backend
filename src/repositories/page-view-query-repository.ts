@@ -1,4 +1,5 @@
 import db from '@models/index';
+import formulas from '@/repositories/page-formula-repository';
 import type { Schema } from '@/db/schemas/index';
 import { accessGuard, correlatedPageReadGuard } from '@/repositories/scoped-access-repository';
 import { readOrderRevision } from '@/repositories/page-view-row-order';
@@ -217,7 +218,7 @@ export class PageViewQueryStore {
     // The legacy Graph applied view filters to roots; explicitly opened branches
     // show their authorized children independently of the root's column schema.
     const filters = compileQueryFilters(context.columns, scope?.type === 'graph' && parentId !== context.page.id ? [] : context.filters.clauses);
-    const groupColumnIds = context.kind === 'table' ? [...new Set(context.filters.groupBy.filter((id) => id === 'page_title' || context.columns.some((column) => column.id === id && !['flow', 'relation', 'rollup'].includes(String(column.type)))))] : [];
+    const groupColumnIds = context.kind === 'table' ? [...new Set(context.filters.groupBy.filter((id) => id === 'page_title' || context.columns.some((column) => column.id === id && !['flow', 'relation', 'extract_as', 'formula'].includes(String(column.type)))))] : [];
     const board = object(context.view.board);
     const selectColumn = context.kind === 'board' ? board.selectColumnId === undefined ? context.columns.find((column) => column.type === 'select')
       : context.columns.find((column) => column.id === board.selectColumnId && column.type === 'select') : undefined;
@@ -477,7 +478,7 @@ export class PageViewQueryStore {
       }
     }
 
-    for (const column of context.columns.filter((candidate) => candidate.type === 'rollup' && candidate.data?.rollupResult)) {
+    for (const column of context.columns.filter((candidate) => candidate.type === 'extract_as' && candidate.data?.rollupResult)) {
       const values = await this.relations.resolveRollupValues({ data: column.data as Schema.PageColumnData }, rows.map((row) => row.page_id), context.userId);
       for (const row of rows) {
         const value = values[row.page_id];
@@ -485,15 +486,24 @@ export class PageViewQueryStore {
           row_id: null,
           row_data: JSON.stringify({ value }),
           column_name: column.name,
-          column_type: 'rollup',
+          column_type: 'extract_as',
           column_data: JSON.stringify(column.data),
         };
       }
     }
-    return {
-      ...projection,
-      ...(Object.keys(relationTargets).length && { relationTargets }),
-    };
+    if (rows.length && context.columns.some(column => column.type === 'formula')) {
+      const columns = context.columns.filter(column => column.type === 'formula');
+      const calculated = await formulas.evaluateColumns(context.page.id, columns.map(column => ({id: column.id, source: (column.data as Schema.PageColumnData)?.formula?.source ?? ''})), rows.map(row => row.page_id), context.userId);
+      for (const column of columns) {
+        const results = calculated[column.id]!;
+        for (const row of rows) {
+          const result = results[row.page_id];
+          const value = result?.ok ? result.value : {kind:'formula-error',message:result?.error.message ?? 'Fórmula indisponível'};
+          row.page_columns[column.id] = {row_id:null,row_data:JSON.stringify({value}),column_name:column.name,column_type:'formula',column_data:JSON.stringify(column.data)};
+        }
+      }
+    }
+    return { ...projection, ...(Object.keys(relationTargets).length && { relationTargets }) };
   }
 
   private async heatmapCounts(base: BaseQuery, from: string, to: string): Promise<{ days: Record<string, { total: number; checked: number }>; ignoredRanges: number }> {

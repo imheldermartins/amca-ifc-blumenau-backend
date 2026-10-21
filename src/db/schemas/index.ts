@@ -1,4 +1,5 @@
 import type { EntityBase, SoftDeletableEntity } from "@/db/schemas/entity-base";
+import type { FormulaType, FormulaDependency } from '@/services/formulas/engine/index';
 
 export namespace Schema {
   export interface User extends EntityBase {
@@ -97,11 +98,35 @@ export namespace Schema {
   export interface PageEdges extends PageEdge {}
 
   // --- 5. PAGE COLUMNS (Configurações de Colunas) ---
-  export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow' | 'relation' | 'rollup';
+  export type ColumnType = 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow' | 'relation' | 'extract_as' | 'formula';
+
+  export interface FormulaConfig {
+    version: 1;
+    source: string;
+    revision: number;
+    resultType: FormulaType;
+    dependencies: FormulaDependency[];
+  }
+  export interface FormulaInput { version: 1; source: string; expectedRevision?: number }
 
   export interface RelationConfig {
     version: 1;
     targetDatabaseId: NonEmptyString;
+    cardinality?: 'one' | 'many';
+    /** Par recíproco atribuído pelo servidor, nunca pelo cliente. */
+    inverseColumnId?: NonEmptyString;
+    /** Metadados resolvidos para o editor; não persistidos. */
+    inverseName?: string;
+    inverseCardinality?: 'one' | 'many';
+  }
+
+  export interface RelationInput {
+    version: 1;
+    targetDatabaseId: NonEmptyString;
+    cardinality?: 'one' | 'many';
+    bidirectional?: boolean;
+    inverseName?: string;
+    inverseCardinality?: 'one' | 'many';
   }
 
   export type RollupOperation = 'count' | 'sum' | 'min' | 'max';
@@ -326,6 +351,7 @@ export namespace Schema {
     flow?: FlowDefinition;
     relation?: RelationConfig;
     rollup?: RollupConfig;
+    formula?: FormulaConfig;
     /** Resolvido na leitura; não é requisito de persistência da coluna. */
     rollupResult?: RollupResult;
   }

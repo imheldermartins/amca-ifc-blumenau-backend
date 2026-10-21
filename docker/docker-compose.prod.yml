@@ -49,13 +49,34 @@ services:
   frontend:
     build:
       context: ../../cubs-frontend
+      args:
+        # O browser chama a API pelo subdomínio dedicado; o Socket.IO usa a
+        # origem desse mesmo valor e continua no servidor HTTP da API.
+        VITE_CUBS_API_URL: https://api.cubsonline.com.br/api/v1
     container_name: cubs-frontend
-    ports:
-      - "80:80"
+    expose:
+      - "80"
     depends_on:
       backend:
         condition: service_healthy
         restart: true
+    restart: unless-stopped
+
+  # Cloudflare Tunnel mantém somente conexões de saída da máquina. O perfil
+  # edge é ativado após criar o túnel remoto e preencher cloudflare.prod.env.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.2@sha256:0e56c13c7058fcef9c4f0e7d83372f82330548dbf8f8b366f3d8b506526d93b2
+    container_name: cubs-cloudflared
+    profiles: ["edge"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    env_file:
+      - path: ./cloudflare.prod.env
+        required: false
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

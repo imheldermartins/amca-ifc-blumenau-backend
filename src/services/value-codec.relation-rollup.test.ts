@@ -5,7 +5,7 @@ import { VALUE_CODECS } from '@/services/value-codec';
 
 const id = (value: number) => `01M${String(value).padStart(23, '0')}`;
 const relationColumn = { type: 'relation' } as Schema.PageColumn;
-const rollupColumn = { type: 'rollup' } as Schema.PageColumn;
+const rollupColumn = { type: 'extract_as' } as Schema.PageColumn;
 
 describe('VALUE_CODECS — Relação e Resumo', () => {
   it('preserva a ordem de até 250 páginas relacionadas e rejeita duplicatas', () => {
@@ -18,6 +18,6 @@ describe('VALUE_CODECS — Relação e Resumo', () => {
   });
 
   it('mantém Resumo estritamente calculado e somente leitura', () => {
-    expect(() => VALUE_CODECS.rollup.validate(10, rollupColumn)).toThrow(/somente leitura/);
+    expect(() => VALUE_CODECS.extract_as.validate(10, rollupColumn)).toThrow(/somente leitura/);
   });
 });

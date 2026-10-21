@@ -2,6 +2,7 @@ import {defineConfig} from '@cubs/rqlite-client/config';
 
 export default defineConfig({
   schemas: ['src/db/schemas'],
+  opaqueObjects: 'src/db/relation-triggers.json',
   output: 'src/db/rqlite.generated.ts',
   migrations: 'src/db/migrations',
   build: {

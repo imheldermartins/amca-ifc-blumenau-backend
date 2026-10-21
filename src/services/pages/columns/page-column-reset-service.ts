@@ -22,7 +22,8 @@ const CELL_RESET: Record<Schema.ColumnType, { clear: true } | { clear: false; va
   date: { clear: true },
   flow: { clear: true },
   relation: { clear: true },
-  rollup: { clear: true },
+  extract_as: { clear: true },
+  formula: { clear: true },
 };
 
 export class PageColumnResetService {
@@ -35,6 +36,9 @@ export class PageColumnResetService {
     values: readonly Schema.PageColumnValue[],
   ): PageColumnResetPlan {
     const data = this.configuration.base(column.type);
+    if (column.type === 'formula' && column.data.formula) data.formula = column.data.formula;
+    if (column.type === 'relation' && column.data.relation) data.relation = column.data.relation;
+    if (column.type === 'extract_as' && column.data.rollup) data.rollup = column.data.rollup;
     const publicKey = sanitizePublicKeyMetadata(column.data?.publicKey);
     data.publicKey = publicKey ?? reconcilePublicKeyMetadata(column.name, "coluna", null);
 

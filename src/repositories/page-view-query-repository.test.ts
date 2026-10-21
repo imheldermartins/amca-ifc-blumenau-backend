@@ -6,12 +6,15 @@ import { compileQueryFilters, normalizeQueryText } from './page-view-query-filte
 import { pageViewScopeKey, type PageViewQueryRequest } from '@/services/pages/views/page-view-query-contract';
 import {PageRelationRepository} from './page-relation-repository.js';
 import type {Schema} from '@/db/schemas/index';
+import {migration as relationLinks} from '@/db/migrations/20261020022641135_27e708b6_relation_links_and_cardinality';
+import {migration as relationSnapshots} from '@/db/migrations/20261020023101397_c32e8cfa_relation_snapshot_invariants';
 
 const id = (value: number) => `01M${String(value).padStart(23, '0')}`;
 const ROOT = id(90001), OWNER = id(90002), VIEWER = id(90003), VIEW = id(90004), SELECT = id(90005), A = id(90006), B = id(90007), NUMERIC = id(90008), DATE = id(90009), CHECKBOX = id(90010), TEXT = id(90011);
 
 function fixture(count = 100) {
   const database = new DatabaseSync(':memory:');
+  database.exec('PRAGMA foreign_keys=ON');
   database.exec(`CREATE TABLE users(id TEXT PRIMARY KEY);
     CREATE TABLE pages(id TEXT PRIMARY KEY,title TEXT,owner_id TEXT,data TEXT,created_at TEXT,updated_at TEXT,deleted_at TEXT);
     CREATE TABLE page_edges(id TEXT PRIMARY KEY,parent_id TEXT,child_id TEXT);
@@ -26,6 +29,7 @@ function fixture(count = 100) {
     CREATE TABLE page_columns(id TEXT PRIMARY KEY,name TEXT,type TEXT,data TEXT,parent_id TEXT,deleted_at TEXT);
     CREATE TABLE page_columns_values(id TEXT PRIMARY KEY,page_id TEXT,page_column_id TEXT,data TEXT);
     CREATE TABLE page_view_row_order(edge_id TEXT,view_id TEXT,rank TEXT,PRIMARY KEY(edge_id,view_id));`);
+  database.exec([...relationLinks.up, ...relationSnapshots.up].join(';'));
   database.prepare('INSERT INTO users(id) VALUES (?),(?)').run(OWNER, VIEWER);
   const view: Record<string, unknown> = { view: 'table', name: 'Tabela', filters: { version: 2, clauses: [], groupBy: [], passthrough: [] }, orderedRows: Array.from({ length: count }, (_, index) => id(index + 1)), rowOrder: { version: 2, revision: 7 } };
   database.prepare('INSERT INTO pages(id,title,owner_id,data,created_at,updated_at) VALUES (?,?,?,?,?,?)').run(ROOT, 'Base', OWNER, JSON.stringify({ [VIEW]: view }), '2026-10-01', '2026-10-01');
@@ -422,11 +426,12 @@ describe('filter SQL', () => {
   });
 });
 
-describe('relations directly from JSON values', () => {
+describe('relation snapshots and SQL links', () => {
   const RELATION = id(91000);
-  it('resolves titles and aggregates only readable, active targets without a relation table', async () => {
+  it('resolves titles and aggregates only readable, active targets through the link index', async () => {
     const f = fixture(5), relations = new PageRelationRepository(f.execute);
     try {
+      f.database.prepare('INSERT INTO page_columns(id,name,type,parent_id,data) VALUES (?,?,?,?,?)').run(RELATION,'Relação','relation',ROOT,'{}');
       f.cell(1, RELATION, [id(2), id(3), id(4), id(5)]);
       f.cell(2, NUMERIC, 10); f.cell(3, NUMERIC, 900); f.cell(4, NUMERIC, 100); f.cell(5, NUMERIC, '20');
       f.database.prepare('UPDATE pages SET owner_id=? WHERE id=?').run(VIEWER, id(3));
@@ -458,7 +463,7 @@ describe('relations directly from JSON values', () => {
       await expect(relations.prepareRelationTargets(column,id(1),[id(3)],OWNER)).rejects.toMatchObject({status:400});
     } finally { f.close(); }
   });
-  it('invalidates only databases referencing the changed page via json_each', async () => {
+  it('invalidates only databases referencing the changed page through SQL links', async () => {
     const f = fixture(5), relations = new PageRelationRepository(f.execute);
     try {
       f.database.prepare('INSERT INTO page_columns(id,name,type,parent_id,data) VALUES (?,?,?,?,?)').run(RELATION,'Relação','relation',ROOT,'{}');

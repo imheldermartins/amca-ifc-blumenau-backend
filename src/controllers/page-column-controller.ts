@@ -1,3 +1,6 @@
+import formulas from "@/repositories/page-formula-repository";
+import relationWrites from "@/repositories/page-relation-write-repository";
+import {ulid} from 'ulid';
 import db from "@models/index";
 import type { Schema } from "@/db/schemas/index";
 import type { Input } from "@/db/schemas/inputs";
@@ -27,6 +30,10 @@ import pageRelationRepository, {
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : "Erro no servidor";
 
+type ColumnWriteResult = ServiceResult<Schema.PageColumn> & {
+  relatedColumn?: Schema.PageColumn;
+  relatedColumnCreated?: boolean;
+};
 /**
  * Orquestra o ciclo de vida de definições de coluna. Validação e normalização
  * da configuração pertencem aos serviços de domínio de columns; o controller
@@ -77,7 +84,7 @@ export class PageColumnController {
   public async createColumn(
     input: Input.CreatePageColumn,
     actorUserId?: string,
-  ): Promise<ServiceResult<Schema.PageColumn>> {
+  ): Promise<ColumnWriteResult> {
     const type = input?.type;
     if (!this.configuration.isColumnType(type)) {
       return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
@@ -112,9 +119,13 @@ export class PageColumnController {
         if (!data.relation || !input.parent_id || !actorUserId) throw new Error("Configuração de Relação obrigatória");
         await this.relations.validateRelationConfig(input.parent_id, data.relation, actorUserId);
       }
-      if (type === "rollup") {
+      if (type === "extract_as") {
         if (!data.rollup || !input.parent_id || !actorUserId) throw new Error("Configuração de Resumo obrigatória");
         data.rollupResult = await this.relations.validateRollupConfig(input.parent_id, data.rollup, actorUserId);
+      }
+      if (type === 'formula' || input.formula !== undefined) {
+        if (!input.parent_id || !actorUserId) throw new Error('Contexto da fórmula obrigatório');
+        data.formula = await formulas.definition(input.parent_id, actorUserId, input.formula);
       }
       // rollupResult é um DTO resolvido; nunca faz parte da persistência.
       delete data.rollupResult;
@@ -148,7 +159,10 @@ export class PageColumnController {
         data,
         parent_id: input.parent_id ?? null,
       };
-      const created = await this.columns.create(column, {
+      const relationResult = type === 'relation' && actorUserId
+        ? await relationWrites.saveDefinition(null, {id: ulid() as NonEmptyString, name, type, data, parent_id: input.parent_id ?? null}, input.relation, actorUserId)
+        : undefined;
+      const created = relationResult ? relationResult.column : await this.columns.create(column, {
         after: input.parent_id ? [pageActivityTouchStatement(input.parent_id)] : [],
       });
 
@@ -157,8 +171,10 @@ export class PageColumnController {
       const [resolved] = actorUserId
         ? await this.relations.resolveColumnMetadata([created], actorUserId)
         : [created];
-      return { ok: true, data: resolved ?? created };
+      return { ok: true, data: resolved ?? created,
+        ...(relationResult?.inverse && {relatedColumn: relationResult.inverse, relatedColumnCreated: Boolean(relationResult.inverseCreated)}) };
     } catch (error) {
+      if (error instanceof PageRelationError) return {ok: false, reason: error.status === 403 ? 'forbidden' : 'conflict', message: error.message};
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
     }
@@ -170,7 +186,7 @@ export class PageColumnController {
     lookup: LookupValues<Schema.PageColumn>,
     input: Input.UpdatePageColumn,
     actorUserId?: string,
-  ): Promise<ServiceResult<Schema.PageColumn>> {
+  ): Promise<ColumnWriteResult> {
     let existing: Schema.PageColumn | null;
     try {
       existing = await this.columns.find(lookup);
@@ -202,7 +218,7 @@ export class PageColumnController {
       input.currency !== undefined ||
       input.mask !== undefined ||
       input.relation !== undefined ||
-      input.rollup !== undefined;
+      input.rollup !== undefined || input.formula !== undefined;
     let siblings: Schema.PageColumn[] = [];
     let parent: Schema.Page | null = null;
     try {
@@ -237,17 +253,23 @@ export class PageColumnController {
         : this.configuration.merge(existing.data, {});
       if (existing.type === "relation" && effectiveType !== "relation") {
         await this.relations.assertNoDependentRollups(existing.id);
+        if (existing.data.relation?.inverseColumnId) throw new PageRelationError(409, 'Desative a relação bidirecional antes de trocar o tipo');
       }
       if (effectiveType === "relation") {
         if (!nextData.relation || !existing.parent_id || !actorUserId) throw new Error("Configuração de Relação obrigatória");
         await this.relations.assertRelationCanChange(existing.id, nextData.relation.targetDatabaseId);
         await this.relations.validateRelationConfig(existing.parent_id, nextData.relation, actorUserId);
       }
-      if (effectiveType === "rollup") {
+      if (effectiveType === "extract_as") {
         if (!nextData.rollup || !existing.parent_id || !actorUserId) throw new Error("Configuração de Resumo obrigatória");
         nextData.rollupResult = await this.relations.validateRollupConfig(existing.parent_id, nextData.rollup, actorUserId);
       }
       delete nextData.rollupResult;
+      if (input.formula !== undefined || (effectiveType === 'formula' && existing.type !== 'formula')) {
+        if (!existing.parent_id || !actorUserId) throw new Error('Contexto da fórmula obrigatório');
+        nextData.formula = await formulas.definition(existing.parent_id, actorUserId, input.formula, existing.id, existing.data.formula);
+      }
+      if (effectiveType === 'formula' && !nextData.formula) throw new Error('Configure uma fórmula válida');
       const reserved = collectReservedPublicKeys(
         siblings
           .filter((column) => column.id !== existing.id)
@@ -283,13 +305,18 @@ export class PageColumnController {
     }
 
     // Nada para atualizar: no-op, devolve o registro atual.
-    if (Object.keys(payload).length === 0) return { ok: true, data: existing };
+    if (Object.keys(payload).length === 0 && input.relation === undefined) return { ok: true, data: existing };
 
     try {
-      const updated = await this.columns.update(payload, lookup, {
+      const relationResult = effectiveType === 'relation' && actorUserId
+        ? await relationWrites.saveDefinition(existing, {...existing, ...payload} as Schema.PageColumn, input.relation, actorUserId)
+        : undefined;
+      const updated = relationResult ? true : existing.type === 'formula' || effectiveType === 'formula' || input.formula !== undefined
+        ? await formulas.compareAndUpdate(existing, payload)
+        : await this.columns.update(payload, lookup, {
         after: existing.parent_id ? [pageActivityTouchStatement(existing.parent_id)] : [],
       });
-      if (!updated) return { ok: false, reason: "server_error", message: "Erro no servidor" };
+      if (!updated) return { ok: false, reason: "conflict", message: "A coluna foi alterada. Reabra o editor para continuar." };
 
       const column = await this.columns.find(lookup);
       if (!column) return { ok: false, reason: "server_error", message: "Erro no servidor" };
@@ -297,8 +324,10 @@ export class PageColumnController {
       const [resolved] = actorUserId
         ? await this.relations.resolveColumnMetadata([column], actorUserId)
         : [column];
-      return { ok: true, data: resolved ?? column };
+      return { ok: true, data: resolved ?? column,
+        ...(relationResult?.inverse && {relatedColumn: relationResult.inverse, relatedColumnCreated: Boolean(relationResult.inverseCreated)}) };
     } catch (error) {
+      if (error instanceof PageRelationError) return {ok: false, reason: error.status === 403 ? 'forbidden' : 'conflict', message: error.message};
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return { ok: false, reason: "server_error", message: "Erro no servidor" };
     }
@@ -314,6 +343,9 @@ export class PageColumnController {
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
       if (existing.type === "relation") await this.relations.assertNoDependentRollups(existing.id);
+      if (existing.type === 'relation' && existing.data.relation?.inverseColumnId) {
+        throw new PageRelationError(409, 'Desative a relação bidirecional antes de excluir a propriedade');
+      }
 
       const before: SqlStatement[] = [];
       if (existing.parent_id) {

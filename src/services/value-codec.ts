@@ -181,5 +181,6 @@ export const VALUE_CODECS: Record<Schema.ColumnType, Schema.ColumnValueCodec> = 
   date: dateCodec,
   flow: flowCodec,
   relation: relationCodec,
-  rollup: rollupCodec,
+  extract_as: rollupCodec,
+  formula: { ...rollupCodec, validate() { throw new Error('Fórmula é uma coluna calculada e somente leitura'); } },
 };

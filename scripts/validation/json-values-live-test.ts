@@ -34,7 +34,7 @@ try {
   for (const [id,name,type,data] of [
     [numeric,'Número','numeric',{}], [date,'Data','date',{}],
     [relation,'Relação','relation',{relation:{version:1,targetDatabaseId:root}}],
-    [rollup,'Resumo','rollup',{rollup:{version:1,relationColumnId:relation,targetColumnId:numeric,operation:'sum'}}],
+    [rollup,'Resumo','extract_as',{rollup:{version:1,relationColumnId:relation,targetColumnId:numeric,operation:'sum'}}],
   ] as const) await db.pageColumns.createWithId(id,{name,type,parent_id:root,data} as CreateValues<Schema.PageColumn>);
 
   for (const [page,column,value] of [[source.id,numeric,4],[target.id,numeric,9],[source.id,date,'2026-10-12T09:05:00.123Z'],[source.id,relation,[target.id]]] as const) {

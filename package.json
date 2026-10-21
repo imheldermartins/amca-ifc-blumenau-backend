@@ -36,7 +36,9 @@
     "rqlite:status": "rqlite migrate status",
     "rqlite:watch": "rqlite watch",
     "rqlite:dev": "rqlite watch --env-file .env.development --apply --environment development --run src/server.ts",
-    "rqlite:test:cubs": "node scripts/validation/rqlite-cubs-test.mjs"
+    "rqlite:test:cubs": "node scripts/validation/rqlite-cubs-test.mjs",
+    "formula:engine:sync": "node scripts/formula-engine.mjs sync",
+    "formula:engine:check": "node scripts/formula-engine.mjs check"
   },
   "keywords": [],
   "author": "",

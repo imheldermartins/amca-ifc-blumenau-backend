@@ -1,0 +1,38 @@
+[
+  {
+    "type": "trigger",
+    "name": "relation_cell_insert_limit",
+    "tableName": "page_columns_values",
+    "sql": "CREATE TRIGGER relation_cell_insert_limit BEFORE INSERT ON page_columns_values WHEN EXISTS(SELECT 1 FROM page_columns WHERE id=NEW.page_column_id AND type='relation'\n  AND json_extract(data,'$.relation.cardinality')='one') AND json_array_length(NEW.data,'$.value')>1\n    BEGIN SELECT RAISE(ABORT,'relation_cardinality_one'); END"
+  },
+  {
+    "type": "trigger",
+    "name": "relation_cell_update_limit",
+    "tableName": "page_columns_values",
+    "sql": "CREATE TRIGGER relation_cell_update_limit BEFORE UPDATE OF data,page_column_id ON page_columns_values WHEN EXISTS(SELECT 1 FROM page_columns WHERE id=NEW.page_column_id AND type='relation'\n  AND json_extract(data,'$.relation.cardinality')='one') AND json_array_length(NEW.data,'$.value')>1\n    BEGIN SELECT RAISE(ABORT,'relation_cardinality_one'); END"
+  },
+  {
+    "type": "trigger",
+    "name": "relation_cell_insert_index",
+    "tableName": "page_columns_values",
+    "sql": "CREATE TRIGGER relation_cell_insert_index AFTER INSERT ON page_columns_values BEGIN INSERT INTO page_relation_links(source_cell_id,target_page_id,position)\n  SELECT NEW.id,j.value,CAST(j.key AS INTEGER) FROM json_each(CASE WHEN json_valid(NEW.data) THEN NEW.data ELSE '{}' END,'$.value') j\n  JOIN pages ON pages.id=j.value WHERE j.type='text' AND EXISTS(SELECT 1 FROM page_columns WHERE id=NEW.page_column_id AND type='relation')\n    AND json_type(NEW.data,'$.value')='array'; END"
+  },
+  {
+    "type": "trigger",
+    "name": "relation_cell_update_index",
+    "tableName": "page_columns_values",
+    "sql": "CREATE TRIGGER relation_cell_update_index AFTER UPDATE OF data,page_column_id ON page_columns_values\n    BEGIN DELETE FROM page_relation_links WHERE source_cell_id=OLD.id; INSERT INTO page_relation_links(source_cell_id,target_page_id,position)\n  SELECT NEW.id,j.value,CAST(j.key AS INTEGER) FROM json_each(CASE WHEN json_valid(NEW.data) THEN NEW.data ELSE '{}' END,'$.value') j\n  JOIN pages ON pages.id=j.value WHERE j.type='text' AND EXISTS(SELECT 1 FROM page_columns WHERE id=NEW.page_column_id AND type='relation')\n    AND json_type(NEW.data,'$.value')='array'; END"
+  },
+  {
+    "type": "trigger",
+    "name": "relation_column_limit",
+    "tableName": "page_columns",
+    "sql": "CREATE TRIGGER relation_column_limit BEFORE UPDATE OF data,type ON page_columns\n    WHEN NEW.type='relation' AND json_extract(NEW.data,'$.relation.cardinality')='one'\n      AND EXISTS(SELECT 1 FROM page_columns_values WHERE page_column_id=NEW.id AND json_valid(data) AND json_array_length(data,'$.value')>1)\n    BEGIN SELECT RAISE(ABORT,'relation_cardinality_one'); END"
+  },
+  {
+    "type": "trigger",
+    "name": "relation_column_type_index",
+    "tableName": "page_columns",
+    "sql": "CREATE TRIGGER relation_column_type_index AFTER UPDATE OF type ON page_columns WHEN OLD.type IS NOT NEW.type\n    BEGIN DELETE FROM page_relation_links WHERE source_cell_id IN (SELECT id FROM page_columns_values WHERE page_column_id=NEW.id);\n      INSERT INTO page_relation_links(source_cell_id,target_page_id,position)\n      SELECT c.id,j.value,CAST(j.key AS INTEGER) FROM page_columns_values c\n        JOIN json_each(CASE WHEN json_valid(c.data) THEN c.data ELSE '{}' END,'$.value') j JOIN pages ON pages.id=j.value\n        WHERE c.page_column_id=NEW.id AND NEW.type='relation' AND j.type='text' AND json_type(c.data,'$.value')='array'\n        GROUP BY c.id,j.value;\n    END"
+  }
+]

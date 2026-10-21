@@ -1,3 +1,4 @@
+import { PageFormulaRouter } from "@/routes/page/page-formula-router";
 import { ApplicationRouter } from "@/routes/application-router";
 import { PageCollaboratorRouter } from "@/routes/page/page-collaborator-router";
 import { PageColumnRouter } from "@/routes/page/page-column-router";
@@ -36,6 +37,7 @@ export class PageRouter extends ApplicationRouter {
     private readonly viewQueries = new PageViewQueryRouter(),
     private readonly rowMoves = new PageViewRowMoveRouter(),
     private readonly relations = new PageRelationRouter(),
+    private readonly formulas = new PageFormulaRouter(),
   ) {
     super();
   }
@@ -55,6 +57,7 @@ export class PageRouter extends ApplicationRouter {
     this.router.use(this.viewQueries.build());
     this.router.use(this.rowMoves.build());
     this.router.use(this.relations.build());
+    this.router.use(this.formulas.build());
   }
 }
 

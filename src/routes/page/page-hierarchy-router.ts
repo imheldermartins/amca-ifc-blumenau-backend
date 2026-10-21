@@ -64,7 +64,7 @@ export class PageHierarchyRouter extends ApplicationRouter {
     const visibleRows = await Promise.all(
       dataset.map(async (row) => await this.access.canAccessPage(userId, row.page_id) ? row : null),
     );
-    return response.status(StatusCode.OK).json(visibleRows.filter((row) => row !== null));
+    return response.status(StatusCode.OK).json(await this.hierarchy.resolveFormulas(pageId,userId,visibleRows.filter((row) => row !== null)));
   }
 
   private async getBreadcrumb(request: Request, response: Response): Promise<Response> {

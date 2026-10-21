@@ -103,6 +103,7 @@ export class PageColumnValueRouter extends ApplicationRouter {
     const result = await this.values.deleteValue(
       routeParam(request, "id"),
       routeParam(request, "column_id"),
+      authenticatedUserId(request),
     );
     if (!result.ok) return sendPageFailure(response, result);
 
@@ -114,7 +115,7 @@ export class PageColumnValueRouter extends ApplicationRouter {
     const rowId = routeParam(request, "id");
     const originUserId = authenticatedUserId(request);
     if (columnType === 'relation') {
-      return this.realtime.relationUpdated({ rowId, originUserId });
+      return this.realtime.relationUpdated({ rowId, columnId: routeParam(request, "column_id"), originUserId });
     }
     return this.realtime.cellUpdated({
       rowId,

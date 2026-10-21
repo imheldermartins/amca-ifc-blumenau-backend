@@ -1,0 +1,10 @@
+# Configuração sugerida para este PC (15,75 GiB RAM / 4 CPUs).
+# Copie manualmente para %UserProfile%\.wslconfig e reinicie o WSL para aplicar.
+[wsl2]
+memory=12GB
+processors=4
+swap=8GB
+localhostForwarding=true
+
+[experimental]
+autoMemoryReclaim=gradual

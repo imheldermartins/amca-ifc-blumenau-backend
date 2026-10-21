@@ -1,3 +1,5 @@
+import formulas from "@/repositories/page-formula-repository";
+import relationWrites from "@/repositories/page-relation-write-repository";
 import pageCellStore from "@/repositories/page-cell-repository";
 import type { PageCellStoreContract } from "@/repositories/types/page-cell-repository.types";
 import type {
@@ -44,8 +46,8 @@ export class PageColumnValueController {
       if (!this.values.supports(column)) {
         return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
       }
-      if (column.type === "flow" || column.type === "rollup") {
-        return { ok: false, reason: "validation", message: column.type === 'rollup' ? 'Resumo é uma coluna calculada e somente leitura' : "Resultado de flow só pode ser alterado pela execução" };
+      if (column.type === "formula" || column.type === "flow" || column.type === "extract_as") {
+        return { ok: false, reason: "validation", message: column.type !== 'flow' ? 'Resumo é uma coluna calculada e somente leitura' : "Resultado de flow só pode ser alterado pela execução" };
       }
 
       // A célula é única por (página, coluna); criação nunca substitui valor.
@@ -66,7 +68,9 @@ export class PageColumnValueController {
         return this.domainFailure(error);
       }
 
-      const created = await this.cells.createCell({
+      const created = relationTargets
+        ? await relationWrites.write(column, input.page_id, relationTargets, actorUserId ?? '', null)
+        : await this.cells.createCell({
         pageId: input.page_id,
         columnId: input.page_column_id,
         data,
@@ -98,8 +102,8 @@ export class PageColumnValueController {
       if (!this.values.supports(column)) {
         return { ok: false, reason: "validation", message: "Tipo de coluna não suportado" };
       }
-      if (column.type === "flow" || column.type === "rollup") {
-        return { ok: false, reason: "validation", message: column.type === 'rollup' ? 'Resumo é uma coluna calculada e somente leitura' : "Resultado de flow só pode ser alterado pela execução" };
+      if (column.type === "formula" || column.type === "flow" || column.type === "extract_as") {
+        return { ok: false, reason: "validation", message: column.type !== 'flow' ? 'Resumo é uma coluna calculada e somente leitura' : "Resultado de flow só pode ser alterado pela execução" };
       }
 
       let data: string;
@@ -114,7 +118,9 @@ export class PageColumnValueController {
         return this.domainFailure(error);
       }
 
-      const updated = await this.cells.updateCell({
+      const updated = relationTargets
+        ? await relationWrites.write(column, pageId, relationTargets, actorUserId ?? '', existing)
+        : await this.cells.updateCell({
         cellId: existing.id,
         pageId,
         data,
@@ -133,6 +139,12 @@ export class PageColumnValueController {
     actorUserId?: string,
   ): Promise<ServiceResult<Schema.DecodedColumnValue>> {
     try {
+      const computed = await this.cells.findColumnForCell(pageId, columnId);
+      if (computed?.type === 'formula' && computed.parent_id && actorUserId) {
+        const results = await formulas.evaluate(computed.parent_id, computed.data.formula?.source ?? '', columnId, [pageId], actorUserId);
+        const result = results[pageId];
+        return {ok:true,data:{id:columnId,page_id:pageId,page_column_id:columnId,type:'formula',value:result?.ok ? result.value : {kind:'formula-error',message:result?.error.message ?? 'Fórmula indisponível'}}};
+      }
       const row = await this.cells.findCell(pageId, columnId);
       if (!row) {
         return { ok: false, reason: "not_found", message: `"Page_column_value" não encontrado` };
@@ -149,7 +161,7 @@ export class PageColumnValueController {
     }
   }
 
-  async deleteValue(pageId: NonEmptyString, columnId: NonEmptyString): Promise<ServiceResult<{ type: Schema.ColumnType }>> {
+  async deleteValue(pageId: NonEmptyString, columnId: NonEmptyString, actorUserId?: string): Promise<ServiceResult<{ type: Schema.ColumnType }>> {
     try {
       const row = await this.cells.findCell(pageId, columnId);
       if (!row) {
@@ -163,10 +175,15 @@ export class PageColumnValueController {
       if (!column) {
         return { ok: false, reason: "not_found", message: `"Page_column" não encontrado` };
       }
-      if (column.type === "flow" || column.type === "rollup") {
-        return { ok: false, reason: "validation", message: column.type === 'rollup' ? 'Resumo é uma coluna calculada e somente leitura' : "Resultado de flow só pode ser alterado pela execução" };
+      if (column.type === "formula" || column.type === "flow" || column.type === "extract_as") {
+        return { ok: false, reason: "validation", message: column.type !== 'flow' ? 'Resumo é uma coluna calculada e somente leitura' : "Resultado de flow só pode ser alterado pela execução" };
       }
 
+      if (column.type === 'relation') {
+        const remaining = await this.relations.prepareRelationTargets(column, pageId, [], actorUserId ?? '');
+        await relationWrites.write(column, pageId, remaining, actorUserId ?? '', row, true);
+        return {ok: true, data: {type: column.type}};
+      }
       const deleted = await this.cells.deleteCell(row.id, pageId);
       if (!deleted) return { ok: false, reason: "server_error", message: "Erro no servidor" };
 
@@ -211,6 +228,7 @@ export class PageColumnValueController {
   }
 
   private serverFailure(error: unknown): ServiceFailure {
+    if (error instanceof PageRelationError) return this.domainFailure(error);
     if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
     return { ok: false, reason: "server_error", message: "Erro no servidor" };
   }

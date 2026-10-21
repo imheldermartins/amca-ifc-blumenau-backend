@@ -48,6 +48,14 @@ function limitOf(value: number | undefined): number {
 /** SQL de domínio de Relação/Resumo permanece concentrado neste repositório. */
 export class PageRelationRepository {
   constructor(private readonly execute: typeof db.sqlRaw = db.sqlRaw) {}
+
+  async targetDatabase(columnId: string): Promise<string | null> {
+    const [row] = await this.execute<{target: string | null}>({
+      text: "SELECT json_extract(data,'$.relation.targetDatabaseId') AS target FROM page_columns WHERE id=? AND type='relation' AND deleted_at IS NULL",
+      values: [columnId],
+    }, 'query');
+    return row?.target ?? null;
+  }
   private async touchDatabases(ids: readonly string[]): Promise<Array<{ pageId: string }>> {
     const unique = [...new Set(ids.filter((id) => ULID_RE.test(id)))];
     if (!unique.length) return [];
@@ -67,9 +75,9 @@ export class PageRelationRepository {
     const databases = await this.execute<{ page_id: string }>({
       text: `SELECT DISTINCT definition.parent_id AS page_id FROM page_columns_values cell
         JOIN page_columns definition ON definition.id=cell.page_column_id AND definition.type='relation'
-        JOIN json_each(${cellJsonSql('cell')}, '$.value') relation
+        JOIN page_relation_links relation ON relation.source_cell_id=cell.id
         JOIN pages source ON source.id=definition.parent_id AND source.deleted_at IS NULL
-        WHERE relation.type='text' AND relation.value=? AND definition.deleted_at IS NULL`,
+        WHERE relation.target_page_id=? AND definition.deleted_at IS NULL`,
       values: [targetPageId],
     }, 'query');
     return this.touchDatabases(databases.map((entry) => entry.page_id));
@@ -80,8 +88,8 @@ export class PageRelationRepository {
     const databases = await this.execute<{ page_id: string }>({
       text: `SELECT DISTINCT source_column.parent_id AS page_id FROM page_columns_values cell
         JOIN page_columns source_column ON source_column.id=cell.page_column_id AND source_column.type='relation' AND source_column.deleted_at IS NULL
-        JOIN json_each(${cellJsonSql('cell')}, '$.value') relation ON relation.type='text'
-        JOIN page_edges target_edge ON target_edge.child_id=relation.value AND target_edge.parent_id=?
+        JOIN page_relation_links relation ON relation.source_cell_id=cell.id
+        JOIN page_edges target_edge ON target_edge.child_id=relation.target_page_id AND target_edge.parent_id=?
         JOIN pages source ON source.id=source_column.parent_id AND source.deleted_at IS NULL`,
       values: [targetDatabaseId],
     }, 'query');
@@ -140,7 +148,7 @@ export class PageRelationRepository {
       text: `SELECT json_extract(data,'$.relation.targetDatabaseId') AS current_target,
         EXISTS(SELECT 1 FROM page_columns_values WHERE page_column_id=page_columns.id) AS has_values,
         EXISTS(SELECT 1 FROM page_columns dependent WHERE dependent.parent_id=page_columns.parent_id
-          AND dependent.type='rollup' AND dependent.deleted_at IS NULL
+          AND dependent.type='extract_as' AND dependent.deleted_at IS NULL
           AND json_extract(dependent.data,'$.rollup.relationColumnId')=page_columns.id) AS has_rollups
         FROM page_columns WHERE id=? AND deleted_at IS NULL`,
       values: [columnId],
@@ -153,7 +161,7 @@ export class PageRelationRepository {
   async assertNoDependentRollups(columnId: string): Promise<void> {
     const [row] = await this.execute<{ dependent: number }>({
       text: `SELECT EXISTS(SELECT 1 FROM page_columns relation JOIN page_columns dependent ON dependent.parent_id=relation.parent_id
-        WHERE relation.id=? AND dependent.type='rollup' AND dependent.deleted_at IS NULL
+        WHERE relation.id=? AND dependent.type='extract_as' AND dependent.deleted_at IS NULL
           AND json_extract(dependent.data,'$.rollup.relationColumnId')=relation.id) AS dependent`,
       values: [columnId],
     }, 'query');
@@ -190,6 +198,7 @@ export class PageRelationRepository {
     const hidden = existing.filter((entry) => entry.visible !== 1).map((entry) => entry.target_page_id);
     const merged = [...hidden, ...unique.filter((id) => !hidden.includes(id))];
     if (merged.length > 250) throw new PageRelationError(409, 'A Relação atingiu o limite de 250 páginas');
+    if (config.cardinality === 'one' && merged.length > 1) throw new PageRelationError(409, 'Esta relação aceita somente uma página. Remova o vínculo anterior primeiro.');
     return merged;
   }
 
@@ -256,8 +265,8 @@ export class PageRelationRepository {
       : `${config.operation.toUpperCase()}(CASE WHEN ${cellTypeSql('value')} IN ('integer','real') THEN ${cellValueSql('value')} END)`;
     const rows = await this.execute<{ source_page_id: string; result: number | null }>({
       text: `SELECT cell.page_id AS source_page_id,${aggregate} AS result FROM page_columns_values cell
-        JOIN json_each(${cellJsonSql('cell')}, '$.value') relation ON relation.type='text'
-        JOIN pages target ON target.id=relation.value AND target.deleted_at IS NULL
+        JOIN page_relation_links relation ON relation.source_cell_id=cell.id
+        JOIN pages target ON target.id=relation.target_page_id AND target.deleted_at IS NULL
         ${config.operation === 'count' ? '' : 'LEFT JOIN page_columns_values value ON value.page_id=target.id AND value.page_column_id=?'}
         WHERE cell.page_column_id=? AND cell.page_id IN (${sourcePageIds.map(() => '?').join(',')})
           AND ${guard.text} GROUP BY cell.page_id`,
@@ -271,7 +280,17 @@ export class PageRelationRepository {
 
   async resolveColumnMetadata<T extends { id: string; type: string | null; data: unknown; parent_id?: string | null }>(columns: T[], userId: string): Promise<T[]> {
     return Promise.all(columns.map(async (column) => {
-      if (column.type !== 'rollup' || !column.parent_id) return column;
+      if (column.type === 'relation') {
+        const config = relationConfig(column);
+        if (!config?.inverseColumnId) return column;
+        const guard = accessGuard('page', config.targetDatabaseId, userId, 'read', 'view');
+        const [inverse] = await this.execute<{name: string | null; cardinality: 'one' | 'many' | null}>({
+          text: `SELECT name,json_extract(data,'$.relation.cardinality') AS cardinality FROM page_columns
+            WHERE id=? AND type='relation' AND deleted_at IS NULL AND ${guard.text}`, values: [config.inverseColumnId, ...guard.values],
+        }, 'query');
+        return inverse ? {...column, data: {...asObject(column.data), relation: {...config, inverseName: inverse.name ?? '', inverseCardinality: inverse.cardinality ?? 'many'}}} : column;
+      }
+      if (column.type !== 'extract_as' || !column.parent_id) return column;
       const config = rollupConfig(column);
       if (!config) return column;
       try {

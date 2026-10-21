@@ -17,7 +17,8 @@ const COLUMN_TYPES = new Set<Schema.ColumnType>([
   "checkbox",
   "flow",
   "relation",
-  "rollup",
+  "extract_as",
+  "formula",
 ]);
 const NUMBER_FORMATS = new Set<Schema.NumberFormat>(["percentage", "currency"]);
 const CURRENCY_CODES = new Set<Schema.CurrencyCode>(["BRL"]);
@@ -53,6 +54,8 @@ export class PageColumnConfigurationService {
       data.reservedOptionKeys = existingOptionTombstones;
     }
     if (existing?.flow) data.flow = existing.flow;
+    // Formula input is compiled by the controller, never trusted as persisted metadata.
+    if (existing?.formula) data.formula = existing.formula;
     if (existing?.flowButton) data.flowButton = existing.flowButton;
     if (this.isRelationConfig(existing?.relation)) data.relation = existing.relation;
     if (this.isRollupConfig(existing?.rollup)) data.rollup = existing.rollup;
@@ -118,8 +121,13 @@ export class PageColumnConfigurationService {
 
     if (input.relation === null) delete data.relation;
     else if (input.relation !== undefined) {
-      if (!this.isRelationConfig(input.relation)) throw new Error("Configuração de Relação inválida");
-      data.relation = input.relation;
+      const relation = input.relation as Schema.RelationInput;
+      if (!this.isRelationInput(relation)) throw new Error("Configuração de Relação inválida");
+      data.relation = {
+        version: 1, targetDatabaseId: relation.targetDatabaseId,
+        cardinality: relation.cardinality ?? existing?.relation?.cardinality ?? 'many',
+        ...(existing?.relation?.inverseColumnId && {inverseColumnId: existing.relation.inverseColumnId}),
+      };
     }
 
     if (input.rollup === null) delete data.rollup;
@@ -146,10 +154,22 @@ export class PageColumnConfigurationService {
   private isRelationConfig(value: unknown): value is Schema.RelationConfig {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const config = value as Record<string, unknown>;
-    return Object.keys(config).every((key) => ["version", "targetDatabaseId"].includes(key))
+    return Object.keys(config).every((key) => ["version", "targetDatabaseId", "cardinality", "inverseColumnId", "inverseName", "inverseCardinality"].includes(key))
       && config.version === 1
       && typeof config.targetDatabaseId === "string"
-      && /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(config.targetDatabaseId);
+      && /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(config.targetDatabaseId)
+      && (config.cardinality === undefined || ['one', 'many'].includes(String(config.cardinality)))
+      && (config.inverseColumnId === undefined || typeof config.inverseColumnId === 'string' && /^[0-9A-HJKMNP-TV-Z]{26}$/i.test(config.inverseColumnId));
+  }
+
+  private isRelationInput(value: unknown): value is Schema.RelationInput {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const config = value as Record<string, unknown>;
+    return Object.keys(config).every(key => ['version', 'targetDatabaseId', 'cardinality', 'bidirectional', 'inverseName', 'inverseCardinality'].includes(key))
+      && this.isRelationConfig({version: config.version, targetDatabaseId: config.targetDatabaseId, cardinality: config.cardinality})
+      && (config.bidirectional === undefined || typeof config.bidirectional === 'boolean')
+      && (config.inverseName === undefined || typeof config.inverseName === 'string' && config.inverseName.trim().length > 0 && config.inverseName.length <= 120)
+      && (config.inverseCardinality === undefined || ['one', 'many'].includes(String(config.inverseCardinality)));
   }
 
   private isRollupConfig(value: unknown): value is Schema.RollupConfig {

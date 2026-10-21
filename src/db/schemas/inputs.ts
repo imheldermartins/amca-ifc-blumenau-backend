@@ -60,8 +60,9 @@ export namespace Input {
     format?: Schema.NumberFormat;
       currency?: Schema.CurrencyCode;
       mask?: Schema.TextMask;
-      relation?: Schema.RelationConfig;
+      relation?: Schema.RelationInput;
       rollup?: Schema.RollupConfig;
+      formula?: Schema.FormulaInput;
       parent_id?: Schema.PageColumn["parent_id"];
   };
 
@@ -75,8 +76,9 @@ export namespace Input {
     format?: Schema.NumberFormat | null;
       currency?: Schema.CurrencyCode | null;
       mask?: Schema.TextMask | null;
-      relation?: Schema.RelationConfig | null;
+      relation?: Schema.RelationInput | null;
       rollup?: Schema.RollupConfig | null;
+      formula?: Schema.FormulaInput;
   };
 
   // --- Page Columns Values (valor "nu", dinâmico por tipo; sem ?type) ---

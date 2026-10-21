@@ -6,6 +6,7 @@ const supportsOperator = (
   type: Exclude<Schema.ColumnType, 'flow'>,
   operator: Schema.FlowSwitchOperator,
 ): boolean => {
+  if (type === 'formula') return false;
   if (operator === 'is_empty' || operator === 'is_not_empty') return type !== 'checkbox';
 
   switch (type) {
@@ -19,7 +20,7 @@ const supportsOperator = (
     case 'checkbox':
       return operator === 'equals' || operator === 'not_equals';
     case 'relation':
-    case 'rollup':
+    case 'extract_as':
       return false;
   }
 };
@@ -57,7 +58,8 @@ const validateComparisonValue = (
       }
       return;
     case 'relation':
-    case 'rollup':
+    case 'extract_as':
+    case 'formula':
       throw new Error('Relação e Resumo não são aceitos em condições de Flow');
   }
 };

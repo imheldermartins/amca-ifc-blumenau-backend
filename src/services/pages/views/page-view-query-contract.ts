@@ -33,7 +33,7 @@ export interface QueryDatasetCell {
   row_id: string | null;
   row_data: string | null;
   column_name: string | null;
-  column_type: 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow' | 'relation' | 'rollup' | null;
+  column_type: 'text' | 'numeric' | 'select' | 'date' | 'checkbox' | 'flow' | 'relation' | 'extract_as' | 'formula' | null;
   column_data: string | null;
 }
 export interface QueryDatasetRow { page_id: string; page_title: string | null; page_columns: Record<string, QueryDatasetCell> }

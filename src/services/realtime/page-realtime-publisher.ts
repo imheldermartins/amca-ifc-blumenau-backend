@@ -1,3 +1,4 @@
+import formulas from "@/repositories/page-formula-repository";
 import pageHierarchyStore from "@/repositories/page-hierarchy-repository";
 import pageRelationRepository from '@/repositories/page-relation-repository';
 import { readPageLatestUpdatedAt } from '@/repositories/page-activity';
@@ -72,6 +73,7 @@ export class PageRealtimePublisher {
       ),
     );
     await this.emitDatabaseUpdated(pageId, input.originUserId);
+    await this.invalidateFormulaDatabases(pageId, input.originUserId);
   }
 
   /** Recarrega metadados/janelas sem expor o conteúdo da relação no socket. */
@@ -85,9 +87,25 @@ export class PageRealtimePublisher {
     );
   }
 
-  async relationUpdated(input: Pick<CellUpdatedInput, 'rowId' | 'originUserId'>): Promise<void> {
+  async relationUpdated(input: Pick<CellUpdatedInput, 'rowId' | 'originUserId'> & {columnId?: string}): Promise<void> {
     const pageId = await this.resolveParent(input.rowId, "projection-invalidated");
-    if (pageId) await this.projectionInvalidated(pageId, input.originUserId);
+    if (pageId) {
+      await this.projectionInvalidated(pageId, input.originUserId);
+      await this.invalidateFormulaDatabases(pageId, input.originUserId, pageId);
+    }
+    if (input.columnId) await this.relationDefinitionChanged(input.columnId, input.originUserId, pageId ?? undefined);
+  }
+
+  async relationDefinitionChanged(columnId: string, originUserId: string, sourcePageId?: string): Promise<void> {
+    try {
+      const target = await pageRelationRepository.targetDatabase(columnId);
+      if (!target || target === sourcePageId) return;
+      await this.projectionInvalidated(target, originUserId);
+      await this.invalidateDependentDatabase(target, originUserId);
+      await this.invalidateFormulaDatabases(target, originUserId, target);
+    } catch (error) {
+      this.log(`[cubs:realtime] Falha ao invalidar a relação ${columnId}`, error);
+    }
   }
 
   async dependentPageChanged(rowId: string, originUserId: string): Promise<void> {
@@ -130,6 +148,7 @@ export class PageRealtimePublisher {
         ),
       );
       await this.invalidateDependentPages(input.pageId, input.originUserId);
+      await this.invalidateFormulaDatabases(parentId, input.originUserId);
     }
   }
 
@@ -145,6 +164,7 @@ export class PageRealtimePublisher {
       ),
     );
     await this.invalidateDependentDatabase(input.pageId, input.originUserId);
+    await this.invalidateFormulaDatabases(input.pageId, input.originUserId);
   }
 
   async rowCreated(input: RowChangedInput): Promise<void> {
@@ -159,6 +179,7 @@ export class PageRealtimePublisher {
   async rowDeleted(input: RowChangedInput): Promise<void> {
     await this.emitRowChange("row-deleted", input, (payload) => this.emitter.emitRowDeleted(payload));
     await this.invalidateDependentPages(input.rowId, input.originUserId);
+    await this.invalidateFormulaDatabases(input.pageId, input.originUserId);
   }
 
   async columnCreated(input: ColumnCreatedInput): Promise<void> {
@@ -172,6 +193,9 @@ export class PageRealtimePublisher {
         ),
       ),
     );
+    if (input.column && typeof input.column === 'object' && 'type' in input.column && input.column.type === 'formula') {
+      await this.invalidateFormulaDatabases(input.pageId, input.originUserId);
+    }
   }
 
   async columnDeleted(input: ColumnChangedInput): Promise<void> {
@@ -179,6 +203,7 @@ export class PageRealtimePublisher {
       this.emitter.emitColumnDeleted(payload),
     );
     await this.invalidateDependentDatabase(input.pageId, input.originUserId);
+    await this.invalidateFormulaDatabases(input.pageId, input.originUserId);
   }
 
   /** Coluna e todas as celulas resetadas compartilham exatamente o mesmo ISO. */
@@ -210,6 +235,7 @@ export class PageRealtimePublisher {
         ),
       );
     }
+    await this.invalidateFormulaDatabases(input.pageId,input.originUserId);
   }
 
   private async emitRowChange(
@@ -272,6 +298,12 @@ export class PageRealtimePublisher {
     } catch (error) {
       this.log(`[cubs:realtime] Falha ao invalidar projecoes dependentes da database ${targetDatabaseId}`, error);
     }
+  }
+
+  private async invalidateFormulaDatabases(pageId: string, userId: string, alreadyInvalidated?: string): Promise<void> {
+    if (!this.emitter.emitProjectionInvalidated) return;
+    try { const ids=await formulas.affectedDatabases(pageId); await Promise.all(ids.filter(id=>id!==alreadyInvalidated).map(id=>this.projectionInvalidated(id,userId))); }
+    catch(error) { this.log('[cubs:realtime] Falha ao atualizar fórmulas',error); }
   }
 
   private async resolveParent(rowId: string, event: string): Promise<string | null> {
