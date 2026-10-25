@@ -1,0 +1,12 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('..', import.meta.url));
+const source = resolve(root, 'src/services/mentions/template.ts');
+const target = resolve(process.env.CUBS_FRONTEND_ROOT?.trim() || resolve(root, '../cubs-frontend'), 'src/shared/mentions.ts');
+const mode = process.argv[2];
+if (!['sync', 'check'].includes(mode)) throw new Error('Uso: mention-contract.mjs <sync|check>');
+const canonical = await readFile(source, 'utf8');
+if (mode === 'sync') await writeFile(target, canonical, 'utf8');
+else if (canonical.replaceAll('\r\n', '\n') !== (await readFile(target, 'utf8')).replaceAll('\r\n', '\n')) throw new Error('Contrato de menções divergente; execute mentions:contract:sync');
+console.log(`Mention contract ${mode}.`);

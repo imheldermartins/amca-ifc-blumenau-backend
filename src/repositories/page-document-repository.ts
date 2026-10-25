@@ -1,6 +1,7 @@
 import { ulid } from 'ulid';
 
 import db from '@models/index';
+import { encodePageDocument, type CompactPageDocument } from '@/services/pages/page-document-codec';
 
 interface RawPageDocument {
   id: string;
@@ -36,7 +37,7 @@ export class PageDocumentStore {
     return decode(rows[0]);
   }
 
-  public async save(pageId: string, content: Record<string, unknown>): Promise<PageDocumentRecord | null> {
+  public async save(pageId: string, content: Record<string, unknown> | CompactPageDocument): Promise<PageDocumentRecord | null> {
     const rows = await this.execute<RawPageDocument>({
       text: `INSERT INTO page_blocks (id, page_id, content, revision)
         SELECT ?, id, json(?), 1 FROM pages WHERE id = ? AND deleted_at IS NULL
@@ -45,7 +46,7 @@ export class PageDocumentStore {
           revision = page_blocks.revision + 1,
           updated_at = CURRENT_TIMESTAMP
         RETURNING *`,
-      values: [ulid(), JSON.stringify(content), pageId],
+      values: [ulid(), JSON.stringify(encodePageDocument(content)), pageId],
     }, 'request');
     return decode(rows[0]);
   }
