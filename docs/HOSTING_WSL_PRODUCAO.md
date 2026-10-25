@@ -1,7 +1,15 @@
 # Hosting do Cub's no Ubuntu do WSL2
 
-Estado deste plano: infraestrutura local preparada; publicação do domínio
-aguarda a criação do túnel Cloudflare e a migração revisada do DNS.
+Estado em 2026-10-21: Ubuntu WSL2 com Docker Engine nativo está rodando; as 11
+migrations pendentes foram aplicadas após autorização explícita, sem backup
+conforme solicitado, e `pending: []`. rqlite, backend, frontend e o conector
+Cloudflare Tunnel estão ativos; nginx serve o frontend e a prontidão HTTP da
+API foi validada dentro da rede Docker. O volume persistente foi preservado.
+O Tunnel `cubsonline-wsl-prod` está saudável. As rotas do apex e da API foram
+salvas, e os CNAMEs proxied de `cubsonline.com.br` e `api.cubsonline.com.br`
+apontam para esse Tunnel. A zona ainda está pendente porque os nameservers
+autoritativos permanecem na Hostinger; a publicação pública ainda não está
+ativa.
 
 ## Desenho
 
@@ -42,27 +50,84 @@ para o mesmo Express. O rqlite continua sem `ports` publicados.
   pública, limites e as chaves SMTP existentes de `.env.development`; valores
   secretos não foram impressos nem adicionados ao Git. O env de rqlite single
   node também foi criado localmente.
-- Criado o exemplo `.wslconfig` em `docs/hosting-wsl/.wslconfig`. Ele ainda não
-  foi aplicado ao Windows: copiar manualmente para `%UserProfile%\.wslconfig`.
+- Criado o exemplo `.wslconfig` em `docs/hosting-wsl/.wslconfig`. O usuário o
+  copiou manualmente para `%UserProfile%\.wslconfig`; a configuração efetiva foi
+  confirmada após reiniciar o WSL.
+
+## Segurança e build
+
+- O Compose de produção valida com o perfil `edge`; as imagens de rqlite,
+  backend e frontend foram construídas. O backend compilou, verificou o schema
+  e a cadeia de migrations. O frontend passou
+  TypeScript/Vite; o Vite avisa sobre um chunk `Editor` de ~758 kB e sobre
+  `__dirname` no carregador de configuração planejado para versões futuras.
+- Testes: backend 501 passaram/7 ignorados; frontend 732 passaram. Após mover
+  o teste do placeholder para o ambiente React real, os 11 testes afetados
+  passaram novamente.
+- `npm audit --omit=dev` reporta zero vulnerabilidades nos dois runtimes. Ainda
+  há advisories em ferramentas de build/teste: `braces` via `tsc-alias` no
+  backend e `tinypool`/Vitest no frontend; estes pacotes não entram nas imagens
+  finais. Não aplicar `npm audit fix --force` automaticamente.
+- As imagens-base do frontend passaram a usar digests imutáveis; backend e
+  rqlite já eram fixados. O nginx envia `X-Forwarded-Proto: https` no proxy
+  Socket.IO. `nginx -t` passou e a imagem cloudflared 2026.10.2 foi baixada e
+  verificada.
+
+## Estado dos containers e migrations
+
+- `cubs-rqlite` está saudável na rede privada; o volume `docker_rqlite_data`
+  foi preservado. As portas 3000, 4001 e 80 não estão publicadas no host.
+- No início do deploy havia 11 migrations pendentes: 5 `safe`, 4 `manual` e 2
+  `destructive`. Após revisão, o usuário autorizou a aplicação, explicitamente
+  sem backup e recriando os dados do zero. O volume foi mantido; as tabelas de
+  aplicação estavam vazias antes da aplicação. A execução terminou com
+  `pending: []` e o backend ficou saudável.
+- O CLI não oferece rollback/recuperação automática. Em migrations futuras,
+  revisar a fonte e as tabelas afetadas; não reutilizar esta autorização nem
+  contornar os gates do CLI.
 
 ## Capacidade do WSL
 
-O computador tem 15,75 GiB de RAM e 4 processadores lógicos. A sugestão reserva
-até 12 GiB e todos os 4 processadores ao WSL, com swap de 8 GiB e recuperação
-gradual de cache. A recuperação gradual permite devolver cache ao Windows; o
-limite de 12 GiB evita deixar o Windows sem memória. A alteração só vale após
-encerrar/reabrir o WSL (`wsl --shutdown`); não executar enquanto houver trabalho
-Linux que precise permanecer ativo.
+O computador tem 15,75 GiB de RAM e 4 processadores lógicos. O arquivo
+`%UserProfile%\.wslconfig` foi aplicado pelo usuário e confirmado após o
+reinício do WSL: limite de 12 GB, 4 CPUs, swap de 8 GB e recuperação gradual de
+cache. O Linux reporta aproximadamente 11 GiB de RAM e 8 GiB de swap. A
+recuperação gradual devolve cache ao Windows, e o limite deixa memória para o
+host.
+
+## Firewall do Windows e Cloudflare Tunnel
+
+O script foi executado em modo de auditoria, sem criar ou alterar regras. Em
+21/10/2026, os perfis Domain, Private e Public do Windows Defender Firewall
+estavam habilitados, com entrada padrão `Block` e saída `Allow`. O firewall
+Hyper-V do WSL também estava habilitado com entrada `Block` e saída `Allow`.
+Não é necessário desativar o Defender ou abrir portas de entrada para usar o
+Tunnel. `cloudflared` estabelece conexões de saída em TCP/UDP 7844.
+
+O script [Configure-WslCloudflareFirewall.ps1](Configure-WslCloudflareFirewall.ps1)
+faz auditoria sem alterações por padrão. Se for executado com
+`-AllowCloudflareTunnelEgress`, só cria exceções Hyper-V outbound para TCP e UDP
+7844 caso a política efetiva de saída do WSL seja `Block`; com a configuração
+observada agora, ele apenas informa que nenhuma exceção é necessária. Não muda
+antivírus, perfis globais, política padrão ou regras inbound. Se a saída do WSL
+estiver bloqueada por política explícita, para e pede revisão em vez de
+contorná-la. A exceção opcional vale para todos os processos/distribuições WSL
+e qualquer destino na porta remota 7844, portanto só deve ser usada quando
+necessária e após conferir as regras existentes.
 
 ## Domínio e email observados na Hostinger
 
-Em 20/10/2026 o domínio estava ativo, com nameservers `atlas.dns-parking.com` e
-`hyperion.dns-parking.com`. O apex `@` apontava para `2.57.91.91`; `www` era
-CNAME para o apex. Não havia registro para `api`.
+Verificação pública em 21/10/2026: nameservers `atlas.dns-parking.com` e
+`hyperion.dns-parking.com`; o apex `@` aponta para `2.57.91.91`; `www` é CNAME
+para o apex; `api.cubsonline.com.br` não tem A/CNAME. MX `mx1.hostinger.com`
+(prioridade 5) e `mx2.hostinger.com` (prioridade 10) continuam publicados.
+Também continuam resolvendo SPF no apex, DMARC `v=DMARC1; p=none`, os três
+CNAMEs DKIM `hostingermail-a/b/c._domainkey` e `autodiscover`/`autoconfig` da
+Hostinger.
 
-Antes de trocar os nameservers para Cloudflare, exportar e conferir a zona
-completa. A tela mostrava estes registros de email Hostinger, que precisam ser
-recriados como DNS only (nuvem cinza) para não interromper recebimento/envio:
+Antes de trocar os nameservers para Cloudflare, revisar diretamente toda a lista
+no hPanel e confirmar que os registros de email abaixo constam na zona Cloudflare
+como DNS only (nuvem cinza), para não interromper recebimento/envio:
 
 | Tipo | Nome | Conteúdo | Prioridade |
 |---|---|---|---:|
@@ -76,54 +141,81 @@ recriados como DNS only (nuvem cinza) para não interromper recebimento/envio:
 | CNAME | autodiscover | autodiscover.mail.hostinger.com | — |
 | CNAME | autoconfig | autoconfig.mail.hostinger.com | — |
 
-Também havia o CNAME `www -> cubsonline.com.br`. A leitura visual não revela
-todo registro auxiliar que possa existir: exportar a zona na Hostinger e
-comparar antes do corte. A migração completa do DNS para Cloudflare requer
-alterar nameservers no registrador; a leitura atual não fez essa alteração.
+Também havia o A `@ -> 2.57.91.91` e o CNAME `www -> cubsonline.com.br`; esses
+destinos atuais da Hostinger não devem substituir as rotas do Tunnel. A migração
+completa do DNS para Cloudflare requer alterar nameservers no registrador; a
+leitura atual não fez essa alteração. O painel DNSSEC abriu somente o formulário
+de cadastro, sem DS exibido; trate o estado como não confirmado e valide antes
+do corte. Nenhum arquivo de zona foi exportado.
 
 ## Passos de publicação
 
-1. Revisar os diretórios de backend e frontend. Ambos estão no branch `main`, mas
-   têm alterações locais não commitadas. Há migrations de fórmula/relação no
-   backend e mudanças de fórmula no frontend; não iniciar a produção desses
-   diretórios sujos. Definir a revisão aprovada para publicação e preservar o
-   trabalho local.
-2. No Cloudflare, adicionar `cubsonline.com.br`, importar/revisar manualmente a
-   zona Hostinger acima e conferir também qualquer registro não listado. Manter
-   todos os registros de email como DNS only.
-3. Criar um túnel remoto com nome `cubs-wsl-production`. Adicionar rotas públicas:
+1. O deploy local foi construído a partir do branch `main` nos dois repositórios,
+   com alterações locais ainda sem commit. No backend, há alterações em
+   `docs/HOSTING_WSL_PRODUCAO.md` e `package-lock.json`. No frontend, há
+   alterações em `Dockerfile`, `nginx/nginx.conf`, `package.json`,
+   `package-lock.json` e dois testes do editor. Os containers em execução usam
+   essas árvores locais; revisar diffs e não descartá-los antes do próximo
+   deploy.
+2. A zona `cubsonline.com.br` já foi adicionada ao Cloudflare no plano Free e o
+   assistente importou 11 registros (1 A, 6 CNAME, 2 MX, 2 TXT), correspondentes
+   ao inventário observado na Hostinger. A rota Tunnel da API criou o 12º
+   registro; a substituição do A do apex preservou o total. MX, SPF, DMARC, os
+   três DKIM, autodiscover e autoconfig continuam DNS only. Antes da ativação,
+   comparar o inventário DNS completo do hPanel com a zona.
+3. Criados o Tunnel remoto `cubsonline-wsl-prod` e as rotas públicas
    `cubsonline.com.br -> http://frontend:80` e
-   `api.cubsonline.com.br -> http://frontend:80`. Opcionalmente, apontar `www`
-   para o frontend e configurar redirecionamento para o apex.
-4. Copiar `docker/cloudflare.prod.env.example` para `docker/cloudflare.prod.env`
-   e colar o token do túnel nesse arquivo local ignorado pelo Git. Não colocar o
-   token em comandos, chat, commit ou documentação.
-5. Conferir `docker/backend.prod.env`: `NODE_ENV=production`, `TRUST_PROXY=1`,
-   `CORS_ORIGINS=https://cubsonline.com.br`, `APP_PUBLIC_URL=https://cubsonline.com.br`,
-   `DATABASE_URL=http://rqlite:4001`, JWTs longos e SMTP copiado localmente.
-   Confirmar no provedor que a conta SMTP ainda está ativa e autorizada para
-   envio de produção. A configuração atual usa a porta e modo TLS já existentes.
-6. O arquivo local `docker/rqlite.prod.env` foi criado para nó único `NODE_ID=1`
-   e porta HTTP anunciada 4001. Não publicar essa porta na rede Windows/Internet.
-7. Após selecionar fontes limpas/revisadas, validar a configuração e iniciar:
+   `api.cubsonline.com.br -> http://frontend:80`. O nginx decide entre frontend
+   e API pelo Host. `www` continua com CNAME para o apex na zona Cloudflare.
+4. O token do túnel está em `docker/cloudflare.prod.env`, ignorado pelo Git.
+   Nunca imprimir, transmitir ou incluir o token em comandos, chat, commit ou
+   documentação.
+5. `docker/backend.prod.env` está configurado com `NODE_ENV=production`,
+   `TRUST_PROXY=1`, `CORS_ORIGINS=https://cubsonline.com.br`,
+   `APP_PUBLIC_URL=https://cubsonline.com.br`, `DATABASE_URL=http://rqlite:4001`,
+   JWTs longos e as configurações SMTP locais existentes. O arquivo local do
+   rqlite single-node anuncia a porta interna 4001. Nenhuma porta da aplicação
+   ou do banco é publicada no host.
+6. As validações de configuração e migrations executadas no Ubuntu foram:
 
-   ```powershell
+   ```bash
    wsl -d Ubuntu
    cd /mnt/c/Projects/cubs-backend
    docker compose -f docker/docker-compose.prod.yml --profile edge config --quiet
+   docker compose -f docker/docker-compose.prod.yml run --rm --no-deps --entrypoint /app/node_modules/.bin/rqlite backend migrate status --config /app/dist/rqlite.config.js --environment production
+   ```
+
+   As 11 migrations iniciais já foram aplicadas com autorização explícita e o
+   estado confirmado foi `pending: []`. Os comandos abaixo são somente para
+   migrations futuras, após revisar as fontes e obter autorização específica
+   para os gates manual/destructive:
+
+   ```bash
+   docker compose -f docker/docker-compose.prod.yml run --rm --no-deps --entrypoint /app/node_modules/.bin/rqlite backend migrate --allow-manual --allow-destructive --config /app/dist/rqlite.config.js --environment production
+   docker compose -f docker/docker-compose.prod.yml run --rm --no-deps --entrypoint /app/node_modules/.bin/rqlite backend migrate status --config /app/dist/rqlite.config.js --environment production
+   ```
+
+   Confirmar `pending: []` antes de iniciar os serviços. O stack de produção foi
+   iniciado com:
+
+   ```bash
    docker compose -f docker/docker-compose.prod.yml --profile edge up -d --build
    docker compose -f docker/docker-compose.prod.yml --profile edge ps
    ```
 
-   O Compose executa as migrations compiladas no entrypoint do backend. Fazer
-   backup do banco e revisar a lista de migrations antes do primeiro start.
-8. No Cloudflare, deixar o TLS de visitante em HTTPS e o redirecionamento
-   HTTP→HTTPS ativo. Confirmar `/health/ready` pelo host da API, login que
-   persiste após refresh, chamadas `/api/v1` e transporte WebSocket de
-   `socket.io`.
-9. Só após validar site, API, login, realtime e email, trocar os nameservers na
-   Hostinger pelos atribuídos pela Cloudflare. Depois confirmar delegação DNS,
-   registros MX/SPF/DKIM/DMARC e HTTPS nos dois hosts.
+   O Compose também executa `rqlite check --database` no entrypoint. A prontidão
+   `/health/ready`, chamadas `/api/v1` através do nginx e handshake polling do
+   Socket.IO foram validados localmente. Login/email real em produção aguardam
+   ativação do DNS e teste externo.
+7. No Cloudflare, o A antigo do apex foi substituído, conforme autorização
+   explícita, por CNAME proxied para o Tunnel
+   `ba07e701-7e2f-4197-b1a1-d2a9c247c51b.cfargotunnel.com`. O CNAME proxied de
+   `api` também está ligado ao mesmo Tunnel. MX, SPF, DMARC, DKIM,
+   autodiscover e autoconfig da Hostinger continuam DNS only.
+8. **Pendente:** revisar o inventário DNS completo e verificar DNSSEC no hPanel;
+   depois, autorizar separadamente a troca dos nameservers na Hostinger pelos
+   atribuídos pela Cloudflare. Só então confirmar delegação, HTTPS, API, login,
+   realtime e email nos hosts públicos.
 
 ## Inicialização e limites operacionais
 
@@ -138,11 +230,49 @@ backend. Aumentar réplicas exige store compartilhado de rate limit e adapter
 Socket.IO. Não usar `docker compose down -v` em produção: isso remove o volume
 persistente do rqlite.
 
-## Situação ao fim da preparação
+## Situação atual
 
-O Ubuntu e o Docker Engine nativo estão rodando; as envs de produção estão
-preenchidas localmente sem versionar segredos. O stack da aplicação e o túnel
-ainda não foram iniciados, porque o código-fonte está modificado localmente e a
-zona/túnel Cloudflare ainda precisam ser criados e o DNS revisado. O domínio
-continua servindo conforme a zona Hostinger existente. Nenhuma migration foi
-aplicada por este procedimento.
+O Ubuntu está rodando em WSL2 com Docker Engine nativo (Docker Desktop parado).
+O Linux reporta aproximadamente 11 GiB de RAM e 8 GiB de swap; `.wslconfig`
+define 12 GB, 4 CPUs e `autoMemoryReclaim=gradual`. Os três serviços estão
+ativos; `cubs-rqlite` e `cubs-backend` estão saudáveis. Foram verificados o HTML
+do frontend, `/health/ready` com banco pronto, `/api/v1/auth/me` via nginx (401
+esperado sem sessão) e handshake polling do Socket.IO (200). Migrations:
+`pending: []`.
+
+Confirmação ao vivo em 21/10/2026: o Ubuntu está `Running`; `cubs-backend` e
+`cubs-rqlite` estão `healthy`, `cubs-frontend` está `Up`, e `cubs-cloudflared`
+está conectado ao Tunnel. Docker Desktop está parado. A zona `cubsonline.com.br`
+está criada no Cloudflare no plano Free, mas aguarda ativação. O import apresentou
+os registros conhecidos da Hostinger; MX, SPF, DMARC, DKIM, autodiscover e
+autoconfig continuam DNS only. O registro A antigo do apex foi substituído por
+CNAME proxied para `ba07e701-7e2f-4197-b1a1-d2a9c247c51b.cfargotunnel.com`, e
+`api` também tem CNAME proxied do Tunnel. `www` continua CNAME proxied para o
+apex. O Tunnel `cubsonline-wsl-prod` tem rotas para `cubsonline.com.br` e
+`api.cubsonline.com.br`, ambas para `http://frontend:80`; nginx escolhe o site e
+proxy da API pelo Host. O Cloudflare atribuiu `emerson.ns.cloudflare.com` e
+`sky.ns.cloudflare.com`; os nameservers autoritativos continuam
+`atlas.dns-parking.com` e `hyperion.dns-parking.com`. As alterações na zona
+Cloudflare ainda não afetam o DNS público enquanto a delegação não for trocada.
+DNSSEC permanece não confirmado e deve ser verificado no hPanel antes do corte.
+
+Verificação pública em 21/10/2026, após preparar a zona Cloudflare: os NS ainda
+resolvem para Hostinger. `https://cubsonline.com.br` responde HTTP 200, porém o
+HTML é a página estacionada da Hostinger (“Parked Domain name on Hostinger DNS
+system”), não o Cub's. `api.cubsonline.com.br/health/ready` ainda não resolve.
+O `nslookup` do Windows não suporta consulta DS nesta execução, então DNSSEC
+continua sem confirmação. A troca de nameservers para `emerson.ns.cloudflare.com`
+e `sky.ns.cloudflare.com` não foi executada: a automação do Chrome foi
+interrompida por não conseguir identificar a URL da janela com segurança; não
+houve alteração no registrador nesta tentativa.
+
+Uma consulta DNS ao vivo ainda retorna os nameservers da Hostinger. Na zona
+Cloudflare pendente, apex e `api` agora são CNAMEs proxied vinculados ao Tunnel;
+o A antigo `2.57.91.91` foi removido da zona. Os registros de email Hostinger
+continuam intactos e DNS only. O `cloudflared` está rodando em Docker Compose
+com perfil `edge`; o token está somente em `docker/cloudflare.prod.env`,
+ignorado pelo Git, e nunca deve aparecer no chat, em comandos, commits ou
+documentação. A troca de nameservers na Hostinger continua pendente e requer
+autorização separada; até lá, o tráfego público segue na configuração
+autoritativa Hostinger. Depois da ativação, validar HTTPS, API, login, realtime
+e email antes de considerar a publicação pública concluída.
