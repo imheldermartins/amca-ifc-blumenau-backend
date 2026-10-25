@@ -62,6 +62,11 @@ export namespace Schema {
   }
   export interface Pages extends Page {}
 
+  export interface PageFavorite extends EntityBase {
+    user_id: NonEmptyString;
+    page_id: NonEmptyString;
+  }
+
   export interface PageFormPublication extends EntityBase {
     page_id: NonEmptyString;
     view_id: NonEmptyString;

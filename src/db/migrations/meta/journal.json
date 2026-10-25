@@ -79,6 +79,24 @@
       "file": "20261020023101397_c32e8cfa_relation_snapshot_invariants.ts",
       "snapshot": "20261020023101397_c32e8cfa_relation_snapshot_invariants.snapshot.json",
       "checksum": "b33a96e58a0f7d14ea8ab83819e2c65a45ba951770bce7a4e4b7b0a4efddfae2"
+    },
+    {
+      "id": "20261023111924265_4ce7353b_repair_recurring_users_updated_at",
+      "file": "20261023111924265_4ce7353b_repair_recurring_users_updated_at.ts",
+      "snapshot": "20261023111924265_4ce7353b_repair_recurring_users_updated_at.snapshot.json",
+      "checksum": "03b36c20f945643ee7bbb96c36ca00ba75e49b1ae8fef112929477dd15372f5a"
+    },
+    {
+      "id": "20261023112039308_a7aeaa20_normalize_literal_users_updated_at",
+      "file": "20261023112039308_a7aeaa20_normalize_literal_users_updated_at.ts",
+      "snapshot": "20261023112039308_a7aeaa20_normalize_literal_users_updated_at.snapshot.json",
+      "checksum": "6003a113ce0bf8ab4eb5cb027594a68503cfd811f58461c204880d505d654b3e"
+    },
+    {
+      "id": "20261025024712094_68ff1f26_add_page_favorites",
+      "file": "20261025024712094_68ff1f26_add_page_favorites.ts",
+      "snapshot": "20261025024712094_68ff1f26_add_page_favorites.snapshot.json",
+      "checksum": "346f6b11ca53e0ac6edee7c70e035c8d22faab0767010a3c7fb4df514c8ffb48"
     }
   ]
 }
