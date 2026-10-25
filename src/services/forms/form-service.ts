@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { ulid } from 'ulid';
 
 import type { Schema } from '@/db/schemas/index';
+import relations, { PageRelationError, PageRelationRepository } from '@/repositories/page-relation-repository';
 import columnLockStore, { ColumnLockStore } from '@/repositories/column-lock-repository';
 import formStore, { FormStore } from '@/repositories/form-repository';
 import flowStore, { FlowStore } from '@/repositories/flow-repository';
@@ -40,6 +41,13 @@ export class FormError extends Error {
   public constructor(public readonly reason: FormFailureReason, message: string) {
     super(message);
   }
+}
+
+function relationFailure(error: unknown): never {
+  if (error instanceof PageRelationError) {
+    throw new FormError(error.status === 403 ? 'forbidden' : error.status === 409 ? 'conflict' : 'validation', error.message);
+  }
+  throw error;
 }
 
 interface ResolvedField {
@@ -101,6 +109,7 @@ export class FormService {
     private readonly executor: FlowExecutionService = flowExecutionService,
     private readonly locks: ColumnLockStore = columnLockStore,
     private readonly now: () => Date = () => new Date(),
+    private readonly relationStore: PageRelationRepository = relations,
   ) {}
 
   public async publicationStatus(pageId: string, viewId: string): Promise<FormPublicationStatus | null> {
@@ -155,6 +164,27 @@ export class FormService {
     return { ...resolved.definition, fields: resolved.fillFields.map((field) => ({
       ...field.definition, readOnly: Boolean(locks[field.title ? 'title' : field.column!.id]),
     })) };
+  }
+
+  public async relationOptions(
+    publicationId: string,
+    capability: unknown,
+    fieldKey: string,
+    input: { search?: string; cursor?: string; limit?: number },
+  ) {
+    const publication = await this.authorize(publicationId, capability, 'fill');
+    const resolved = await this.resolve(publication);
+    const field = resolved.fillFields.find((candidate) => candidate.definition.key === fieldKey);
+    if (field?.column?.type !== 'relation' || !field.column.data.relation) {
+      throw new FormError('not_found', 'Campo de Relação não encontrado');
+    }
+    const locks = await this.locks.list(publication.page_id);
+    if (locks === null) throw new FormError('not_found', 'Base do formulário não encontrada');
+    if (locks[field.column.id]) throw new FormError('forbidden', 'Coluna de Relação bloqueada');
+    return this.relationStore.listOptions(
+      field.column.data.relation.targetDatabaseId, publication.created_by_user_id,
+      input.search, input.cursor, input.limit,
+    ).catch(relationFailure);
   }
 
   public async submitPublic(
@@ -316,6 +346,14 @@ export class FormService {
       }
       const column = field.column!;
       let rawValue = answer.value;
+      if (column.type === 'relation') {
+        let ids: string[];
+        try { ids = VALUE_CODECS.relation.validate(rawValue, column) as string[]; }
+        catch (error) { throw new FormError('validation', error instanceof Error ? error.message : 'Relação inválida'); }
+        rawValue = await this.relationStore.prepareRelationTargets(
+          column, rowId, ids, actorUserId ?? publication.created_by_user_id,
+        ).catch(relationFailure);
+      }
       if (column.type === 'select') {
         if (typeof rawValue !== 'string' || !field.optionIdsByKey.has(rawValue)) {
           throw new FormError('validation', `Opção inválida para ${field.definition.label}`);
@@ -399,7 +437,7 @@ export class FormService {
         values: plan.values,
         emails: plan.emails,
       },
-    });
+    }).catch(relationFailure);
     if (!committed) {
       const raced = await this.forms.submissionByRequest(publication.id, clientRequestId);
       if (raced?.payload_hash === hash) {
@@ -418,12 +456,15 @@ export class FormService {
       if (raced) throw new FormError('conflict', 'Chave de idempotência já utilizada');
       throw new FormError('conflict', 'Publicação revogada ou formulário alterado');
     }
+    const relationColumnIds = responseValues.flatMap((value) =>
+      resolved.columns.some((column) => column.id === value.columnId && column.type === 'relation') ? [value.columnId] : []);
     return {
       result: { submissionId, submittedAt: now, callback: plan.summary.callback },
       realtime: {
         pageId: publication.page_id,
         rowId,
         originUserId: actorUserId ?? `public-form:${publication.id}`,
+        ...(relationColumnIds.length > 0 && { relationColumnIds }),
       },
     };
   }
@@ -474,7 +515,7 @@ export class FormService {
       optionKeysById: new Map(),
     }];
     for (const column of context.columns) {
-      if (column.type === 'flow' || column.type === 'relation' || column.type === 'formula' || column.type === 'extract_as') continue;
+      if (column.type === 'flow' || column.type === 'formula' || column.type === 'extract_as') continue;
       const key = sanitizePublicKeyMetadata(column.data?.publicKey);
       if (!key) throw new FormError('conflict', 'Chaves públicas do formulário precisam ser reconciliadas');
       const options = column.type === 'select' ? (column.data?.options ?? []).map((option) => {
@@ -487,6 +528,11 @@ export class FormService {
           key: key.key,
           label: column.name ?? '',
           type: column.type,
+          ...(column.type === 'relation' && column.data.relation && { relation: {
+            version: column.data.relation.version,
+            targetDatabaseId: column.data.relation.targetDatabaseId,
+            ...(column.data.relation.cardinality && { cardinality: column.data.relation.cardinality }),
+          } }),
           ...(column.type === 'text' && column.data?.mask && { mask: column.data.mask }),
           ...(column.type === 'numeric' && column.data?.format && { format: column.data.format }),
           ...(column.type === 'numeric' && column.data?.currency && { currency: column.data.currency }),

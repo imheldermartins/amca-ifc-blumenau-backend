@@ -12,6 +12,7 @@ const ROW = '01KXVZ00000000000000000003';
 
 const forms = {
   definition: vi.fn(),
+  relationOptions: vi.fn(),
   submitPublic: vi.fn(),
   review: vi.fn(),
 };
@@ -42,6 +43,14 @@ afterAll(async () => {
 beforeEach(() => vi.clearAllMocks());
 
 describe('FormRouter', () => {
+  it('encaminha capability, campo e paginação na busca de relações', async () => {
+    forms.relationOptions.mockResolvedValue({ ok: true, data: { items: [], nextCursor: null } });
+    const response = await fetch(`${baseUrl}/forms/publications/${PUBLICATION}/fields/pedido/relation-options?search=ana&cursor=${ROW}&limit=20`, {
+      headers: { 'X-Cubs-Form-Capability': 'fill-key' },
+    });
+    expect(response.status).toBe(200);
+    expect(forms.relationOptions).toHaveBeenCalledWith(PUBLICATION, 'fill-key', 'pedido', { search: 'ana', cursor: ROW, limit: 20 });
+  });
   it('publica row-created depois de uma submissão pública nova', async () => {
     const result = {
       submissionId: '01KXVZ00000000000000000004',

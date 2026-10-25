@@ -1,12 +1,13 @@
 import type { Schema } from '@/db/schemas/index';
 
-export type PublicFormFieldType = Exclude<Schema.ColumnType, 'flow'>;
+export type PublicFormFieldType = Exclude<Schema.ColumnType, 'flow' | 'extract_as' | 'formula'>;
 
 export interface PublicFormField {
   readOnly?: boolean;
   key: string;
   label: string;
   type: PublicFormFieldType;
+  relation?: Pick<Schema.RelationConfig, 'version' | 'targetDatabaseId' | 'cardinality'>;
   mask?: Schema.TextMask;
   format?: Schema.NumberFormat;
   currency?: Schema.CurrencyCode;
@@ -53,6 +54,7 @@ export interface FormSubmissionOutcome {
     pageId: string;
     rowId: string;
     originUserId: string;
+    relationColumnIds?: string[];
   } | null;
 }
 

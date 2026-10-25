@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Schema } from '@/db/schemas/index';
 import type { FormStore } from '@/repositories/form-repository';
 import type { FlowStore } from '@/repositories/flow-repository';
+import { PageRelationError } from '@/repositories/page-relation-repository';
 import type { FormPublicationRecord } from '@/repositories/types/form-repository.types';
 import type { FlowExecutionService } from '@/services/flows/flow-execution-service';
 import { FormService } from '@/services/forms/form-service';
@@ -98,11 +99,16 @@ function service(overrides: Partial<Record<string, unknown>> = {}) {
     })),
   };
   const locks = { canMutate: vi.fn(async () => true), list: vi.fn(async () => ({} as Record<string, { userIds: string[] }>)) };
+  const relations = {
+    listOptions: vi.fn(async () => ({ items: [{ id: EMAIL, title: 'Pedido' }], nextCursor: null })),
+    prepareRelationTargets: vi.fn(async (_column: unknown, _rowId: string, ids: string[], _userId: string) => ids),
+  };
   return {
     data,
     forms,
     executor,
     locks,
+    relations,
     instance: new FormService(
       forms as unknown as FormStore,
       views as never,
@@ -110,6 +116,7 @@ function service(overrides: Partial<Record<string, unknown>> = {}) {
       executor as unknown as FlowExecutionService,
       locks as never,
       () => new Date(data.now),
+      relations as never,
     ),
   };
 }
@@ -130,16 +137,50 @@ describe('FormService', () => {
     expect(definition.fields.every((field) => field.readOnly)).toBe(true);
     expect(JSON.stringify(definition)).not.toContain(USER);
   });
-  it('mantém Relação e Resumo fora do formulário v1', async () => {
-    const { instance, data } = service();
+  it('inclui Relação no formulário e no planner, mantendo Resumo fora', async () => {
+    const { instance, data, relations, forms, executor } = service();
     data.columns.push(
       { id: '01KXVZ00000000000000000008', parent_id: PAGE, name: 'Relação', type: 'relation', data: { publicKey: { key: 'relacao', aliases: [] }, relation: { version: 1, targetDatabaseId: PAGE } }, deleted_at: null, created_at: data.now, updated_at: data.now },
       { id: '01KXVZ00000000000000000009', parent_id: PAGE, name: 'Resumo', type: 'extract_as', data: { publicKey: { key: 'resumo', aliases: [] }, rollup: { version: 1, relationColumnId: '01KXVZ00000000000000000008', operation: 'count' } }, deleted_at: null, created_at: data.now, updated_at: data.now },
     );
     const definition = await instance.publicDefinition(PUBLICATION, data.fillKey);
-    expect(definition.fields.map((field) => field.key)).toEqual(['email', 'nome']);
-    await expect(instance.submitPublic(PUBLICATION, data.fillKey, 'relation-field', { fields: [{ key: 'relacao', value: [PAGE] }] }))
-      .rejects.toMatchObject({ reason: 'validation' });
+    expect(definition.fields.map((field) => field.key)).toEqual(['email', 'nome', 'relacao']);
+    expect(definition.fields[2]).toMatchObject({ type: 'relation', relation: { version: 1, targetDatabaseId: PAGE } });
+    const result = await instance.submitPublic(PUBLICATION, data.fillKey, 'relation-field', { fields: [{ key: 'relacao', value: [EMAIL] }] });
+    expect(result.realtime?.relationColumnIds).toEqual([data.columns[2]!.id]);
+    expect(relations.prepareRelationTargets).toHaveBeenCalledWith(data.columns[2], expect.any(String), [EMAIL], USER);
+    expect(forms.commitSubmission).toHaveBeenCalledWith(expect.objectContaining({ responseValues: [
+      { columnId: data.columns[2]!.id, data: JSON.stringify({ value: [EMAIL] }) },
+    ] }));
+    expect(executor.plan).toHaveBeenCalledWith(expect.objectContaining({ values: [expect.objectContaining({ data: JSON.stringify({ value: [EMAIL] }) })] }), expect.any(Object), expect.any(Object));
+    await expect(instance.submitPublic(PUBLICATION, data.fillKey, 'extract-field', { fields: [{ key: 'resumo', value: 1 }] })).rejects.toMatchObject({ reason: 'validation' });
+  });
+
+  it('restringe opções ao campo visível, desbloqueado e à capability de preenchimento', async () => {
+    const { instance, data, relations, locks } = service();
+    const column: Schema.PageColumn = { ...data.columns[0]!, type: 'relation', data: { publicKey: { key: 'pedido', aliases: [] }, relation: { version: 1, targetDatabaseId: PAGE } } };
+    data.columns[0] = column;
+    await expect(instance.relationOptions(PUBLICATION, data.reviewKey, 'pedido', {})).rejects.toMatchObject({ reason: 'forbidden' });
+    expect(relations.listOptions).not.toHaveBeenCalled();
+    await instance.relationOptions(PUBLICATION, data.fillKey, 'pedido', { search: 'Ped', cursor: EMAIL, limit: 10 });
+    expect(relations.listOptions).toHaveBeenCalledWith(PAGE, USER, 'Ped', EMAIL, 10);
+    locks.list.mockResolvedValue({ [EMAIL]: { userIds: [USER] } });
+    await expect(instance.relationOptions(PUBLICATION, data.fillKey, 'pedido', {})).rejects.toMatchObject({ reason: 'forbidden' });
+    locks.list.mockResolvedValue({});
+    (data.page.data[VIEW] as { form: { hiddenFieldIds?: string[] } }).form.hiddenFieldIds = [EMAIL];
+    await expect(instance.relationOptions(PUBLICATION, data.fillKey, 'pedido', {})).rejects.toMatchObject({ reason: 'not_found' });
+    expect(relations.listOptions).toHaveBeenCalledOnce();
+  });
+
+  it('rejeita relações fora da base antes do planner e usa o ator no preview', async () => {
+    const { instance, data, relations, executor, forms } = service();
+    data.columns[0] = { ...data.columns[0]!, type: 'relation', data: { publicKey: { key: 'pedido', aliases: [] }, relation: { version: 1, targetDatabaseId: PAGE } } };
+    relations.prepareRelationTargets.mockRejectedValueOnce(new PageRelationError(400, 'Fora da base de destino'));
+    await expect(instance.submitPublic(PUBLICATION, data.fillKey, 'invalid', { fields: [{ key: 'pedido', value: [EMAIL] }] })).rejects.toMatchObject({ reason: 'validation' });
+    expect(forms.commitSubmission).not.toHaveBeenCalled();
+    expect(executor.plan).not.toHaveBeenCalled();
+    await instance.submitAuthenticated(PAGE, VIEW, FLOW, 'preview-relation', { fields: [{ key: 'pedido', value: [EMAIL] }] });
+    expect(relations.prepareRelationTargets).toHaveBeenLastCalledWith(data.columns[0], expect.any(String), [EMAIL], FLOW);
   });
   it('rejects public answers to locked fields even when the publisher is allowed', async () => {
     const { instance, data, locks, forms } = service();

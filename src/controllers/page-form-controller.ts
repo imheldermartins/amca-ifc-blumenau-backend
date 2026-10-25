@@ -30,6 +30,10 @@ export class PageFormController {
     return this.run(() => this.forms.submitPublic(publicationId, capability, requestId, body));
   }
 
+  public relationOptions(publicationId: string, capability: unknown, fieldKey: string, input: { search?: string; cursor?: string; limit?: number }) {
+    return this.run(() => this.forms.relationOptions(publicationId, capability, fieldKey, input));
+  }
+
   public submitAuthenticated(
     pageId: string,
     viewId: string,

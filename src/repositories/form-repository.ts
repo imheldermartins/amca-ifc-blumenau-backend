@@ -7,6 +7,8 @@ import flowStore, { FlowStore } from '@/repositories/flow-repository';
 import { pageActivityTouchStatement } from '@/repositories/page-activity';
 import { pageCellUpsertStatement } from '@/repositories/page-cell-statements';
 import { pageChildEdgeStatement } from '@/repositories/page-child-creation';
+import { PageRelationWriteRepository } from '@/repositories/page-relation-write-repository';
+import { VALUE_CODECS } from '@/services/value-codec';
 import { SystemRoleFactory } from '@/repositories/system-role-factory';
 import type {
   CommitFormSubmissionInput,
@@ -16,7 +18,7 @@ import type {
 } from '@/repositories/types/form-repository.types';
 
 export class FormStore {
-  public constructor(private readonly flows: FlowStore = flowStore) {}
+  public constructor(private readonly flows: FlowStore = flowStore, private readonly relations = new PageRelationWriteRepository()) {}
 
   public async publicationByPageView(pageId: string, viewId: string): Promise<FormPublicationRecord | null> {
     const rows = await db.sqlRaw<FormPublicationRecord>({
@@ -151,7 +153,16 @@ export class FormStore {
     statements.push(SystemRoleFactory.defaultStatement('page', input.rowId));
     statements.push(pageChildEdgeStatement(input.publication.page_id, input.rowId));
     statements.push(...positions);
+    const relationStatements = new Set<RqliteStatement>();
     for (const value of input.responseValues) {
+      const column = input.flow.source.columns.find((candidate) => candidate.id === value.columnId);
+      if (column?.type === 'relation') {
+        const planned = await this.relations.prepareCreate(column, input.rowId,
+          VALUE_CODECS.relation.decode(value.data) as string[], input.flow.actorUserId ?? input.publication.created_by_user_id);
+        planned.forEach((statement) => relationStatements.add(statement));
+        statements.push(...planned);
+        continue;
+      }
       statements.push(pageCellUpsertStatement(input.rowId, value.columnId, value.data));
     }
     // Efeitos do Flow vêm depois das respostas: set_value prevalece quando ambos
@@ -170,9 +181,19 @@ export class FormStore {
       input.flow.executionId,
     ]);
     try {
-      const guarded = statements.flatMap(checkedOrderWrite);
+      // Relation plans contain assertions that intentionally affect zero rows.
+      // Their failures abort this same transaction; other writes retain the order guards.
+      const writeResultIndexes: number[] = [];
+      let resultIndex = 0;
+      const guarded = statements.flatMap((statement) => {
+        if (relationStatements.has(statement)) { resultIndex++; return [statement]; }
+        writeResultIndexes.push(resultIndex);
+        const checked = checkedOrderWrite(statement);
+        resultIndex += checked.length;
+        return checked;
+      });
       const results = await rqlite(guarded, 'execute', { transaction: true });
-      return results.length === guarded.length && statements.every((_, index) => results[index * 2] === true);
+      return results.length === guarded.length && writeResultIndexes.every((index) => results[index] === true);
     } catch {
       return false;
     }

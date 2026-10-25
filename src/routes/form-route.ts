@@ -23,6 +23,7 @@ export class FormRouter extends ApplicationRouter {
 
   protected registerRoutes(): void {
     this.router.get('/publications/:publicationId', formReadRateLimit, this.definition.bind(this));
+    this.router.get('/publications/:publicationId/fields/:fieldKey/relation-options', formReadRateLimit, this.relationOptions.bind(this));
     this.router.post('/publications/:publicationId/submissions', formSubmitRateLimit, this.submit.bind(this));
     this.router.get('/publications/:publicationId/submissions', formReadRateLimit, this.review.bind(this));
   }
@@ -48,6 +49,16 @@ export class FormRouter extends ApplicationRouter {
     if (!result.ok) return this.send(response, result);
     if (result.data.realtime) await this.realtime.rowCreated(result.data.realtime);
     return response.status(StatusCode.CREATED).json(result.data.result);
+  }
+
+  private async relationOptions(request: Request, response: Response) {
+    return this.send(response, await this.forms.relationOptions(
+      routeParam(request, 'publicationId'), this.capability(request), routeParam(request, 'fieldKey'), {
+        ...(typeof request.query.search === 'string' && { search: request.query.search }),
+        ...(typeof request.query.cursor === 'string' && { cursor: request.query.cursor }),
+        ...(request.query.limit !== undefined && { limit: Number(request.query.limit) }),
+      },
+    ));
   }
 
   private async review(request: Request, response: Response) {

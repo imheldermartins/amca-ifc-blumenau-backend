@@ -51,6 +51,20 @@ function publisher(options?: {
 }
 
 describe("PageRealtimePublisher", () => {
+  it('invalidates relation destinations after a form response is created without exposing internal metadata', async () => {
+    const target = vi.spyOn(relations, 'targetDatabase').mockResolvedValue(PARENT_ID);
+    const dependents = vi.spyOn(relations, 'invalidateDatabasesReferencingDatabase').mockResolvedValue([]);
+    const affected = vi.spyOn(formulas, 'affectedDatabases').mockResolvedValue([]);
+    const edits = {...emitter(), emitProjectionInvalidated: vi.fn()};
+    const realtime = new PageRealtimePublisher(edits, {getParentId: async () => PAGE_ID}, new RealtimeEventFactory(), vi.fn());
+    try {
+      await realtime.rowCreated({pageId: PAGE_ID, rowId: ROW_ID, originUserId: USER_ID, relationColumnIds: [COLUMN_ID]});
+      expect(edits.emitRowCreated).toHaveBeenCalledOnce();
+      expect(edits.emitRowCreated.mock.calls[0]![0]).not.toHaveProperty('relationColumnIds');
+      expect(edits.emitProjectionInvalidated.mock.calls.map(([event]) => event.pageId)).toEqual([PARENT_ID]);
+      expect(target).toHaveBeenCalledWith(COLUMN_ID);
+    } finally {target.mockRestore(); dependents.mockRestore(); affected.mockRestore();}
+  });
   it('invalidates both databases after relation edits, including removal of the last link', async () => {
     const target = vi.spyOn(relations, 'targetDatabase').mockResolvedValue(PARENT_ID);
     const dependents = vi.spyOn(relations, 'invalidateDatabasesReferencingDatabase').mockResolvedValue([]);
