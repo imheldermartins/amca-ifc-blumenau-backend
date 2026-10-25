@@ -11,6 +11,8 @@ import scheduleRouter from "@routes/schedule-route";
 import notificationRouter from "@routes/notification-route";
 import formRouter from '@/routes/form-route';
 import notificationWorker from '@/services/notifications/notification-worker';
+import mentionRouter from '@/routes/mention-route';
+import favoriteRouter from '@/routes/favorite-route';
 
 const server = new HttpServer([
   { path: "/users", router: userRouter },
@@ -23,6 +25,8 @@ const server = new HttpServer([
   { path: "/schedule", router: scheduleRouter },
   { path: "/notifications", router: notificationRouter },
   { path: "/forms", router: formRouter },
+  { path: '/mentions', router: mentionRouter },
+  { path: '/favorites', router: favoriteRouter },
 ]);
 
 await db.waitForDatabase();

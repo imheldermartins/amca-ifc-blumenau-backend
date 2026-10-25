@@ -122,7 +122,7 @@ export class FlowStore {
     return results.length === statements.length && results.every(Boolean);
   }
 
-  private async listPeople(parentId: NonEmptyString): Promise<FlowMacroPerson[]> {
+  public async listPeople(parentId: NonEmptyString): Promise<FlowMacroPerson[]> {
     const candidates = await db.sqlRaw<FlowMacroPerson>({
       text: `WITH RECURSIVE branch(id) AS (
         SELECT id FROM pages WHERE id = ? AND deleted_at IS NULL
