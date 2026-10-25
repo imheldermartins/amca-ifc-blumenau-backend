@@ -30,7 +30,7 @@ export interface FormulaReference extends FormulaSpan { symbol: ResolvedFormulaS
 export interface CompiledFormula {
   ok: true; version: 1; ast: FormulaNode; valueType: FormulaType;
   source: string; canonicalSource: string; dependencies: FormulaDependency[];
-  references: FormulaReference[]; nodes: number; databaseId: string;
+  references: FormulaReference[]; nodes: number; databaseId: string; requiresPageIndex: boolean;
 }
 export interface FormulaCompileError { ok: false; diagnostics: FormulaDiagnostic[] }
 export type CompileResult = CompiledFormula | FormulaCompileError;
@@ -39,6 +39,7 @@ export interface CompileOptions {
 }
 export interface FormulaPage {
   id: string; databaseId: string; title?: string | null; values: Readonly<Record<string, unknown>>;
+  index?: number;
   readable?: boolean; deleted?: boolean;
 }
 export interface FormulaContext {
@@ -61,6 +62,7 @@ export interface InferenceApi {
 export interface EvaluationApi {
   evaluate: (node: FormulaNode) => FormulaValue;
   inPage: (pageId: string) => Pick<EvaluationApi, 'evaluate'>;
+  currentIndex: (node: FormulaSpan) => number;
   spend: (cost: number, node: FormulaSpan) => void;
 }
 export interface OperationMetadata {
@@ -69,6 +71,7 @@ export interface OperationMetadata {
 interface OperationBase {
   infer: (args: FormulaNode[], api: InferenceApi, node: FormulaSpan) => FormulaType;
   precedence?: number;
+  contextual?: boolean;
 }
 export type FormulaOperation = OperationBase & (
   | { strategy: 'eager'; run: (args: FormulaValue[], api: EvaluationApi, node: FormulaSpan) => FormulaValue }

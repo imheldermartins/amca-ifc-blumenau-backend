@@ -48,12 +48,14 @@ Uma referência a outra fórmula usa o resultado calculado e seu tipo; a apresen
 
 | Grupo | Funções | Comportamento |
 | --- | --- | --- |
+| Página | `index()` | Posição a partir de 1 na database da página atual. Ordem por ID, densa entre páginas ativas e acessíveis. |
 | Lógica | `if(condição, então, senão)` | Avalia somente o ramo escolhido. |
 | Lógica | `coalesce(valor, alternativa)` | Usa a alternativa para `null`; não oculta erros. |
 | Lógica | `isEmpty(valor)` | Verdadeiro para `null`, texto vazio e coleção vazia. Zero e `false` são valores presentes. |
 | Conversão | `toNumber(texto)`, `toText(valor)` | Número decimal com ponto; texto de valor simples. `toText(null)` resulta em texto vazio. |
 | Número | `abs`, `floor`, `ceil`, `round(número, casas?)` | `round` aceita de 0 a 10 casas; padrão 0. |
 | Texto | `lower`, `upper`, `trim`, `length` | `length` conta caracteres Unicode. |
+| Texto | `padStart(texto, tamanho, preenchimento?)`, `padEnd(texto, tamanho, preenchimento?)` | Completa o início/final até o tamanho em caracteres Unicode, repetindo e cortando somente o preenchimento. Padrão: espaço; preenchimento vazio mantém o texto. Nunca encurta o texto original. |
 | Texto | `contains`, `startsWith`, `endsWith` | Comparação literal, distinguindo maiúsculas. |
 | Texto | `replace(texto, trecho, novo)` | Substitui todas as ocorrências literais. Não aceita regex. |
 | Relação | `map(relação, expressão)`, `filter(relação, condição)` | Projeção e seleção de páginas relacionadas. |
@@ -62,6 +64,12 @@ Uma referência a outra fórmula usa o resultado calculado e seu tipo; a apresen
 | Apresentação | `markup(valor, cor?)` | Chip com valor simples. Padrão `grey`. |
 
 As funções também aceitam sintaxe de método: `@page.title.contains("a")` equivale a `contains(@page.title, "a")`.
+
+Por exemplo, `padStart("7", 3, "0")` retorna `"007"` e `"7".padEnd(3, "0")` retorna `"700"`. O tamanho deve ser um inteiro entre 0 e 65.536; o resultado continua sujeito ao limite de 65.536 unidades UTF-16 e ao orçamento de execução. Use `toText()` para preencher números.
+
+`index()` não recebe argumentos nem depende de filtros, paginação ou ordenação manual da view. A mesma página mantém sua posição entre views; inserções, exclusões e mudanças de acesso podem alterar a sequência. Dentro de `map` e `filter`, retorna a posição da página relacionada na database dela, e não sua posição na lista da relação. Fórmulas referenciadas usam a página dona do cálculo. Exemplo de numeração com zeros: `padStart(toText(index()), 4, "0")`.
+
+A prévia com valores temporários valida `index()` e permite salvar, mas não inventa uma posição para a página simbólica. A prévia da API com `pageId` real calcula a posição autorizada.
 
 As cores são `red`, `pink`, `orange`, `yellow`, `green`, `blue`, `purple` e `grey`, usando os chips do sistema. Conteúdo textual é escapado: `markup` não interpreta HTML.
 

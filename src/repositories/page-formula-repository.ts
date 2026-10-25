@@ -139,6 +139,25 @@ export class PageFormulaRepository {
       }
       pending=[...next];
     }
+    if (compiled.requiresPageIndex && Object.keys(pages).length) {
+      const databases = [...new Set(Object.values(pages).map(p => p.databaseId))];
+      const ids = Object.keys(pages);
+      const guard = correlatedPageReadGuard('p.id', userId), parentGuard = correlatedPageReadGuard('e.parent_id', userId);
+      // Rank the complete authorized databases before selecting the hydrated window.
+      // No view filters, manual ordering or pagination participate in this sequence.
+      const positions = await this.execute<{id: string; databaseId: string; pageIndex: number}>({
+        text: `WITH ranked AS (
+          SELECT p.id,e.parent_id AS databaseId,ROW_NUMBER() OVER (PARTITION BY e.parent_id ORDER BY p.id) AS pageIndex
+          FROM pages p JOIN page_edges e ON e.child_id=p.id
+          WHERE e.parent_id IN (${databases.map(() => '?').join(',')}) AND p.deleted_at IS NULL AND ${guard.text} AND ${parentGuard.text}
+        ) SELECT id,databaseId,pageIndex FROM ranked WHERE id IN (${ids.map(() => '?').join(',')})`,
+        values: [...databases, ...guard.values, ...parentGuard.values, ...ids],
+      }, 'query');
+      for (const position of positions) {
+        const page = pages[position.id];
+        if (page?.databaseId === position.databaseId) page.index = position.pageIndex;
+      }
+    }
     return Object.fromEntries(pageIds.map(pageId=>[pageId,evaluateFormula(compiled,{pageId,pages})]));
   }
 

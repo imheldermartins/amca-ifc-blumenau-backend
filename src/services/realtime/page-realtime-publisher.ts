@@ -169,6 +169,7 @@ export class PageRealtimePublisher {
 
   async rowCreated(input: RowChangedInput & {relationColumnIds?: string[]}): Promise<void> {
     await this.emitRowChange("row-created", input, (payload) => this.emitter.emitRowCreated(payload));
+    await this.invalidateFormulaDatabases(input.pageId, input.originUserId);
     for (const columnId of new Set(input.relationColumnIds ?? [])) {
       await this.relationDefinitionChanged(columnId, input.originUserId, input.pageId);
     }

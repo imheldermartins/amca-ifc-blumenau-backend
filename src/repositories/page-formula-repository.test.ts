@@ -1,7 +1,8 @@
 import {DatabaseSync,type SQLInputValue} from 'node:sqlite';
 import {readdir} from 'node:fs/promises';
-import {describe,it,expect} from 'vitest';
-import {PageFormulaRepository, type FormulaCommit} from './page-formula-repository.js';
+import {describe,it,expect,vi} from 'vitest';
+import formulas,{PageFormulaRepository, type FormulaCommit} from './page-formula-repository.js';
+import {PageFormulaController} from '@/controllers/page-formula-controller';
 import type {Schema} from '@/db/schemas/index';
 const id=(n:number)=>`01M${String(n).padStart(23,'0')}`;
 const owner=id(1),other=id(2),root=id(3),target=id(4),row=id(5),order=id(6),number=id(7),relation=id(8),amount=id(9),formula=id(10),extract=id(11);
@@ -31,8 +32,13 @@ async function fixture(){
       db.exec('COMMIT');return result;
     } catch(error) {db.exec('ROLLBACK');throw error;}
   };
-  const repo=new PageFormulaRepository(execute,commit);
-  return {db,repo};
+  const query=vi.fn<(statement:string|SqlStatement)=>void>();
+  const repo=new PageFormulaRepository(<T>(statement:string|SqlStatement)=>{query(statement);return execute<T>(statement)},commit);
+  const addRow=(pageId:string,databaseId=root)=>{
+    db.prepare('INSERT INTO pages(id,title,owner_id,data) VALUES(?,?,?,?)').run(pageId,'Outra',owner,'{}');
+    db.prepare('INSERT INTO page_edges(id,parent_id,child_id) VALUES(?,?,?)').run(pageId,databaseId,pageId);
+  };
+  return {db,repo,query,addRow};
 }
 describe('Formula repository and migration',()=>{
   it('renames rollup without losing values, configuration or foreign keys',async()=>{const {db}=await fixture();try{
@@ -78,4 +84,79 @@ describe('Formula repository and migration',()=>{
     const result=await repo.evaluateColumns(root,[{id:formula,source:'1'}],[row],owner);
     expect(result[formula]?.[row]).toMatchObject({ok:false,error:{code:'CONTEXT_LIMIT'}});
   }finally{db.close()}});
+});
+
+describe('Canonical formula index',()=>{
+  it('validates sample previews and computes real page previews using the authorized context',async()=>{
+    const {db,repo,addRow}=await fixture();
+    const catalog=vi.spyOn(formulas,'catalog').mockImplementation(repo.catalog.bind(repo));
+    const evaluate=vi.spyOn(formulas,'evaluate').mockImplementation(repo.evaluate.bind(repo));
+    try{
+      addRow(id(0));
+      const controller=new PageFormulaController();
+      const sample=await controller.preview(root,owner,{source:'index()'});
+      expect(sample).toMatchObject({ok:true,data:{ok:true,valueType:{kind:'number'}}});
+      if(sample.ok)expect(sample.data).not.toHaveProperty('result');
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(await controller.preview(root,owner,{source:'padStart(toText(index()), 3, "0")',pageId:row})).toMatchObject({ok:true,data:{ok:true,result:{ok:true,value:'002'}}});
+      expect(await controller.preview(root,other,{source:'index()',pageId:row})).toMatchObject({ok:true,data:{ok:true,result:{ok:false,error:{code:'ACCESS'}}}});
+    }finally{catalog.mockRestore();evaluate.mockRestore();db.close()}
+  });
+  it('ranks the entire database once per batch, independently of requested windows or view order',async()=>{
+    const {db,repo,query,addRow}=await fixture();try{
+      for(let n=100;n<360;n++)addRow(id(n));
+      const definition=await repo.definition(root,owner,{version:1,source:'index()'});
+      expect(definition.resultType).toEqual({kind:'number'});
+      query.mockClear();
+      expect(await repo.evaluate(root,definition.source,formula,[id(359),row],owner)).toMatchObject({[row]:{ok:true,value:1},[id(359)]:{ok:true,value:261}});
+      expect(query.mock.calls.filter(([statement])=>typeof statement!=='string'&&statement.text.includes('ROW_NUMBER()'))).toHaveLength(1);
+      expect(await repo.evaluate(root,'index()',formula,[id(359)],owner)).toMatchObject({[id(359)]:{ok:true,value:261}});
+      for(const [view,first,last] of [[id(80),'a0','a1'],[id(81),'a1','a0']]){
+        db.prepare('INSERT INTO page_view_row_order(id,edge_id,view_id,rank) VALUES(?,?,?,?)').run(id(view===id(80)?82:84),row,view!,first!);
+        db.prepare('INSERT INTO page_view_row_order(id,edge_id,view_id,rank) VALUES(?,?,?,?)').run(id(view===id(80)?83:85),id(359),view!,last!);
+      }
+      db.prepare('UPDATE pages SET data=? WHERE id=?').run(JSON.stringify({[id(80)]:{filters:{clauses:[{columnId:number,operator:'greaterThan',value:100}]}}}),root);
+      expect(await repo.evaluate(root,'index()',formula,[id(359)],owner)).toMatchObject({[id(359)]:{ok:true,value:261}});
+      query.mockClear();await repo.evaluate(root,'1',formula,[row],owner);
+      expect(query.mock.calls.some(([statement])=>typeof statement!=='string'&&statement.text.includes('ROW_NUMBER()'))).toBe(false);
+    }finally{db.close()}
+  });
+  it('recalculates dense positions after insertion, deletion and restoration',async()=>{
+    const {db,repo,addRow}=await fixture();try{
+      addRow(id(20));
+      expect(await repo.evaluate(root,'index()',formula,[row,id(20)],owner)).toMatchObject({[row]:{ok:true,value:1},[id(20)]:{ok:true,value:2}});
+      addRow(id(0));
+      expect(await repo.evaluate(root,'index()',formula,[row,id(20)],owner)).toMatchObject({[row]:{ok:true,value:2},[id(20)]:{ok:true,value:3}});
+      db.prepare('UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?').run(id(0));
+      expect(await repo.evaluate(root,'index()',formula,[id(20)],owner)).toMatchObject({[id(20)]:{ok:true,value:2}});
+      db.prepare('UPDATE pages SET deleted_at=NULL WHERE id=?').run(id(0));
+      expect(await repo.evaluate(root,'index()',formula,[id(20)],owner)).toMatchObject({[id(20)]:{ok:true,value:3}});
+    }finally{db.close()}
+  });
+  it('uses database positions inside relations and referenced formulas',async()=>{
+    const {db,repo,addRow}=await fixture();try{
+      addRow(id(0),target);addRow(id(20),target);addRow(id(21),target);
+      db.prepare('UPDATE page_columns_values SET data=? WHERE id=?').run(JSON.stringify({value:[id(21),order]}),relation);
+      expect(await repo.evaluate(root,'map(@Pedidos,index())',formula,[row],owner)).toMatchObject({[row]:{ok:true,value:[4,2]}});
+      expect(await repo.evaluate(root,'map(filter(@Pedidos,index()>2),index()).sum()',formula,[row],owner)).toMatchObject({[row]:{ok:true,value:4}});
+      db.prepare('INSERT INTO page_columns(id,name,type,parent_id,data) VALUES(?,?,?,?,?)').run(formula,'Posição','formula',target,JSON.stringify({formula:{version:1,source:'index()',revision:1}}));
+      expect(await repo.evaluate(root,'map(@Pedidos,@Posição).sum()',undefined,[row],owner)).toMatchObject({[row]:{ok:true,value:6}});
+      expect(await repo.evaluate(root,'index()',undefined,[order],owner)).toMatchObject({[order]:{ok:false,error:{code:'SCOPE'}}});
+    }finally{db.close()}
+  });
+  it('authorizes before ranking and renumbers when access changes',async()=>{
+    const {db,repo,addRow}=await fixture();try{
+      addRow(id(20));addRow(id(21));
+      const allow=id(70),deny=id(71);
+      db.prepare('INSERT INTO page_roles(id,page_id,name,roles) VALUES(?,?,?,?)').run(allow,root,'Leitor',JSON.stringify({read:['view','subpages'],write:[]}));
+      db.prepare('INSERT INTO page_collaborators(id,page_id,user_id,page_member_role_id) VALUES(?,?,?,?)').run(id(72),root,other,allow);
+      db.prepare('INSERT INTO page_roles(id,page_id,name,roles) VALUES(?,?,?,?)').run(deny,row,'Sem acesso',JSON.stringify({read:[],write:[]}));
+      db.prepare('INSERT INTO page_collaborators(id,page_id,user_id,page_member_role_id) VALUES(?,?,?,?)').run(id(73),row,other,deny);
+      expect(await repo.evaluate(root,'index()',formula,[id(20),id(21)],other)).toMatchObject({[id(20)]:{ok:true,value:1},[id(21)]:{ok:true,value:2}});
+      expect(await repo.evaluate(root,'index()',formula,[row],other)).toMatchObject({[row]:{ok:false,error:{code:'ACCESS'}}});
+      expect(await repo.evaluate(root,'index()',formula,[id(21)],owner)).toMatchObject({[id(21)]:{ok:true,value:3}});
+      db.prepare('UPDATE page_collaborators SET deleted_at=CURRENT_TIMESTAMP WHERE id=?').run(id(73));
+      expect(await repo.evaluate(root,'index()',formula,[id(21)],other)).toMatchObject({[id(21)]:{ok:true,value:3}});
+    }finally{db.close()}
+  });
 });

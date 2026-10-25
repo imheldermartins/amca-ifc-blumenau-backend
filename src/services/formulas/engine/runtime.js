@@ -51,6 +51,10 @@
     expectType(item, allowed, args[0]);
     return typeof output === 'function' ? output(item) : output;
   };
+  register('index', {
+    group: 'Página', syntax: 'index()', description: 'Posição a partir de 1 entre páginas acessíveis da database, em ordem de ID. Independe da view.', contextual: true,
+    infer: signature([], T.number), run: (args, api, node) => api.currentIndex(node),
+  });
   register('if', {
     group: 'Lógica', syntax: 'if(condição, então, senão)', description: 'Avalia somente o ramo escolhido.', strategy: 'lazy',
     infer: (args, api, node) => { arity(args, 3, 3, node); expectType(api.infer(args[0]), ['boolean'], args[0]); return union(api.infer(args[1]), api.infer(args[2])); },
@@ -86,6 +90,25 @@
   const searchFns = { contains: (s, q) => s.includes(q), startsWith: (s, q) => s.startsWith(q), endsWith: (s, q) => s.endsWith(q) };
   for (const [name, fn] of Object.entries(searchFns)) register(name, { group: 'Texto', syntax: `${name}(texto, trecho)`, description: 'Compara texto literal, diferenciando maiúsculas.', infer: textSignature(2, T.boolean), run: ([v, q], api, node) => fn(text(v, node), text(q, node)) });
   register('length', { group: 'Texto', syntax: 'length(texto)', description: 'Quantidade de caracteres Unicode.', infer: textSignature(1, T.number), run: ([v], api, node) => [...text(v, node)].length });
+  for (const name of ['padStart', 'padEnd']) register(name, {
+    group: 'Texto', syntax: `${name}(texto, tamanho, preenchimento?)`,
+    description: `Completa ${name === 'padStart' ? 'o início' : 'o final'} até o tamanho em caracteres Unicode; padrão: espaço. Não corta o texto.`,
+    infer: signature([['text'], ['number'], ['text']], T.text, 1),
+    run: ([v, size, fill = ' '], api, node) => {
+      text(v, node); number(size, node); text(fill, node);
+      if (!Number.isInteger(size) || size < 0 || size > LIMITS.text) fail('ARGUMENT', `O tamanho deve ser um inteiro de 0 a ${LIMITS.text}.`, node);
+      const missing = size - [...v].length;
+      if (missing <= 0 || fill === '') return v;
+      const characters = [...fill];
+      const repeats = Math.floor(missing / characters.length);
+      const suffix = characters.slice(0, missing % characters.length).join('');
+      const paddingLength = repeats * fill.length + suffix.length;
+      if (v.length + paddingLength > LIMITS.text) fail('TEXT_LIMIT', 'Texto grande demais.', node);
+      api.spend(paddingLength, node);
+      const padding = fill.repeat(repeats) + suffix;
+      return name === 'padStart' ? padding + v : v + padding;
+    },
+  });
   register('replace', { group: 'Texto', syntax: 'replace(texto, trecho, novo)', description: 'Substitui todas as ocorrências literais; não aceita regex.', infer: textSignature(3), run: ([v, q, r], api, node) => { text(v, node); text(q, node); text(r, node); if (q === '') fail('ARGUMENT', 'O trecho a substituir não pode estar vazio.', node); const parts = v.split(q); api.spend(parts.length * r.length, node); return parts.join(r); } });
   for (const name of ['map', 'filter']) register(name, {
     group: 'Relações', syntax: name === 'map' ? 'map(relação, expressão)' : 'filter(relação, condição)', description: name === 'map' ? 'Calcula uma expressão para cada página relacionada.' : 'Seleciona páginas da relação por uma condição.', strategy: 'scoped',
@@ -241,7 +264,7 @@
   }
   function compileInternal(source, catalog, databaseId, rootDatabaseId, stack, cache, budget = { nodes: 0, bytes: 0 }) {
     budget.bytes += new TextEncoder().encode(source).length; if (budget.bytes > LIMITS.bytes * 8) fail("GRAPH_LIMIT", "Cadeia de fórmulas grande demais.");
-    const parsed = parse(source); budget.nodes += parsed.nodes; if (budget.nodes > LIMITS.nodes * 8) fail("GRAPH_LIMIT", "Cadeia de fórmulas grande demais."); const references = []; const deps = new Map();
+    const parsed = parse(source); budget.nodes += parsed.nodes; if (budget.nodes > LIMITS.nodes * 8) fail("GRAPH_LIMIT", "Cadeia de fórmulas grande demais."); const references = []; const deps = new Map(); let requiresPageIndex = false;
     const infer = (node, currentDb = databaseId, depth = 0) => {
       if (depth > LIMITS.depth) fail('DEPTH_LIMIT', 'Expressão aninhada demais.', node);
       const api = { infer: child => infer(child, currentDb, depth + 1), inScope: db => ({ infer: child => infer(child, db, depth + 1) }) };
@@ -258,21 +281,21 @@
             if (stack.length >= LIMITS.depth) fail('DEPTH_LIMIT', 'Cadeia de fórmulas grande demais.', node);
             const key = `${symbol.id}:${symbol.source}`;
             if (!cache.has(key)) cache.set(key, compileInternal(symbol.source, catalog, symbol.databaseId, symbol.databaseId, [...stack, symbol.id], cache, budget));
-            node.formula = cache.get(key); result = unstyledType(node.formula.valueType); break;
+            node.formula = cache.get(key); requiresPageIndex ||= node.formula.requiresPageIndex; result = unstyledType(node.formula.valueType); break;
           }
           result = typeMap[symbol.type]; if (!result) fail('TYPE', `Propriedade ${symbol.type} ainda não tem projeção nesta versão.`, node); break;
         }
-        default: result = opFor(node).infer(node.args, api, node);
+        default: { const operation = opFor(node); requiresPageIndex ||= operation.contextual === true; result = operation.infer(node.args, api, node); }
       }
       node.valueType = result; return result;
     };
     const valueType = infer(parsed.ast);
     if (variants(valueType).some(t => t.kind === 'pages')) fail('OUTPUT', 'Projete a relação com map() ou agregue com count().', parsed.ast);
-    const compiled = { ok: true, version: 1, ast: parsed.ast, valueType, source, canonicalSource: canonicalize(source, references), dependencies: [...deps.values()], references: references.map(n => ({ start: n.start, end: n.end, symbol: n.symbol, valueType: n.valueType })), nodes: parsed.nodes, databaseId };
+    const compiled = { ok: true, version: 1, ast: parsed.ast, valueType, source, canonicalSource: canonicalize(source, references), dependencies: [...deps.values()], references: references.map(n => ({ start: n.start, end: n.end, symbol: n.symbol, valueType: n.valueType })), nodes: parsed.nodes, databaseId, requiresPageIndex };
     validateConstants(compiled); return compiled;
   }
   function validateConstants(compiled) {
-    const pure = node => node.kind === 'literal' || (node.kind !== 'reference' && node.args.every(pure));
+    const pure = node => node.kind === 'literal' || (node.kind !== 'reference' && !opFor(node).contextual && node.args.every(pure));
     const calculate = node => {
       const result = evaluateFormula({...compiled,ast:node}, {pageId:'constant',pages:{constant:{id:'constant',databaseId:compiled.databaseId,values:{}}}});
       if(!result.ok) fail(result.error.code,result.error.message,node);
@@ -282,7 +305,7 @@
       if(node.kind==='reference' || node.kind==='literal')return;
       if(pure(node)){calculate(node);return;}
       const first=node.args[0];
-      visit(first);
+      if(first)visit(first);
       if(['if','coalesce','&&','||'].includes(node.name) && pure(first)) {
         const value=calculate(first);
         if(node.name==='if'){visit(node.args[value?1:2]);return;}
@@ -294,7 +317,7 @@
   }
   function compileFormula(source, { catalog, databaseId, rootDatabaseId = databaseId, columnId } = {}) {
     try { const compiled = compileInternal(source, catalog ?? [], databaseId, rootDatabaseId, columnId ? [columnId] : [], new Map());
-      if (!compiled.references.length) { const result = evaluateFormula(compiled, { pageId: 'constant', pages: {constant:{ id:'constant', databaseId, values:{} }} }); if (!result.ok) return {ok:false,diagnostics:[result.error]}; }
+      if (!compiled.references.length && !compiled.requiresPageIndex) { const result = evaluateFormula(compiled, { pageId: 'constant', pages: {constant:{ id:'constant', databaseId, values:{} }} }); if (!result.ok) return {ok:false,diagnostics:[result.error]}; }
       return compiled; }
     catch (error) { return { ok: false, diagnostics: [diagnostic(error)] }; }
   }
@@ -341,7 +364,9 @@
     const evaluate = (node, frame, depth = 0) => {
       if (depth > LIMITS.depth) fail('DEPTH_LIMIT', 'Limite de profundidade excedido.', node);
       spend(1, node); let value;
-      const api = { evaluate: child => evaluate(child, frame, depth + 1), inPage: id => ({ evaluate: child => evaluate(child, { ...frame, pageId: id }, depth + 1) }), spend };
+      const api = { evaluate: child => evaluate(child, frame, depth + 1), inPage: id => ({ evaluate: child => evaluate(child, { ...frame, pageId: id }, depth + 1) }), spend,
+        currentIndex: span => { const index = page(frame.pageId, span).index; if (!Number.isSafeInteger(index) || index < 1) fail('PAGE_INDEX', 'A posição está disponível somente com uma página real.', span); return index; },
+      };
       switch (node.kind) {
         case 'literal': value = node.value; break;
         case 'reference': value = readReference(node, frame, depth); break;
@@ -349,7 +374,7 @@
       }
       return chargeValue(value, node);
     };
-    try { page(context.pageId, compiled.ast); const value = evaluate(compiled.ast, { pageId: context.pageId, rootId: context.pageId }); return { ok: true, value, valueType: compiled.valueType, steps: budget.used }; }
+    try { if (page(context.pageId, compiled.ast).databaseId !== compiled.databaseId) fail('SCOPE', 'Página fora da database da fórmula.', compiled.ast); const value = evaluate(compiled.ast, { pageId: context.pageId, rootId: context.pageId }); return { ok: true, value, valueType: compiled.valueType, steps: budget.used }; }
     catch (error) { return { ok: false, error: diagnostic(error), steps: budget.used }; }
   }
   function displaySource(source, catalog) {

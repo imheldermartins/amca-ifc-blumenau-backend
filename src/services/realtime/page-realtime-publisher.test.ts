@@ -51,6 +51,19 @@ function publisher(options?: {
 }
 
 describe("PageRealtimePublisher", () => {
+  it('invalidates canonical indexes and related formula databases when a row is created or deleted', async () => {
+    const affected = vi.spyOn(formulas, 'affectedDatabases').mockResolvedValue([PAGE_ID, PARENT_ID]);
+    const dependents = vi.spyOn(relations, 'invalidateDatabasesReferencingPage').mockResolvedValue([]);
+    const edits = {...emitter(), emitProjectionInvalidated: vi.fn()};
+    const realtime = new PageRealtimePublisher(edits, {getParentId: async () => PAGE_ID}, new RealtimeEventFactory(), vi.fn(), {getUpdatedAt: async () => DATABASE_UPDATED_AT});
+    try {
+      await realtime.rowCreated({pageId: PAGE_ID, rowId: ROW_ID, originUserId: USER_ID});
+      expect(edits.emitProjectionInvalidated.mock.calls.map(([event]) => event.pageId)).toEqual([PAGE_ID, PARENT_ID]);
+      edits.emitProjectionInvalidated.mockClear();
+      await realtime.rowDeleted({pageId: PAGE_ID, rowId: ROW_ID, originUserId: USER_ID});
+      expect(edits.emitProjectionInvalidated.mock.calls.map(([event]) => event.pageId)).toEqual([PAGE_ID, PARENT_ID]);
+    } finally {affected.mockRestore(); dependents.mockRestore();}
+  });
   it('invalidates relation destinations after a form response is created without exposing internal metadata', async () => {
     const target = vi.spyOn(relations, 'targetDatabase').mockResolvedValue(PARENT_ID);
     const dependents = vi.spyOn(relations, 'invalidateDatabasesReferencingDatabase').mockResolvedValue([]);
