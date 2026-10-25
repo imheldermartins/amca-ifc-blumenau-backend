@@ -7,6 +7,7 @@ import middleware from "@/services/auth/middleware";
 import { requireWorkspaceAbility } from "@/services/auth/workspace-access-middleware";
 import { StatusCode } from "@/services/http/status-code";
 import pageRelationRepository, { PageRelationError } from '@/repositories/page-relation-repository';
+import workspaceVariables from '@/controllers/workspace-variable-controller';
 
 export class WorkspaceRouter extends ApplicationRouter {
   public constructor() {
@@ -21,6 +22,9 @@ export class WorkspaceRouter extends ApplicationRouter {
     this.router.get("/:id/members", requireWorkspaceAbility("read", "WorkspaceMembers"), this.listMembers.bind(this));
     this.router.put("/:id/members/:userId/role", requireWorkspaceAbility("manage", "WorkspaceMembers"), this.updateMemberRole.bind(this));
     this.router.get("/:id", requireWorkspaceAbility("read", "Workspace"), this.get.bind(this));
+    this.router.patch('/:id/variables', requireWorkspaceAbility('manage', 'WorkspaceSettings'), async (req, res) => {
+      return this.sendMutation(res, await workspaceVariables.set(req.params.id as string, req.userId as string, req.body), StatusCode.OK);
+    });
     this.router.put("/:id", requireWorkspaceAbility("manage", "WorkspaceSettings"), this.update.bind(this));
   }
 

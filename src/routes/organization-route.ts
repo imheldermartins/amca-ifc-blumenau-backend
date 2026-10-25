@@ -5,6 +5,7 @@ import { ApplicationRouter } from "@/routes/application-router";
 import middleware from "@/services/auth/middleware";
 import { requireScopedPermission } from "@/services/auth/scoped-access-middleware";
 import { StatusCode } from "@/services/http/status-code";
+import variables from '@/controllers/organization-variable-controller';
 
 export class OrganizationRouter extends ApplicationRouter {
   public constructor() {
@@ -18,6 +19,9 @@ export class OrganizationRouter extends ApplicationRouter {
     this.router.put("/:id/workspaces/:workspaceId", this.linkWorkspace.bind(this));
     this.router.get("/:id", requireScopedPermission("organization", "read", "view"), this.get.bind(this));
     this.router.put("/:id", requireScopedPermission("organization", "write", "update"), this.update.bind(this));
+    this.router.patch('/:id/variables', requireScopedPermission('organization', 'write', 'update'), async (req, res) => {
+      return this.send(res, await variables.set(req.params.id as string, req.userId as string, req.body), StatusCode.OK);
+    });
   }
 
   private async list(req: Request, res: Response): Promise<Response> {
