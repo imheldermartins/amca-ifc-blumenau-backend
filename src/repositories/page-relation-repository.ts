@@ -112,10 +112,12 @@ export class PageRelationRepository {
         JOIN workspace_members target_member ON target_member.workspace_id=source_member.workspace_id
         JOIN target_anc ON target_anc.id=target_member.page_root_id
         WHERE source_member.deleted_at IS NULL AND target_member.deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM page_edges child_edge JOIN pages child ON child.id=child_edge.child_id
+            WHERE child_edge.parent_id=? AND child.deleted_at IS NULL)
           AND ${targetGuard.text} LIMIT 1`,
-      values: [sourceDatabaseId, config.targetDatabaseId, ...targetGuard.values],
+      values: [sourceDatabaseId, config.targetDatabaseId, config.targetDatabaseId, ...targetGuard.values],
     }, 'query');
-    if (!rows[0]) throw new PageRelationError(403, 'A Relação deve apontar para uma database legível do mesmo workspace');
+    if (!rows[0]) throw new PageRelationError(403, 'A Relação deve apontar para uma página com filhos legível do mesmo workspace');
   }
 
   async validateRollupConfig(parentId: string, config: Schema.RollupConfig, userId: string): Promise<Schema.RollupResult> {
@@ -217,6 +219,8 @@ export class PageRelationRepository {
         )
         SELECT candidate.id,candidate.title FROM branch JOIN pages candidate ON candidate.id=branch.id
         WHERE candidate.deleted_at IS NULL AND candidate.id>? AND ${guard.text}
+          AND EXISTS (SELECT 1 FROM page_edges child_edge JOIN pages child ON child.id=child_edge.child_id
+            WHERE child_edge.parent_id=candidate.id AND child.deleted_at IS NULL)
           AND (?='' OR instr(${title},?)>0)
         ORDER BY candidate.id LIMIT ?`,
       values: [workspaceId, userId, cursor ?? '', ...guard.values, normalized, normalized, size + 1],

@@ -1,18 +1,23 @@
 import {DatabaseSync, type SQLInputValue} from 'node:sqlite';
 import {readdir} from 'node:fs/promises';
-import {describe, it, expect} from 'vitest';
+import {beforeAll, describe, it, expect} from 'vitest';
 import {PageRelationWriteRepository} from './page-relation-write-repository.js';
 import {PageRelationRepository} from './page-relation-repository.js';
 import type {Schema} from '@/db/schemas/index';
 
 const id = (n: number) => `01M${String(n).padStart(23, '0')}` as NonEmptyString;
 const owner=id(1), other=id(2), source=id(3), target=id(4), a=id(5), b=id(6), x=id(7), y=id(8), columnId=id(9);
+let migrationStatements: string[];
+beforeAll(async()=>{
+  const names=(await readdir(new URL('../db/migrations/',import.meta.url))).filter(name=>name.endsWith('.ts')).sort();
+  migrationStatements=await Promise.all(names.map(async name=>{
+    const {migration}=await import(new URL('../db/migrations/'+name,import.meta.url).href);
+    return 'BEGIN;'+migration.up.join(';')+';COMMIT;';
+  }));
+});
 async function fixture() {
   const sqlite = new DatabaseSync(':memory:'); sqlite.exec('PRAGMA foreign_keys=ON');
-  for (const name of (await readdir(new URL('../db/migrations/',import.meta.url))).filter(name=>name.endsWith('.ts')).sort()) {
-    const {migration}=await import(new URL('../db/migrations/'+name,import.meta.url).href);
-    sqlite.exec('BEGIN;'+migration.up.join(';')+';COMMIT;');
-  }
+  for (const sql of migrationStatements) sqlite.exec(sql);
   for (const user of [owner,other]) sqlite.prepare('INSERT INTO users(id,email) VALUES(?,?)').run(user, user+'@test.local');
   for (const page of [source,target,a,b,x,y]) sqlite.prepare('INSERT INTO pages(id,title,owner_id,data) VALUES(?,?,?,?)').run(page,page,owner,'{}');
   for (const [parent,child] of [[source,a],[source,b],[target,x],[target,y]]) sqlite.prepare('INSERT INTO page_edges(id,parent_id,child_id) VALUES(?,?,?)').run(child!,parent!,child!);
@@ -38,6 +43,82 @@ async function fixture() {
 }
 
 describe('Relation snapshots, cardinality and SQL links',()=>{
+  it('creates form relations and their inverse inside the response transaction',async()=>{
+    const f=await fixture();try {
+      const c=await f.pair(), row=id(80);
+      const planned=await f.repo.prepareCreate(c,row,[x,y],owner);
+      f.sqlite.exec('BEGIN');
+      f.sqlite.prepare('INSERT INTO pages(id,owner_id,data) VALUES(?,?,?)').run(row,owner,'{}');
+      f.sqlite.prepare('INSERT INTO page_edges(id,parent_id,child_id) VALUES(?,?,?)').run(row,source,row);
+      for (const statement of planned) {
+        const [sql,...values]=typeof statement==='string'?[statement]:statement;
+        f.sqlite.prepare(String(sql)).run(...values as SQLInputValue[]);
+      }
+      f.sqlite.exec('COMMIT');
+      expect(f.ids(row)).toEqual([x,y]);
+      expect(f.ids(x,c.data.relation!.inverseColumnId!)).toEqual([row]);
+      expect(f.ids(y,c.data.relation!.inverseColumnId!)).toEqual([row]);
+      expect(f.sqlite.prepare('SELECT COUNT(*) AS n FROM page_relation_links').get()).toMatchObject({n:4});
+      expect(f.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    } finally {f.sqlite.close();}
+  });
+  it('rolls back a new form response if a selected target changes destination before commit',async()=>{
+    const f=await fixture();try {
+      const c=await f.pair(), row=id(80);
+      const planned=await f.repo.prepareCreate(c,row,[x],owner);
+      f.sqlite.prepare('UPDATE page_edges SET parent_id=? WHERE child_id=?').run(source,x);
+      f.sqlite.exec('BEGIN');
+      try {
+        f.sqlite.prepare('INSERT INTO pages(id,owner_id,data) VALUES(?,?,?)').run(row,owner,'{}');
+        f.sqlite.prepare('INSERT INTO page_edges(id,parent_id,child_id) VALUES(?,?,?)').run(row,source,row);
+        for (const statement of planned) {
+          const [sql,...values]=typeof statement==='string'?[statement]:statement;
+          f.sqlite.prepare(String(sql)).run(...values as SQLInputValue[]);
+        }
+        throw new Error('Expected the relation guard to reject');
+      } catch(error) {
+        f.sqlite.exec('ROLLBACK');
+        expect(String(error)).toMatch(/constraint/i);
+      }
+      expect(f.sqlite.prepare('SELECT id FROM pages WHERE id=?').get(row)).toBeUndefined();
+      expect(f.cell(x,c.data.relation!.inverseColumnId!)).toBeUndefined();
+      expect(f.sqlite.prepare('SELECT COUNT(*) AS n FROM page_relation_links').get()).toMatchObject({n:0});
+    } finally {f.sqlite.close();}
+  });
+  it('rejects form relations when the inverse cardinality is already filled',async()=>{
+    const f=await fixture();try {
+      const c=await f.pair('one');
+      await f.repo.write(c,a,[x],owner,null);
+      await expect(f.repo.prepareCreate(c,id(80),[x],owner)).rejects.toMatchObject({status:409});
+      expect(f.ids(x,c.data.relation!.inverseColumnId!)).toEqual([a]);
+    } finally {f.sqlite.close();}
+  });
+  it('searches and paginates only readable pages with active children, without requiring columns or a database flag',async()=>{
+    const f=await fixture();try {
+      const workspace=id(30), withoutColumns=id(31), child=id(32), archivedParent=id(33), archivedChild=id(34);
+      f.sqlite.prepare('INSERT INTO workspaces(id,name,created_by_user_id) VALUES(?,?,?)').run(workspace,'Área',owner);
+      f.sqlite.prepare('INSERT INTO workspace_members(id,workspace_id,user_id,page_root_id) VALUES(?,?,?,?)').run(id(35),workspace,owner,source);
+      for (const [page,title] of [[withoutColumns,'Página com filhos'],[child,'Registro'],[archivedParent,'Pedidos arquivados'],[archivedChild,'Arquivado']]) {
+        f.sqlite.prepare('INSERT INTO pages(id,title,owner_id,data) VALUES(?,?,?,?)').run(page!,title!,owner,'{}');
+      }
+      for (const [parent,page] of [[source,target],[source,withoutColumns],[withoutColumns,child],[source,archivedParent],[archivedParent,archivedChild]]) {
+        f.sqlite.prepare('INSERT INTO page_edges(id,parent_id,child_id) VALUES(?,?,?)').run(page!,parent!,page!);
+      }
+      f.sqlite.prepare('UPDATE pages SET title=? WHERE id=?').run('Pedidos',target);
+      f.sqlite.prepare('UPDATE pages SET title=? WHERE id=?').run('Pedidos normal',a);
+      f.sqlite.prepare('UPDATE pages SET deleted_at=CURRENT_TIMESTAMP WHERE id=?').run(archivedChild);
+      const first=await f.reader.listDatabases(workspace,owner,undefined,undefined,1);
+      expect(first).toEqual({items:[{id:source,title:source}],nextCursor:source});
+      const second=await f.reader.listDatabases(workspace,owner,undefined,first.nextCursor!,1);
+      expect(second).toEqual({items:[{id:target,title:'Pedidos'}],nextCursor:target});
+      expect(await f.reader.listDatabases(workspace,owner,undefined,second.nextCursor!,1)).toEqual({items:[{id:withoutColumns,title:'Página com filhos'}],nextCursor:null});
+      expect(await f.reader.listDatabases(workspace,owner,'pedidos')).toEqual({items:[{id:target,title:'Pedidos'}],nextCursor:null});
+      expect(await f.reader.listDatabases(workspace,other)).toEqual({items:[],nextCursor:null});
+      expect(f.sqlite.prepare('SELECT COUNT(*) AS total FROM page_columns WHERE parent_id=?').get(withoutColumns)).toMatchObject({total:0});
+      await expect(f.reader.validateRelationConfig(source,{version:1,targetDatabaseId:a},owner)).rejects.toThrow('página com filhos');
+      await expect(f.reader.validateRelationConfig(source,{version:1,targetDatabaseId:withoutColumns},owner)).resolves.toBeUndefined();
+    } finally {f.sqlite.close();}
+  });
   it('scopes options, search and pagination to direct children of the configured destination',async()=>{
     const f=await fixture();try {
       f.sqlite.prepare('UPDATE pages SET title=? WHERE id=?').run('Sabonete Dove',b);

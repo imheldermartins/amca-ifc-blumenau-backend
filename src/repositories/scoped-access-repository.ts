@@ -87,6 +87,12 @@ export function correlatedPageReadGuard(pageIdColumn: string, userId: string): S
   };
 }
 
+export function correlatedWorkspaceReadGuard(workspaceIdColumn: string, userId: string): SqlStatement {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$/.test(workspaceIdColumn)) throw new Error('Invalid correlated workspace identifier');
+  const guard = accessGuard('workspace', '', userId, 'read', 'view');
+  return { text: guard.text.replace('VALUES (?, ?, ?, ?)', `SELECT ${workspaceIdColumn}, ?, ?, ?`), values: guard.values.slice(1) };
+}
+
 export class ScopedAccessStore {
   async can(scope: AccessScope, scopeId: string, userId: string, kind: PermissionKind, action: string): Promise<boolean> {
     if (!ULID_RE.test(scopeId) || !ULID_RE.test(userId)) return false;

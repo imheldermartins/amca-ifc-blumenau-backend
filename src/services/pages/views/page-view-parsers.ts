@@ -127,27 +127,34 @@ export function parsePageViewFormConfig(value: unknown): PageViewFormConfig {
 
 export function parsePageViewHeatmapConfig(value: unknown): PageViewHeatmapConfig {
   if (!isJsonRecord(value)
-    || Object.keys(value).some((key) => !['version', 'dateColumnId', 'checkboxColumnId', 'period'].includes(key))
-    || value.version !== 1 || !isUlid(value.dateColumnId) || !isUlid(value.checkboxColumnId)
+    || Object.keys(value).some((key) => !['version', 'dateColumnId', value.version === 1 ? 'checkboxColumnId' : 'checkboxColumnIds', 'period'].includes(key))
+    || (value.version !== 1 && value.version !== 2) || !isUlid(value.dateColumnId)
     || !isJsonRecord(value.period)) {
     throw new ViewFiltersValidationError('Configuração do Mapa de calor inválida');
   }
+  const checkboxColumnIds = value.version === 1 ? [value.checkboxColumnId] : value.checkboxColumnIds;
+  if (!Array.isArray(checkboxColumnIds)
+    || !checkboxColumnIds.length || !checkboxColumnIds.every(isUlid)
+    || new Set(checkboxColumnIds).size !== checkboxColumnIds.length) {
+    throw new ViewFiltersValidationError('Selecione pelo menos uma coluna checkbox, sem duplicatas');
+  }
   const period = value.period;
   if (period.mode === 'year' && Object.keys(period).every((key) => key === 'mode')) {
-    return { version: 1, dateColumnId: value.dateColumnId, checkboxColumnId: value.checkboxColumnId, period: { mode: 'year' } };
+    return { version: 2, dateColumnId: value.dateColumnId, checkboxColumnIds, period: { mode: 'year' } };
   }
   if (period.mode === 'months' && Object.keys(period).every((key) => ['mode', 'monthCount'].includes(key))
     && Number.isInteger(period.monthCount) && Number(period.monthCount) >= 1 && Number(period.monthCount) <= 12) {
-    return { version: 1, dateColumnId: value.dateColumnId, checkboxColumnId: value.checkboxColumnId,
+    return { version: 2, dateColumnId: value.dateColumnId, checkboxColumnIds,
       period: { mode: 'months', monthCount: Number(period.monthCount) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 } };
   }
   throw new ViewFiltersValidationError('Período do Mapa de calor inválido');
 }
 
-export function assertHeatmapColumns(config: PageViewHeatmapConfig, columns: readonly Schema.PageColumn[]): void {
+export function assertHeatmapColumns(config: PageViewHeatmapConfig, columns: readonly Pick<Schema.PageColumn, 'id' | 'type'>[]): void {
   if (!columns.some((column) => column.id === config.dateColumnId && column.type === 'date')
-    || !columns.some((column) => column.id === config.checkboxColumnId && column.type === 'checkbox')) {
-    throw new ViewFiltersValidationError('O Mapa de calor exige uma coluna de data e uma coluna checkbox');
+    || !config.checkboxColumnIds.length
+    || !config.checkboxColumnIds.every((id) => columns.some((column) => column.id === id && column.type === 'checkbox'))) {
+    throw new ViewFiltersValidationError('O Mapa de calor exige uma coluna de data e pelo menos uma coluna checkbox da base');
   }
 }
 

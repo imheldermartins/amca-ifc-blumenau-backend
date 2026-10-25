@@ -17,9 +17,9 @@ export type PageViewKind =
   | "heatmap";
 
 export interface PageViewHeatmapConfig {
-  version: 1;
+  version: 2;
   dateColumnId: string;
-  checkboxColumnId: string;
+  checkboxColumnIds: string[];
   period: { mode: 'months'; monthCount: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 }
     | { mode: 'year' };
 }

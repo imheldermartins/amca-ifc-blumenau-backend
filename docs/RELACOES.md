@@ -4,6 +4,8 @@
 
 No menu da propriedade, **Configurar relação** permite escolher a base de destino e o limite: **Uma página** ou **Várias páginas**. O limite pertence à propriedade, em todas as visualizações. Relações antigas continuam aceitando várias páginas.
 
+O catálogo de destinos inclui somente páginas legíveis com pelo menos uma página filha ativa. Esse critério também é validado ao salvar a configuração. A busca e o limite são aplicados depois dessa restrição; uma página sem propriedades continua elegível quando tem filhas. A hierarquia existente em `page_edges` define o critério, sem um campo adicional de classificação de database.
+
 **Mostrar no destino** cria uma propriedade Relation no destino, com o nome informado. Essa criação acontece somente ao ativar a opção. Cada lado tem seu próprio limite:
 
 | Origem | Destino | Cardinalidade |

@@ -113,11 +113,12 @@ export class PageRelationWriteRepository {
     }
   }
 
-  async write(column: Schema.PageColumn, pageId: string, ids: string[], userId: string, existing: Cell | null, removeEmpty = false): Promise<Cell> {
+  private async planWrite(column: Schema.PageColumn, pageId: string, ids: string[], userId: string, existing: Cell | null, removeEmpty = false, creating = false): Promise<{p: Plan; result: Cell}> {
     const p = plan(), config = column.data.relation;
     if (!config || !column.parent_id) throw new PageRelationError(400, 'Configuração de relação obrigatória');
     this.columnGuard(p, column);
-    await this.access(p, pageId, column, userId);
+    await this.access(p, creating ? column.parent_id : pageId, column, userId, creating);
+    if (creating) this.assert(p, 'EXISTS(SELECT 1 FROM page_edges WHERE parent_id=? AND child_id=?)', [column.parent_id, pageId]);
     const previous = decode(existing);
     const changed = [...new Set([...previous, ...ids])].filter(id => previous.includes(id) !== ids.includes(id));
     const inverse = config.inverseColumnId ? await this.column(config.inverseColumnId) : null;
@@ -141,6 +142,17 @@ export class PageRelationWriteRepository {
       this.writeCell(p, inverse, targetId, mirror, nextIds);
     }
     const result = this.writeCell(p, column, pageId, existing, ids, removeEmpty);
+    return {p, result};
+  }
+
+  /** Used inside the form transaction, after the new response page and edge exist. */
+  async prepareCreate(column: Schema.PageColumn, pageId: string, ids: string[], userId: string): Promise<RqliteStatement[]> {
+    const {p} = await this.planWrite(column, pageId, ids, userId, null, false, true);
+    return [...p.guards, ...p.writes, ...[...p.pages].map(pageActivityTouchStatement)];
+  }
+
+  async write(column: Schema.PageColumn, pageId: string, ids: string[], userId: string, existing: Cell | null, removeEmpty = false): Promise<Cell> {
+    const {p, result} = await this.planWrite(column, pageId, ids, userId, existing, removeEmpty);
     await this.run(p);
     return result;
   }

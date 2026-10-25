@@ -34,5 +34,17 @@
     "name": "relation_column_type_index",
     "tableName": "page_columns",
     "sql": "CREATE TRIGGER relation_column_type_index AFTER UPDATE OF type ON page_columns WHEN OLD.type IS NOT NEW.type\n    BEGIN DELETE FROM page_relation_links WHERE source_cell_id IN (SELECT id FROM page_columns_values WHERE page_column_id=NEW.id);\n      INSERT INTO page_relation_links(source_cell_id,target_page_id,position)\n      SELECT c.id,j.value,CAST(j.key AS INTEGER) FROM page_columns_values c\n        JOIN json_each(CASE WHEN json_valid(c.data) THEN c.data ELSE '{}' END,'$.value') j JOIN pages ON pages.id=j.value\n        WHERE c.page_column_id=NEW.id AND NEW.type='relation' AND j.type='text' AND json_type(c.data,'$.value')='array'\n        GROUP BY c.id,j.value;\n    END"
+  },
+  {
+    "type": "trigger",
+    "name": "users_normalize_literal_updated_at_insert",
+    "tableName": "users",
+    "sql": "CREATE TRIGGER users_normalize_literal_updated_at_insert AFTER INSERT ON users WHEN upper(trim(NEW.updated_at))='CURRENT_TIMESTAMP' BEGIN UPDATE users SET updated_at=CURRENT_TIMESTAMP WHERE id=NEW.id; END"
+  },
+  {
+    "type": "trigger",
+    "name": "users_normalize_literal_updated_at_update",
+    "tableName": "users",
+    "sql": "CREATE TRIGGER users_normalize_literal_updated_at_update AFTER UPDATE OF updated_at ON users WHEN upper(trim(NEW.updated_at))='CURRENT_TIMESTAMP' BEGIN UPDATE users SET updated_at=CURRENT_TIMESTAMP WHERE id=NEW.id; END"
   }
 ]

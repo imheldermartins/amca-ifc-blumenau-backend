@@ -269,6 +269,41 @@ describe('SQL view projections', () => {
       expect(selected.heatmapDays?.['2026-10-05']).toEqual({ total: 3, checked: 1 });
     } finally { f.close(); }
   });
+  it('sums selected checkboxes without duplicating pages and paginates days with the same ACL and filters', async () => {
+    const f = fixture(65);
+    const extra = id(90012);
+    try {
+      f.database.prepare('INSERT INTO page_columns(id,name,type,data,parent_id) VALUES (?,?,?,?,?)').run(extra, 'Outra', 'checkbox', '{}', ROOT);
+      f.setView({ view: 'heatmap', heatmap: { version: 2, dateColumnId: DATE, checkboxColumnIds: [CHECKBOX, extra], period: { mode: 'months', monthCount: 1 } } });
+      for (let row = 1; row <= 65; row++) {
+        f.cell(row, DATE, '2026-10-05T00:00:00.000Z');
+        f.cell(row, CHECKBOX, true);
+        if (row <= 13) f.cell(row, extra, true);
+        else if (row <= 20) f.cell(row, extra, false);
+      }
+      f.database.prepare('INSERT INTO page_roles(id,page_id,roles) VALUES (?,?,?)').run('heatmap-reader', ROOT, JSON.stringify({ read: ['view', 'subpages'], write: [] }));
+      f.database.prepare('INSERT INTO page_collaborators(page_id,user_id,page_member_role_id) VALUES (?,?,?)').run(ROOT, VIEWER, 'heatmap-reader');
+      // A direct restriction interrupts the viewer's inherited read grant.
+      f.database.prepare('INSERT INTO page_collaborators(page_id,user_id,page_member_role_id) VALUES (?,?,?)').run(id(65), VIEWER, 'hidden');
+      const scope = { type: 'heatmap', from: '2026-10-01', to: '2026-10-31' } as const;
+      const aggregate = await f.query({ scope }, VIEWER);
+      expect(aggregate.checkboxColumnIds).toEqual([CHECKBOX, extra]);
+      expect(aggregate.heatmapDays?.['2026-10-05']).toEqual({ total: 64, checked: 77 });
+      const dayScope = { ...scope, day: '2026-10-05' };
+      const first = await f.query({ scope: dayScope }, VIEWER);
+      const second = await f.query({ scope: dayScope, cursor: first.windows[0]!.nextCursor }, VIEWER);
+      expect(first.windows[0]?.total).toBe(64);
+      expect(first.windows[0]?.rows).toHaveLength(50);
+      expect(second.windows[0]?.rows).toHaveLength(14);
+      expect(new Set([...first.windows[0]!.rows, ...second.windows[0]!.rows].map((row) => row.page_id)).size).toBe(64);
+      const filtered = { version: 2 as const, clauses: [{ columnId: extra, condition: 'equals' as const, values: ['true'] }], groupBy: [], passthrough: [] };
+      const subset = await f.query({ scope: dayScope, filters: filtered }, VIEWER);
+      expect(subset.heatmapDays?.['2026-10-05']).toEqual({ total: 13, checked: 26 });
+      expect(subset.windows[0]?.rows).toHaveLength(13);
+      f.setView({ heatmap: { version: 2, dateColumnId: DATE, checkboxColumnIds: [CHECKBOX, TEXT], period: { mode: 'year' } } });
+      await expect(f.query({ scope })).rejects.toMatchObject({ status: 400 });
+    } finally { f.close(); }
+  });
   it('uses inclusive range overlap for dates, including reverse operand order', async () => {
     const f = fixture(3);
     try {

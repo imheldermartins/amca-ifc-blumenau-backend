@@ -8,6 +8,7 @@ import { PageViewQueryCursor, PageViewQueryError, queryFingerprint, type QueryCu
 import { reconcileViewFilters } from '@/services/view-filters-v2';
 import pageRelationRepository, { type PageRelationRepository } from '@/repositories/page-relation-repository';
 import {cellDateIntervalSql, cellTypeSql, cellValueSql} from '@/repositories/page-json-value-sql';
+import { parsePageViewHeatmapConfig } from '@/services/pages/views/page-view-parsers';
 import {
   PAGE_VIEW_BATCH_SIZE, PAGE_VIEW_UNASSIGNED, pageViewScopeKey,
   type PageViewQueryGroup, type PageViewQueryProjection, type PageViewQueryRequest, type PageViewQueryScope, type PageViewQueryWindow,
@@ -25,7 +26,7 @@ interface SqlRow { id: string; title: string | null; rank_key: string; window_ke
 interface SqlGroup { group_json: string; total: number; first_rank: string; first_id: string }
 interface SqlCount { total: number }
 interface SqlDay { day: string; total: number; checked?: number }
-interface BaseQuery { sql: QuerySqlFragment; groupColumnIds: string[]; selectColumn?: QueryColumn; dateColumn?: QueryColumn; checkboxColumn?: QueryColumn }
+interface BaseQuery { sql: QuerySqlFragment; groupColumnIds: string[]; selectColumn?: QueryColumn; dateColumn?: QueryColumn; checkboxColumns: QueryColumn[] }
 interface AllocatedStream { scope: PageViewQueryScope; total: number; quota: number }
 function object(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function parseData(value: string | null): Record<string, unknown> { try { return object(value ? JSON.parse(value) : null); } catch { return {}; } }
@@ -124,7 +125,7 @@ export class PageViewQueryStore {
       } else projection.windows = [await this.readWindow(context, base, request.scope, scopeCount?.total ?? 0, limit, request)];
       if (base.selectColumn) projection.selectColumnId = base.selectColumn.id;
       if (base.dateColumn) projection.dateColumnId = base.dateColumn.id;
-      if (base.checkboxColumn) projection.checkboxColumnId = base.checkboxColumn.id;
+      if (base.checkboxColumns.length) projection.checkboxColumnIds = base.checkboxColumns.map((column) => column.id);
       if (request.scope.type === 'calendar' && !projection.days) projection.days = await this.calendarCounts(base, request.scope.from, request.scope.to);
       if (request.scope.type === 'heatmap' && !projection.heatmapDays) {
         const aggregate = await this.heatmapCounts(base, request.scope.from, request.scope.to);
@@ -176,9 +177,9 @@ export class PageViewQueryStore {
         ? await this.readCalendarPreview(context, base, scope, limit, periodCount?.total ?? 0)
         : await this.readWindow(context, base, scope, periodCount?.total ?? 0, limit, request)];
     } else if (kind === 'heatmap') {
-      if (!base.dateColumn || !base.checkboxColumn) return projection;
+      if (!base.dateColumn || !base.checkboxColumns.length) return projection;
       projection.dateColumnId = base.dateColumn.id;
-      projection.checkboxColumnId = base.checkboxColumn.id;
+      projection.checkboxColumnIds = base.checkboxColumns.map((column) => column.id);
       const config = object(view.heatmap), period = object(config.period), now = new Date();
       let from: string, to: string;
       if (period.mode === 'year') {
@@ -222,12 +223,17 @@ export class PageViewQueryStore {
     const board = object(context.view.board);
     const selectColumn = context.kind === 'board' ? board.selectColumnId === undefined ? context.columns.find((column) => column.type === 'select')
       : context.columns.find((column) => column.id === board.selectColumnId && column.type === 'select') : undefined;
-    const heatmap = object(context.view.heatmap);
+    const heatmap = context.kind === 'heatmap' ? parsePageViewHeatmapConfig(context.view.heatmap) : undefined;
     const dateColumn = ['calendar', 'timeline'].includes(context.kind) || scope?.type === 'calendar' ? context.view.dateColumnId === undefined ? context.columns.find((column) => column.type === 'date')
       : context.columns.find((column) => column.id === context.view.dateColumnId && column.type === 'date')
-      : context.kind === 'heatmap' || scope?.type === 'heatmap' ? context.columns.find((column) => column.id === heatmap.dateColumnId && column.type === 'date') : undefined;
-    const checkboxColumn = context.kind === 'heatmap' || scope?.type === 'heatmap'
-      ? context.columns.find((column) => column.id === heatmap.checkboxColumnId && column.type === 'checkbox') : undefined;
+      : context.kind === 'heatmap' ? context.columns.find((column) => column.id === heatmap?.dateColumnId && column.type === 'date') : undefined;
+    const checkboxColumns = heatmap ? heatmap.checkboxColumnIds.flatMap((id) => {
+      const column = context.columns.find((column) => column.id === id && column.type === 'checkbox');
+      return column ? [column] : [];
+    }) : [];
+    if (heatmap && (!dateColumn || checkboxColumns.length !== heatmap.checkboxColumnIds.length)) {
+      throw new PageViewQueryError(400, 'Escolha uma data e pelo menos uma checkbox válida da base para o Mapa de calor');
+    }
     const joins: string[] = [], joinValues: unknown[] = [], projected: string[] = [];
     if (selectColumn) {
       joins.push('LEFT JOIN page_columns_values board_value ON board_value.page_id = candidate.id AND board_value.page_column_id = ?'); joinValues.push(selectColumn.id);
@@ -240,10 +246,13 @@ export class PageViewQueryStore {
       const interval = cellDateIntervalSql('date_value');
       projected.push(`${interval.start} AS date_start_ms`, `${interval.end} AS date_end_ms`);
     }
-    if (checkboxColumn) {
-      joins.push('LEFT JOIN page_columns_values heatmap_checkbox ON heatmap_checkbox.page_id = candidate.id AND heatmap_checkbox.page_column_id = ?');
-      joinValues.push(checkboxColumn.id);
-      projected.push(`CASE WHEN ${cellTypeSql('heatmap_checkbox')}='true' THEN 1 ELSE 0 END AS heatmap_checked`);
+    if (checkboxColumns.length) {
+      // A scalar aggregate keeps one candidate row per page, regardless of how
+      // many checkbox columns are selected, without a join per column.
+      projected.push(`(SELECT COUNT(*) FROM page_columns_values heatmap_checkbox
+        WHERE heatmap_checkbox.page_id = candidate.id
+          AND heatmap_checkbox.page_column_id IN (${checkboxColumns.map(() => '?').join(',')})
+          AND ${cellTypeSql('heatmap_checkbox')}='true') AS heatmap_checked`);
     }
     groupColumnIds.forEach((id, index) => {
       const alias = `group_value_${index}`;
@@ -260,8 +269,8 @@ export class PageViewQueryStore {
     return { sql: { text: `SELECT ${select} FROM pages candidate JOIN page_edges child_edge ON child_edge.child_id = candidate.id
       ${joins.join('\n')} ${filters.joins.text}
       WHERE child_edge.parent_id = ? AND candidate.deleted_at IS NULL AND ${parentGuard.text} AND ${rowGuard.text} AND ${filters.where.text}`,
-      values: [...options, ...joinValues, ...filters.joins.values, parentId, ...parentGuard.values, ...rowGuard.values, ...filters.where.values] }, groupColumnIds,
-      ...(selectColumn && { selectColumn }), ...(dateColumn && { dateColumn }), ...(checkboxColumn && { checkboxColumn }) };
+      values: [...options, ...checkboxColumns.map((column) => column.id), ...joinValues, ...filters.joins.values, parentId, ...parentGuard.values, ...rowGuard.values, ...filters.where.values] }, groupColumnIds,
+      ...(selectColumn && { selectColumn }), ...(dateColumn && { dateColumn }), checkboxColumns };
   }
 
   private scopeCondition(base: BaseQuery, scope: PageViewQueryScope): QuerySqlFragment {
@@ -275,7 +284,7 @@ export class PageViewQueryStore {
       return { text: 'date_start_ms <= ? AND date_end_ms >= ?', values: [dateBound(to, true), dateBound(from, false)] };
     }
     if (scope.type === 'heatmap') {
-      if (!base.dateColumn || !base.checkboxColumn) throw new PageViewQueryError(400, 'Escolha colunas válidas para o Mapa de calor');
+      if (!base.dateColumn || !base.checkboxColumns.length) throw new PageViewQueryError(400, 'Escolha colunas válidas para o Mapa de calor');
       const from = scope.day ?? scope.from, to = scope.day ?? scope.to;
       return { text: 'date_start_ms = date_end_ms AND date_start_ms >= ? AND date_start_ms <= ?', values: [dateBound(from, false), dateBound(to, true)] };
     }

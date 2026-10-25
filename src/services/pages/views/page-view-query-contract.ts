@@ -73,7 +73,7 @@ export interface PageViewQueryProjection {
   initialDate?: string;
   selectColumnId?: string;
   dateColumnId?: string;
-  checkboxColumnId?: string;
+  checkboxColumnIds?: string[];
   relationTargets?: Record<string, { id: string; title: string | null }>;
   heatmapDays?: Record<string, { total: number; checked: number }>;
   ignoredRanges?: number;
