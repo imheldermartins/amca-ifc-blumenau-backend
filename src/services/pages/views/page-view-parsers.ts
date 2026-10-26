@@ -34,6 +34,7 @@ const VIEW_PATCH_FIELDS = new Set([
   "orderedRows",
   "columnWidths",
   "tileSize",
+  "gridPropertyIds",
   "dateColumnId",
   "colorColumnId",
   "calendarPropertyIds",

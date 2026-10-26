@@ -495,6 +495,23 @@ describe("PageViewController", () => {
     expect(mocks.pageJson.updatePageJsonPaths).not.toHaveBeenCalled();
   });
 
+  it.each([{ ids: [COLUMN_ID, COLOR_COLUMN_ID] }, { ids: [COLOR_COLUMN_ID] }, { ids: [] }])("persiste ordem e visibilidade da Grid: $ids", async ({ ids }) => {
+    const current = page({ [VIEW_ID]: { view: 'grid', name: 'Grade', tileSize: 'large', gridPropertyIds: [COLOR_COLUMN_ID, COLUMN_ID] } });
+    const persisted = page({ [VIEW_ID]: { ...current.data[VIEW_ID] as object, gridPropertyIds: ids } });
+    mocks.pages.find.mockResolvedValueOnce(current).mockResolvedValueOnce(persisted);
+    mocks.columns.findAll.mockResolvedValue([column(), { ...column(), id: COLOR_COLUMN_ID, type: 'formula' }]);
+    const result = await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { gridPropertyIds: ids });
+    expect(result).toMatchObject({ ok: true, data: { view: { gridPropertyIds: ids, tileSize: 'large' } } });
+    expect(mocks.pageJson.updatePageJsonPaths).toHaveBeenCalledWith(PAGE_ID, [{ path: [VIEW_ID, 'gridPropertyIds'], value: ids }], VIEW_ID);
+  });
+
+  it('recusa propriedades da Grid de outra base sem escrever', async () => {
+    mocks.pages.find.mockResolvedValue(page({ [VIEW_ID]: { view: 'grid' } }));
+    mocks.columns.findAll.mockResolvedValue([column()]);
+    expect(await pageViewPatchController.patchView(PAGE_ID, VIEW_ID, { gridPropertyIds: [OTHER_VIEW_ID] })).toMatchObject({ ok: false, reason: 'validation' });
+    expect(mocks.pageJson.updatePageJsonPaths).not.toHaveBeenCalled();
+  });
+
   it("persiste apenas colunas compatíveis na configuração do calendário", async () => {
     const current = page({ [VIEW_ID]: { view: "calendar", name: "Agenda" } });
     const persisted = page({ [VIEW_ID]: {

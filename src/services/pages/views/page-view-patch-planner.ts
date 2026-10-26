@@ -157,10 +157,11 @@ export class PageViewPatchPlanner {
         set("colorColumnId", raw.colorColumnId);
       }
     }
-    if (raw.calendarPropertyIds !== undefined) {
+    for (const field of ['gridPropertyIds', 'calendarPropertyIds'] as const) {
+      if (raw[field] === undefined) continue;
       const propertyIds = parseStringList(
-        raw.calendarPropertyIds,
-        "Propriedades visíveis do calendário",
+        raw[field],
+        "Propriedades visíveis",
       );
       if (
         propertyIds.some(
@@ -168,10 +169,10 @@ export class PageViewPatchPlanner {
         )
       ) {
         throw new ViewFiltersValidationError(
-          "Propriedades visíveis do calendário inválidas",
+          "Propriedades visíveis inválidas",
         );
       }
-      set("calendarPropertyIds", propertyIds);
+      set(field, propertyIds);
     }
     if (raw.calendarShowPropertyLabels !== undefined) {
       if (typeof raw.calendarShowPropertyLabels !== "boolean") {
