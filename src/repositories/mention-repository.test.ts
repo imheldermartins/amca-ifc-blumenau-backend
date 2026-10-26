@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MentionStore } from './mention-repository.js';
+import formulas from './page-formula-repository.js';
 import { MentionController } from '@/controllers/mention-controller';
 import { mentionId, mentionToken, parseMentionId, mentionIds, resolveMentionText } from '@/services/mentions/template';
 
@@ -13,6 +14,18 @@ const user = '01M00000000000000000000001', page = '01M00000000000000000000002', 
 beforeEach(() => { vi.resetAllMocks(); mocks.sql.mockImplementation(async (statement: { text: string }) => statement.text.includes('FROM users') ? [{ id: user, name: 'Ana', email: 'ana@test.local' }] : []); mocks.people.mockResolvedValue([]); mocks.workspaceId.mockResolvedValue(workspace); mocks.workspace.mockResolvedValue(null); mocks.organization.mockResolvedValue(null) });
 
 describe('scoped mention catalog', () => {
+  it('includes calculated page_columns such as the Lote formula and resolves them in page.title', async () => {
+    const store = new MentionStore();
+    const evaluate = vi.spyOn(formulas, 'evaluateColumns').mockResolvedValue({ [org]: { [page]: { ok: true, value: '#0001', valueType: { kind: 'text' }, steps: 1 } } });
+    mocks.sql.mockResolvedValue([{ id: org, parent_id: workspace, name: 'Lote', type: 'formula', data: JSON.stringify({ formula: { version: 1, source: 'padStart(index(), 4, "0")' } }), value_data: null }]);
+    expect(await store.columns(page, user)).toEqual([{ id: org, name: 'Lote', value: '#0001' }]);
+    expect(evaluate).toHaveBeenCalledWith(workspace, [{ id: org, source: 'padStart(index(), 4, "0")' }], [page], user);
+    vi.spyOn(store, 'catalog').mockResolvedValue({ users: [] });
+    const property = mentionId('pages', page, `columns.${org}`), title = mentionId('pages', page, 'title');
+    vi.spyOn(store, 'page').mockResolvedValue({ id: page, title: `Lote ${mentionToken(property)}` });
+    expect((await store.resolve(user, { pageId: page }, [title]))[title]).toBe('Lote #0001');
+    evaluate.mockRestore();
+  });
   it('loads the page properties through the live parent edge and actor guard', async () => {
     const store = new MentionStore();
     mocks.sql.mockResolvedValue([

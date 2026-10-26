@@ -5,29 +5,47 @@ import organizations from '@/repositories/organization-repository';
 import collaborators from '@/repositories/page-collaborator-repository';
 import flows from '@/repositories/flow-repository';
 import { VALUE_CODECS } from '@/services/value-codec';
+import type { Schema } from '@/db/schemas/index';
+import pageExports from './page-export-repository.js';
 import { mentionIds, parseMentionId, type MentionCatalog, type MentionScope, type MentionPerson, type MentionPageColumn } from '@/services/mentions/template';
 
 /** Every entity is authorized independently, including transitive references. */
 export class MentionStore {
   async columns(pageId: string, actor: string): Promise<MentionPageColumn[]> {
     const guard = accessGuard('page', pageId, actor, 'read', 'view');
-    const rows = await db.sqlRaw<{ id: string; name: string | null; type: 'text' | 'numeric' | 'checkbox' | 'date' | 'select'; data: string | null; value_data: string | null }>({
-      text: `SELECT DISTINCT col.id, col.name, col.type, col.data, cell.data AS value_data
+    const rows = await db.sqlRaw<{ id: string; parent_id: string; name: string | null; type: Schema.ColumnType; data: string | null; value_data: string | null }>({
+      text: `SELECT DISTINCT col.id, col.parent_id, col.name, col.type, col.data, cell.data AS value_data
         FROM pages JOIN page_edges edge ON edge.child_id = pages.id
         JOIN pages parent ON parent.id = edge.parent_id AND parent.deleted_at IS NULL
         JOIN page_columns col ON col.parent_id = parent.id AND col.deleted_at IS NULL
         LEFT JOIN page_columns_values cell ON cell.page_id = pages.id AND cell.page_column_id = col.id
         WHERE pages.id = ? AND pages.deleted_at IS NULL
-          AND col.type IN ('text', 'numeric', 'checkbox', 'date', 'select') AND ${guard.text}
+          AND col.type != 'flow' AND ${guard.text}
         ORDER BY col.id`,
       values: [pageId, ...guard.values],
     }, 'query');
+    const calculatedTypes = new Set(['relation', 'formula', 'extract_as']);
+    const computed: Record<string, string> = {};
+    if (rows.some((column) => calculatedTypes.has(column.type))) {
+      const definitions = rows.filter((column) => calculatedTypes.has(column.type)).map((column) => {
+        let data: Schema.PageColumnData = {};
+        try { data = typeof column.data === 'string' ? JSON.parse(column.data) : column.data ?? {}; } catch { /* Invalid definitions remain unavailable. */ }
+        return { ...column, data } as unknown as Schema.PageColumn;
+      });
+      const cells = rows.filter((column) => column.value_data != null).map((column) => ({ page_id: pageId, page_column_id: column.id, data: column.value_data })) as unknown as Schema.PageColumnValue[];
+      const projected = await pageExports.row({ id: pageId, title: null }, definitions, actor, cells);
+      if (rows[0]?.parent_id) await pageExports.calculated([projected], definitions, rows[0].parent_id, actor);
+      Object.assign(computed, projected.values);
+    }
     return rows.map((column) => {
-      let value = column.value_data == null ? null : VALUE_CODECS[column.type].decode(column.value_data);
+      if (calculatedTypes.has(column.type)) return { id: column.id, name: column.name ?? '', value: computed[column.id] ?? '' };
+      let value: unknown = null;
+      try { value = column.value_data == null ? null : VALUE_CODECS[column.type].decode(column.value_data); } catch { /* Invalid stored cells are blank. */ }
       if (column.type === 'select' && value != null) {
-        let data: { options?: { id: string; label: string }[] } = {};
+        let data: { options?: { id: string; label?: string; value?: string }[] } = {};
         try { data = typeof column.data === 'string' ? JSON.parse(column.data) : column.data ?? {}; } catch { /* Invalid metadata has no selectable value. */ }
-        value = data.options?.find((option) => option.id === value)?.label ?? null;
+        const option = data.options?.find((option) => option.id === value);
+        value = option?.value ?? option?.label ?? null;
       }
       return { id: column.id, name: column.name ?? '', value: value == null ? '' : String(value) };
     });
