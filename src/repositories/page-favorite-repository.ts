@@ -1,5 +1,6 @@
 import { ulid } from 'ulid';
 import db from '@models/index';
+import { rqlite } from '@/db/client-db';
 import { accessGuard, correlatedPageReadGuard, correlatedWorkspaceReadGuard } from '@/repositories/scoped-access-repository';
 
 export interface FavoritePage {
@@ -14,7 +15,7 @@ export interface FavoriteCursor { id: string; at: string }
 
 /** Personal bookmarks never change page content, ownership, or permissions. */
 export class PageFavoriteStore {
-  constructor(private readonly execute: typeof db.sqlRaw = db.sqlRaw) {}
+  constructor(private readonly execute: typeof db.sqlRaw = db.sqlRaw, private readonly request: typeof rqlite = rqlite) {}
 
   async list(actor: string, limit: number, cursor?: FavoriteCursor): Promise<FavoritePageList> {
     const page = correlatedPageReadGuard('page.id', actor), workspace = correlatedWorkspaceReadGuard('workspace.id', actor);
@@ -61,13 +62,18 @@ export class PageFavoriteStore {
 
   async add(actor: string, pageId: string): Promise<boolean> {
     const guard = accessGuard('page', pageId, actor, 'read', 'view');
-    const rows = await this.execute<{ id: string }>({
-      text: `INSERT INTO page_favorites(id,user_id,page_id)
+    // rqlite may report only rows_affected for a write with RETURNING. Read
+    // the saved bookmark in the same transaction instead of treating that as
+    // an inaccessible page after the insert has already succeeded.
+    const results = await this.request<{ favorite: number }>([
+      [`INSERT INTO page_favorites(id,user_id,page_id)
         SELECT ?,?,page.id FROM pages page WHERE page.id=? AND page.deleted_at IS NULL AND ${guard.text}
-        ON CONFLICT(user_id,page_id) DO UPDATE SET page_id=excluded.page_id RETURNING id`,
-      values: [ulid(), actor, pageId, ...guard.values],
-    }, 'request');
-    return rows.length === 1;
+        ON CONFLICT(user_id,page_id) DO NOTHING`, ulid(), actor, pageId, ...guard.values],
+      [`SELECT EXISTS(SELECT 1 FROM page_favorites favorite WHERE favorite.user_id=? AND favorite.page_id=page.id) AS favorite
+        FROM pages page WHERE page.id=? AND page.deleted_at IS NULL AND ${guard.text}`, actor, pageId, ...guard.values],
+    ], 'request', { transaction: true });
+    const rows = results[1];
+    return Array.isArray(rows) && rows[0]?.favorite === 1;
   }
 
   async remove(actor: string, pageId: string): Promise<void> {
