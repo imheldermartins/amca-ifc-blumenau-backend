@@ -7,6 +7,7 @@ export interface NotificationRow extends Omit<Schema.Notification, 'data'> {
 }
 
 export interface EmailOutboxPayload {
+  pagePdf?: { pageId: string; templatePageId?: string; actorUserId?: string; includePageTitle?: boolean };
   to: { name: string; email: string };
   subject: string;
   content: { html: string; text?: string };

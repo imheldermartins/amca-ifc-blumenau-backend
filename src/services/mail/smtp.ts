@@ -95,6 +95,7 @@ export class Smtp implements EmailDelivery {
         from: { name: message.from.name, address: message.from.email },
         to: { name: message.to.name, address: message.to.email },
         subject: message.subject,
+        ...(message.attachments ? { attachments: message.attachments } : {}),
         html: message.content.html,
         ...(message.content.text !== undefined ? { text: message.content.text } : {}),
         disableFileAccess: true,

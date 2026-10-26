@@ -7,6 +7,8 @@ import { scheduleReminderMail } from '@/services/notifications/schedule-notifica
 import { emailFailureFeedback, SendEmail } from '@/services/mail/send-email';
 import { projectScheduleInterval, scheduleStartInstant } from '@/services/schedule/schedule-date';
 import { VALUE_CODECS } from '@/services/value-codec';
+import pagePdfService, { PagePdfService } from '@/services/pages/page-pdf-service';
+import { isUlid } from '@/services/pages/views/page-view-parsers';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const STALE_LOCK_MS = 10 * 60 * 1_000;
@@ -59,6 +61,7 @@ export class NotificationWorker {
     private readonly notifications: NotificationStore = notificationStore,
     private readonly schedule: ScheduleStore = scheduleStore,
     private readonly now: () => Date = () => new Date(),
+    private readonly pdfs: PagePdfService = pagePdfService,
   ) {}
 
   public start(): void {
@@ -181,8 +184,15 @@ export class NotificationWorker {
           );
           continue;
         }
+        let attachment: Buffer | undefined;
         try {
-          const sent = await emailSender.send(payload);
+          const { pagePdf, to, subject, content } = payload;
+          const mail = { to, subject, content };
+          if (pagePdf && (!isUlid(pagePdf.pageId) || !isUlid(pagePdf.actorUserId) || (pagePdf.templatePageId !== undefined && !isUlid(pagePdf.templatePageId)))) throw new Error('Referência PDF inválida');
+          if (pagePdf?.includePageTitle !== undefined && typeof pagePdf.includePageTitle !== 'boolean') throw new Error('Opção de título PDF inválida');
+          const pdf = pagePdf ? await this.pdfs.generate(pagePdf.pageId, pagePdf.actorUserId!, pagePdf.templatePageId, undefined, { includePageTitle: pagePdf.includePageTitle !== false }) : null;
+          attachment = pdf?.buffer;
+          const sent = await emailSender.send({ ...mail, ...(pdf && { attachments: [{ filename: pdf.filename, content: pdf.buffer, contentType: 'application/pdf' as const }] }) });
           await this.notifications.markSent(row.id, sent.messageId);
         } catch (error) {
           const failure = emailFailureFeedback(error);
@@ -191,6 +201,8 @@ export class NotificationWorker {
             retryAt(now, row.attempts + 1),
             failure.code,
           );
+        } finally {
+          attachment?.fill(0);
         }
       }
     } finally {

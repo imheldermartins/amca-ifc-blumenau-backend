@@ -42,6 +42,9 @@ const parseOperator = (value: unknown): Schema.FlowSwitchOperator => {
 };
 
 const parseEmailConfig = (config: Record<string, unknown>) => {
+  if (config.attachPagePdf !== undefined && typeof config.attachPagePdf !== 'boolean') throw new Error('Anexo PDF inválido');
+  if (config.pdfIncludePageTitle !== undefined && typeof config.pdfIncludePageTitle !== 'boolean') throw new Error('Opção de título PDF inválida');
+  if (config.pdfTemplate !== undefined && config.pdfTemplate !== 'page' && config.pdfTemplate !== 'parent') throw new Error('Template PDF inválido');
   const to = requiredText(config.to, 'Destinatário do e-mail', 512);
   const recipients = flowRecipientKeys(to);
   if (!recipients.length || recipients.some((recipient) => !EMAIL_RECIPIENT.test(recipient))) {
@@ -51,6 +54,9 @@ const parseEmailConfig = (config: Record<string, unknown>) => {
     to,
     subject: requiredText(config.subject, 'Assunto do e-mail', 998),
     body: requiredText(config.body, 'Corpo do e-mail'),
+    ...(config.attachPagePdf !== undefined && { attachPagePdf: config.attachPagePdf as boolean }),
+    ...(config.pdfIncludePageTitle !== undefined && { pdfIncludePageTitle: config.pdfIncludePageTitle as boolean }),
+    ...((config.attachPagePdf || config.pdfTemplate !== undefined) && { pdfTemplate: 'parent' as const }),
   };
 };
 

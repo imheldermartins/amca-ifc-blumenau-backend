@@ -173,6 +173,9 @@ export namespace Schema {
       to: string;
       subject: string;
       body: string;
+      attachPagePdf?: boolean;
+      pdfTemplate?: 'page' | 'parent';
+      pdfIncludePageTitle?: boolean;
       nextNodeId: string;
     };
   }
@@ -223,7 +226,7 @@ export namespace Schema {
   export interface FlowEmailStepV2 {
     id: string;
     type: 'email';
-    config: { to: string; subject: string; body: string };
+    config: { to: string; subject: string; body: string; attachPagePdf?: boolean; pdfTemplate?: 'page' | 'parent'; pdfIncludePageTitle?: boolean };
   }
 
   export interface FlowSetValueStepV2 {

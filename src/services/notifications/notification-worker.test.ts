@@ -4,6 +4,7 @@ import type { NotificationStore } from '@/repositories/notification-repository';
 import type { ScheduleStore } from '@/repositories/schedule-repository';
 import type { EnqueueNotificationInput } from '@/repositories/types/notification-repository.types';
 import type { ScheduleReminderCandidateRow } from '@/repositories/types/schedule-repository.types';
+import type { PagePdfService } from '@/services/pages/page-pdf-service';
 
 const mail = vi.hoisted(() => ({ send: vi.fn(), close: vi.fn() }));
 vi.mock('@/services/mail/send-email', () => ({
@@ -30,6 +31,39 @@ const smtp = {
   host: process.env.SMTP_HOST,
   from: process.env.SMTP_FROM_EMAIL,
 };
+
+describe('Flow PDF attachment lifecycle', () => {
+  it.each([
+    { failure: false, includePageTitle: undefined }, { failure: true, includePageTitle: undefined },
+    { failure: false, includePageTitle: false }, { failure: true, includePageTitle: false },
+  ])('generates at delivery and wipes the buffer after SMTP (%o)', async ({ failure, includePageTitle }) => {
+    process.env.SMTP_HOST = 'smtp.example.test'; process.env.SMTP_FROM_EMAIL = 'cubs@example.test';
+    const buffer = Buffer.from('%PDF-sensitive');
+    const pagePdf = { pageId: ids.page, templatePageId: ids.workspace, actorUserId: ids.user, ...(includePageTitle !== undefined && { includePageTitle }) };
+    const notifications = { listDueDeliveries: vi.fn(async () => [{ id: ids.pin, attempts: 0, payload: JSON.stringify({ to: { name: 'Ana', email: 'ana@example.test' }, subject: 'PDF', content: { html: '<p>PDF</p>' }, pagePdf }) }]), claimDelivery: vi.fn(async () => true), markSent: vi.fn(), markFailed: vi.fn() } as unknown as NotificationStore;
+    const schedule = { listReminderCandidates: vi.fn(async () => []) } as unknown as ScheduleStore;
+    const pdfs = { generate: vi.fn(async () => ({ buffer, filename: 'pagina.pdf' })) } as unknown as PagePdfService;
+    mail.send.mockImplementationOnce(async (payload) => {
+      expect(payload.pagePdf).toBeUndefined();
+      expect(payload.attachments[0].content.toString()).toBe('%PDF-sensitive');
+      expect(payload.attachments[0].filename).toBe('pagina.pdf');
+      if (failure) throw new Error('SMTP unavailable');
+      return { messageId: 'sent' };
+    });
+    await new NotificationWorker(notifications, schedule, () => new Date(), pdfs).runOnce();
+    expect(pdfs.generate).toHaveBeenCalledWith(ids.page, ids.user, ids.workspace, undefined, { includePageTitle: includePageTitle !== false });
+    expect(buffer.every((byte) => byte === 0)).toBe(true);
+    expect(failure ? notifications.markFailed : notifications.markSent).toHaveBeenCalledOnce();
+  });
+  it('never sends the mail when the attachment cannot be authorized or generated', async () => {
+    process.env.SMTP_HOST = 'smtp.example.test'; process.env.SMTP_FROM_EMAIL = 'cubs@example.test';
+    const notifications = { listDueDeliveries: vi.fn(async () => [{ id: ids.pin, attempts: 0, payload: JSON.stringify({ to: { name: 'Ana', email: 'ana@example.test' }, subject: 'PDF', content: { html: '<p>PDF</p>' }, pagePdf: { pageId: ids.page, actorUserId: ids.user } }) }]), claimDelivery: vi.fn(async () => true), markSent: vi.fn(), markFailed: vi.fn() } as unknown as NotificationStore;
+    const schedule = { listReminderCandidates: vi.fn(async () => []) } as unknown as ScheduleStore;
+    const pdfs = { generate: vi.fn(async () => { throw new Error('Forbidden'); }) } as unknown as PagePdfService;
+    await new NotificationWorker(notifications, schedule, () => new Date(), pdfs).runOnce();
+    expect(mail.send).not.toHaveBeenCalled(); expect(notifications.markFailed).toHaveBeenCalledOnce();
+  });
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

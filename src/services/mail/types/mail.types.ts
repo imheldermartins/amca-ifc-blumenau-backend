@@ -13,6 +13,7 @@ export interface EmailContent {
 
 /** Envelope simples entregue por SendEmail ao adaptador SMTP. */
 export interface EmailMessage {
+  attachments?: { filename: string; content: Buffer; contentType: 'application/pdf' }[];
   from: EmailAddress;
   to: EmailAddress;
   subject: string;

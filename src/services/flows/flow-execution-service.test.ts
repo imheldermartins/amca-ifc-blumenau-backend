@@ -92,6 +92,25 @@ function source(): FlowExecutionSource {
   };
 }
 
+describe('Flow page PDF configuration', () => {
+  it.each(['page', 'parent'] as const)('always queues the parent template, including legacy setting %s', async (pdfTemplate) => {
+    const executionSource = source();
+    executionSource.row.title = 'recipient@example.test';
+    executionSource.flowColumn.data = { flow: { version: 2, trigger: { type: 'manual' }, nodes: [
+      { id: 'start', type: 'start', config: {} },
+      { id: 'email', type: 'email', config: { to: '@page.title', subject: 'Relatório', body: 'Documento anexado', attachPagePdf: true, pdfTemplate, pdfIncludePageTitle: false } },
+      { id: 'done', type: 'callback', config: {} },
+    ] } };
+    const commitExecution = vi.fn(async (_input: CommitFlowExecutionInput) => true);
+    const service = new FlowExecutionService({ executionSource: async () => executionSource, commitExecution } as unknown as FlowStore, new FlowDefinitionService(), new MacroService(), { canMutate: async () => true } as unknown as ColumnLockStore);
+    await service.execute('row' as NonEmptyString, 'flow' as NonEmptyString, 'actor' as NonEmptyString);
+    const payload = commitExecution.mock.calls[0]![0].emails[0]!.payload;
+    expect(payload.pagePdf).toEqual({ pageId: 'row', includePageTitle: false, templatePageId: 'database' });
+    expect(JSON.stringify(payload)).not.toContain('%PDF');
+    expect(payload).not.toHaveProperty('attachments');
+  });
+});
+
 describe('FlowExecutionService', () => {
   it('executa somente o ramo falso v2 e continua depois da condição', async () => {
     const executionSource = source()

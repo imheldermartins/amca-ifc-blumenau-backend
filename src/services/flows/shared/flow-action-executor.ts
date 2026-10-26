@@ -79,6 +79,9 @@ const enqueueEmail: FlowActionHandler<Schema.FlowEmailNode | Schema.FlowEmailSte
         to: { name: recipient.name, email: recipient.email },
         subject,
         content: { html: flowMailHtml(body), text: body },
+        ...(action.config.attachPagePdf && { pagePdf: { pageId: runtime.source.row.id,
+          ...(action.config.pdfIncludePageTitle !== undefined && { includePageTitle: action.config.pdfIncludePageTitle }),
+          templatePageId: runtime.source.parent.id } }),
       },
     });
   }

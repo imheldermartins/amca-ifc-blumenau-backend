@@ -103,7 +103,8 @@ export class FlowStore {
         `INSERT INTO notification_deliveries (
           id, notification_id, channel, status, payload
         ) VALUES (?, ?, 'email', 'pending', ?)`,
-        ulid(), notificationId, JSON.stringify(email.payload),
+        ulid(), notificationId, JSON.stringify({ ...email.payload,
+          ...(email.payload.pagePdf && { pagePdf: { ...email.payload.pagePdf, actorUserId: input.actorUserId ?? input.source.parent.owner_id } }) }),
       ]);
     }
     statements.push(pageCellUpsertStatement(
