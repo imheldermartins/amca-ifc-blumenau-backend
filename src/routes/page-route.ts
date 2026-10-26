@@ -5,6 +5,7 @@ import { PageColumnRouter } from "@/routes/page/page-column-router";
 import { PageColumnLockRouter } from '@/routes/page/page-column-lock-router';
 import { PageColumnValueRouter } from "@/routes/page/page-column-value-router";
 import { PageDocumentRouter } from '@/routes/page/page-document-router';
+import { PagePdfRouter } from '@/routes/page/page-pdf-router';
 import { PageFilterKeyRouter } from "@/routes/page/page-filter-key-router";
 import { PageFlowRouter } from '@/routes/page/page-flow-router';
 import { PageFormRouter } from '@/routes/page/page-form-router';
@@ -38,6 +39,7 @@ export class PageRouter extends ApplicationRouter {
     private readonly rowMoves = new PageViewRowMoveRouter(),
     private readonly relations = new PageRelationRouter(),
     private readonly formulas = new PageFormulaRouter(),
+    private readonly pdfs = new PagePdfRouter(),
   ) {
     super();
   }
@@ -54,6 +56,7 @@ export class PageRouter extends ApplicationRouter {
     this.router.use(this.columnLocks.build());
     this.router.use(this.values.build());
     this.router.use(this.documents.build());
+    this.router.use(this.pdfs.build());
     this.router.use(this.viewQueries.build());
     this.router.use(this.rowMoves.build());
     this.router.use(this.relations.build());
