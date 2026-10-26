@@ -34,6 +34,28 @@ function setup() {
   return { data, render, refs, service: new PagePdfService(data as unknown as PageExportStore, refs as unknown as MentionStore, render) };
 }
 describe('Recursive PDF', () => {
+  it('formats persisted datetime mentions in titles, rich text, properties and Recursive cells', async () => {
+    const { service, data } = setup();
+    const datetime = '2026-10-26T15:04:59.123Z', token = `@{${datetime}}`;
+    data.page.mockResolvedValue({ id: 'one', title: `Página ${token}` });
+    const datedConfig = { ...config, fields: [...config.fields, { id: 'date', label: 'Emissão', text: token }] };
+    const source = { type: 'doc', content: [
+      { type: 'paragraph', content: [{ type: 'mention', attrs: { id: datetime } }, { type: 'text', text: ` Texto ${token}` }] },
+      { type: 'editableBlock', attrs: { kind: 'tableRecursive', recursive: datedConfig } },
+      { type: 'editableBlock', attrs: { kind: 'calendarRecursive', recursive: datedConfig } },
+    ] };
+    data.document.mockResolvedValue({ content: encodePageDocument(source) });
+    data.relationRows.mockResolvedValue([{ ...rows[0]!, title: `Item ${token}`, values: { value: token } }]);
+    const built = await service.html('one', 'actor');
+    expect(built.html).toContain('<h1 class="page-title">Página 26/10/2026 às 12:04</h1>');
+    expect(built.html).toContain('<span class="mention">26/10/2026 às 12:04</span> Texto 26/10/2026 às 12:04');
+    expect(built.html).toContain('Item 26/10/2026 às 12:04: R$ 26/10/2026 às 12:04');
+    expect(built.html).toContain('<td colspan="1" rowspan="1">26/10/2026 às 12:04</td>');
+    expect(built.html).not.toContain(token);
+    expect(decodePageDocument(encodePageDocument(source))).toEqual(source);
+    expect(JSON.stringify(source)).toContain(datetime);
+    expect(JSON.stringify(source)).not.toContain('26/10/2026 às');
+  });
   it('exports the current document directly and never loads the parent template implicitly', async () => {
     const { service, data } = setup();
     data.document.mockImplementation(async (id: string) => ({ content: encodePageDocument({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: id === 'parent' ? 'Documento do pai' : 'Documento atual' }] }] }) }));

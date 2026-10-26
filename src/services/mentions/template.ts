@@ -12,6 +12,22 @@ export interface MentionCatalog {
 export interface MentionPageColumn { id: string; name: string; value: string }
 export interface MentionOption { id: string; label: string; value: string; section: string; search?: string }
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
+const DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const datetimeFormat = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+/** @hoje persists only a complete ISO instant, never its label or formatted text. */
+export function formatDatetimeMention(id: string): string | null {
+  if (!DATETIME.test(id)) return null;
+  const date = new Date(id);
+  if (!Number.isFinite(date.getTime()) || date.toISOString() !== id) return null;
+  const parts = Object.fromEntries(datetimeFormat.formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${parts.day}/${parts.month}/${parts.year} às ${parts.hour}:${parts.minute}`;
+}
+export function isMentionId(id: string): boolean {
+  return Boolean(parseMentionId(id) || formatDatetimeMention(id));
+}
 export function mentionId(kind: MentionKind, entityId: string, field: string): string {
   return `${kind}:${entityId}:${encodeURIComponent(field)}`;
 }
@@ -28,9 +44,9 @@ export function parseMentionId(id: string): MentionReference | null {
 }
 export function mentionToken(id: string): string { return `@{${id}}`; }
 export function mentionIds(text: string): string[] {
-  return [...new Set([...text.matchAll(/@\{([^{}]{1,1600})\}/g)].map((match) => match[1]!).filter((id) => parseMentionId(id)))];
+  return [...new Set([...text.matchAll(/@\{([^{}]{1,1600})\}/g)].map((match) => match[1]!).filter(isMentionId))];
 }
 /** Resolver outputs are already expanded server-side; inserted values remain literal. */
 export function resolveMentionText(text: string, values: Readonly<Record<string, string | null>>, unavailable = ''): string {
-  return text.replace(/@\{([^{}]{1,1600})\}/g, (token, id: string) => parseMentionId(id) ? values[id] ?? unavailable : token);
+  return text.replace(/@\{([^{}]{1,1600})\}/g, (token, id: string) => formatDatetimeMention(id) ?? (parseMentionId(id) ? values[id] ?? unavailable : token));
 }

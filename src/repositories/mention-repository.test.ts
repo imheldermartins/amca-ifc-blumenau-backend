@@ -64,6 +64,16 @@ describe('scoped mention catalog', () => {
 });
 
 describe('dynamic reference resolution', () => {
+  it('resolves datetime mentions directly and inside page properties through the API', async () => {
+    const store = new MentionStore(); vi.spyOn(store, 'catalog').mockResolvedValue({ users: [] });
+    const datetime = '2026-10-26T15:04:59.123Z', title = mentionId('pages', page, 'title');
+    vi.spyOn(store, 'page').mockResolvedValue({ id: page, title: `Criado ${mentionToken(datetime)}` });
+    const controller = new MentionController(store);
+    expect(await controller.resolve(user, { scope: {}, ids: [datetime, title] })).toEqual({
+      status: 200, data: { [datetime]: '26/10/2026 às 12:04', [title]: 'Criado 26/10/2026 às 12:04' },
+    });
+    expect((await controller.resolve(user, { scope: {}, ids: ['2026-02-30T12:00:00.000Z'] })).status).toBe(400);
+  });
   it('resolves a title from row properties, including nested references, deletion and cycles', async () => {
     const store = new MentionStore(); vi.spyOn(store, 'catalog').mockResolvedValue({ users: [] });
     const title = mentionId('pages', page, 'title'), column = mentionId('pages', page, `columns.${org}`);

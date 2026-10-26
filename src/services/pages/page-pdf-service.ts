@@ -8,7 +8,7 @@ import mentions, { MentionStore } from '@/repositories/mention-repository';
 import { decodePageDocument, type DocumentNode } from './page-document-codec.js';
 import { pageExportBody, pageExportHtml } from './page-export-html.js';
 import { PDF_TITLE, readRecursiveConfig, recursiveText, type RecursiveRow } from './recursive-template.js';
-import { mentionIds, parseMentionId } from '@/services/mentions/template';
+import { formatDatetimeMention, mentionIds, parseMentionId } from '@/services/mentions/template';
 import { slugify } from '@/utils/slugify';
 
 export class PagePdfError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -107,8 +107,8 @@ export class PagePdfService {
         else if (ref.field.startsWith('columns.')) values[id] = contextRow.values[ref.field.slice(8)] ?? '';
       }
     }
-    const fixed = (text: string) => text.replace(/@\{([^{}]{1,1600})\}/g, (_token, id: string) => values[id] ?? '');
-    const resolveId = (id: string) => id === PDF_TITLE ? fixed(contextRow.title) : id.startsWith('pdf:page:columns.') ? fixed(contextRow.values[id.slice('pdf:page:columns.'.length)] ?? '') : values[id] ?? '';
+    const fixed = (text: string) => text.replace(/@\{([^{}]{1,1600})\}/g, (_token, id: string) => formatDatetimeMention(id) ?? values[id] ?? '');
+    const resolveId = (id: string) => id === PDF_TITLE ? fixed(contextRow.title) : id.startsWith('pdf:page:columns.') ? fixed(contextRow.values[id.slice('pdf:page:columns.'.length)] ?? '') : formatDatetimeMention(id) ?? values[id] ?? '';
     const resolveText = (text: string) => fixed(recursiveText(text, contextRow, resolveId))
       .replace(/@page\.title\b/g, () => fixed(contextRow.title))
       .replace(/@columns\.([0-9A-Za-z_-]+)/g, (_token, id: string) => fixed(contextRow.values[id] ?? ''));

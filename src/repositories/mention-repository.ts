@@ -7,7 +7,7 @@ import flows from '@/repositories/flow-repository';
 import { VALUE_CODECS } from '@/services/value-codec';
 import type { Schema } from '@/db/schemas/index';
 import pageExports from './page-export-repository.js';
-import { mentionIds, parseMentionId, type MentionCatalog, type MentionScope, type MentionPerson, type MentionPageColumn } from '@/services/mentions/template';
+import { formatDatetimeMention, mentionIds, parseMentionId, type MentionCatalog, type MentionScope, type MentionPerson, type MentionPageColumn } from '@/services/mentions/template';
 
 /** Every entity is authorized independently, including transitive references. */
 export class MentionStore {
@@ -90,6 +90,8 @@ export class MentionStore {
     if (catalog.page?.columns) pageColumns.set(catalog.page.id, Promise.resolve(catalog.page.columns));
     let budget = 100;
     const raw = async (id: string): Promise<string | null> => {
+      const datetime = formatDatetimeMention(id);
+      if (datetime !== null) return datetime;
       const ref = parseMentionId(id);
       if (!ref) return null;
       if (ref.kind === 'pages' && ref.field.startsWith('columns.')) {
