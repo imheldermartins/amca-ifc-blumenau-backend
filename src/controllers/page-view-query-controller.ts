@@ -9,13 +9,14 @@ function date(value: unknown): value is string { return typeof value === 'string
 function fail(): never { throw new PageViewQueryError(400, 'Consulta de visualização inválida'); }
 
 export function parsePageViewQueryRequest(raw: unknown): PageViewQueryRequest {
-  if (!record(raw) || !keys(raw, ['view', 'filters', 'scope', 'cursor', 'groupCursor', 'direction', 'limit', 'visibleGroupKeys', 'anchorId', 'metadataOnly'])) fail();
+  if (!record(raw) || !keys(raw, ['view', 'filters', 'scope', 'cursor', 'groupCursor', 'direction', 'limit', 'visibleGroupKeys', 'anchorId', 'metadataOnly', 'includeRowIds'])) fail();
   if (raw.view !== undefined && !['table', 'grid', 'board', 'calendar', 'timeline', 'graph', 'form', 'heatmap'].includes(String(raw.view))) fail();
   if (raw.metadataOnly !== undefined && typeof raw.metadataOnly !== 'boolean') fail();
   if (raw.limit !== undefined && (typeof raw.limit !== 'number' || !Number.isInteger(raw.limit) || raw.limit < 1 || raw.limit > 50)) fail();
   if (raw.direction !== undefined && !['next', 'previous'].includes(String(raw.direction))) fail();
   for (const key of ['cursor', 'groupCursor']) if (raw[key] !== undefined && raw[key] !== null && (typeof raw[key] !== 'string' || raw[key].length > 4096)) fail();
   if (raw.anchorId !== undefined && !isUlid(raw.anchorId)) fail();
+  if (raw.includeRowIds !== undefined && (!Array.isArray(raw.includeRowIds) || raw.includeRowIds.length > 50 || raw.includeRowIds.some((id) => !isUlid(id)))) fail();
   if (raw.visibleGroupKeys !== undefined && (!Array.isArray(raw.visibleGroupKeys) || raw.visibleGroupKeys.length > 500 || raw.visibleGroupKeys.some((key) => typeof key !== 'string' || key.length > 4096))) fail();
   let filters: QueryFilters | undefined;
   if (raw.filters !== undefined) {
@@ -62,7 +63,7 @@ export function parsePageViewQueryRequest(raw: unknown): PageViewQueryRequest {
   return { ...(raw.view !== undefined && { view: raw.view as QueryViewKind }), ...(filters && { filters }), ...(scope && { scope }), ...(raw.cursor !== undefined && { cursor: raw.cursor as string | null }),
     ...(raw.groupCursor !== undefined && { groupCursor: raw.groupCursor as string | null }), ...(raw.direction !== undefined && { direction: raw.direction as 'next' | 'previous' }),
     ...(raw.limit !== undefined && { limit: raw.limit as number }), ...(raw.visibleGroupKeys !== undefined && { visibleGroupKeys: raw.visibleGroupKeys as string[] }),
-    ...(raw.anchorId !== undefined && { anchorId: raw.anchorId as string }), ...(raw.metadataOnly !== undefined && { metadataOnly: raw.metadataOnly as boolean }) };
+    ...(raw.anchorId !== undefined && { anchorId: raw.anchorId as string }), ...(raw.includeRowIds !== undefined && { includeRowIds: [...new Set(raw.includeRowIds as string[])] }), ...(raw.metadataOnly !== undefined && { metadataOnly: raw.metadataOnly as boolean }) };
 }
 
 type QueryResult<T> = { ok: true; data: T } | { ok: false; status: 400 | 404 | 409 | 500; message: string; code?: string };

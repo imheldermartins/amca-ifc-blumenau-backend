@@ -134,14 +134,14 @@ export class PageViewQueryStore {
       }
       if (kind === 'board') projection.groups = await this.boardGroups(base, context);
       if (projection.groups) this.attachWindows(projection.groups, projection.windows);
-      return this.enrichProjection(projection, context);
+      return this.enrichProjection(projection, context, request);
     }
     if (kind === 'board') {
-      if (!base.selectColumn) return projection;
+      if (!base.selectColumn) return this.enrichProjection(projection, context, request);
       projection.selectColumnId = base.selectColumn.id;
       const groups = await this.boardGroups(base, context);
       projection.groups = groups;
-      if (request.metadataOnly) return projection;
+      if (request.metadataOnly) return this.enrichProjection(projection, context, request);
       const collapsed = new Set(stringList(object(view.board).collapsedOptionIds));
       const visible = request.visibleGroupKeys ? new Set(request.visibleGroupKeys) : null;
       const streams = this.allocate(groups.filter((group) => !collapsed.has(group.value ?? '') && (!visible || visible.has(group.key))), limit,
@@ -153,14 +153,14 @@ export class PageViewQueryStore {
       const leafGroups = await this.tableGroups(base, context, request.groupCursor);
       projection.groups = leafGroups.groups;
       projection.groupsNextCursor = leafGroups.nextCursor;
-      if (request.metadataOnly) return projection;
+      if (request.metadataOnly) return this.enrichProjection(projection, context, request);
       const visible = request.visibleGroupKeys ? new Set(request.visibleGroupKeys) : null;
       const streams = this.allocate(leafGroups.leaves.filter((group) => !visible || visible.has(group.key)), limit, (group) => ({ type: 'group', path: group.path }));
       projection.windows = await this.readAllocated(context, base, streams);
       this.seedEmptyWindows(context, leafGroups.leaves, projection.windows);
       this.attachWindows(projection.groups, projection.windows);
     } else if (kind === 'calendar' || kind === 'timeline') {
-      if (!base.dateColumn) return projection;
+      if (!base.dateColumn) return this.enrichProjection(projection, context, request);
       projection.dateColumnId = base.dateColumn.id;
       const [first] = await this.execute<{ date_ms: number | null }>({ text: `WITH filtered AS (${base.sql.text}) SELECT MIN(date_start_ms) AS date_ms FROM filtered`, values: base.sql.values });
       const firstDate = first?.date_ms == null ? new Date() : new Date(first.date_ms);
@@ -170,14 +170,14 @@ export class PageViewQueryStore {
       next.setUTCMonth(next.getUTCMonth() + 1); next.setUTCDate(0);
       const to = next.toISOString().slice(0, 10);
       projection.days = await this.calendarCounts(base, from, to);
-      if (request.metadataOnly) return projection;
+      if (request.metadataOnly) return this.enrichProjection(projection, context, request);
       const scope: PageViewQueryScope = { type: 'calendar', from, to }, condition = this.scopeCondition(base, scope);
       const [periodCount] = await this.execute<SqlCount>({ text: `WITH filtered AS (${base.sql.text}) SELECT COUNT(*) AS total FROM filtered WHERE ${condition.text}`, values: [...base.sql.values, ...condition.values] });
       projection.windows = [kind === 'calendar'
         ? await this.readCalendarPreview(context, base, scope, limit, periodCount?.total ?? 0)
         : await this.readWindow(context, base, scope, periodCount?.total ?? 0, limit, request)];
     } else if (kind === 'heatmap') {
-      if (!base.dateColumn || !base.checkboxColumns.length) return projection;
+      if (!base.dateColumn || !base.checkboxColumns.length) return this.enrichProjection(projection, context, request);
       projection.dateColumnId = base.dateColumn.id;
       projection.checkboxColumnIds = base.checkboxColumns.map((column) => column.id);
       const config = object(view.heatmap), period = object(config.period), now = new Date();
@@ -198,7 +198,7 @@ export class PageViewQueryStore {
       const scope: PageViewQueryScope = kind === 'graph' ? { type: 'graph', parentId: pageId } : { type: 'root' };
       if (!request.metadataOnly) projection.windows = [await this.readWindow(context, base, scope, projection.total, limit, request)];
     }
-    return this.enrichProjection(projection, context);
+    return this.enrichProjection(projection, context, request);
   }
 
   private async requireReadyOrder(parentId: string, viewId: string, view: Record<string, unknown>): Promise<void> {
@@ -456,8 +456,20 @@ export class PageViewQueryStore {
     return raw || 'Sem valor';
   }
 
-  private async enrichProjection(projection: PageViewQueryProjection, context: QueryContext): Promise<PageViewQueryProjection> {
-    const rows = [...new Map(projection.windows.flatMap((window) => window.rows).map((row) => [row.page_id, row] as const)).values()];
+  private async enrichProjection(projection: PageViewQueryProjection, context: QueryContext, request: PageViewQueryRequest): Promise<PageViewQueryProjection> {
+    const visible = new Map(projection.windows.flatMap((window) => window.rows).map((row) => [row.page_id, row] as const));
+    if (request.includeRowIds?.length) {
+      // Local drafts may be outside the view's filters and retained slice.
+      // Reuse the same parent/child ACL guards, never a view-membership bypass of authorization.
+      const ids = [...new Set(request.includeRowIds)].slice(0, PAGE_VIEW_BATCH_SIZE);
+      const base = await this.baseQuery({ ...context, filters: { version: 2, clauses: [], groupBy: [] } }, QUERY_FALLBACK_VIEW, request.scope?.type === 'graph' ? request.scope : undefined);
+      const hydrated = await this.execute<SqlRow>({
+        text: this.datasetSql(`SELECT id,title,rank_key,'included' AS window_key FROM (${base.sql.text}) WHERE id IN (${ids.map(() => '?').join(',')})`),
+        values: [...base.sql.values, ...ids],
+      });
+      projection.includedRows = hydrated.map((row) => visible.get(row.id) ?? this.toDataset(row));
+    }
+    const rows = [...new Map([...visible.values(), ...(projection.includedRows ?? [])].map((row) => [row.page_id, row] as const)).values()];
     if (!rows.length) return projection;
 
     const relationColumns = context.columns.filter((column) => column.type === 'relation');

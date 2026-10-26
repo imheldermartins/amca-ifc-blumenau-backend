@@ -28,6 +28,8 @@ export interface PageViewQueryRequest {
   metadataOnly?: boolean;
   /** Reconcile the retained slice, including its first row, without restarting at the beginning. */
   anchorId?: string;
+  /** Hydrate up to 50 authorized child pages held by local editors, independently of windows/filters. */
+  includeRowIds?: string[];
 }
 export interface QueryDatasetCell {
   row_id: string | null;
@@ -66,6 +68,8 @@ export interface PageViewQueryProjection {
   orderRevision: number;
   total: number;
   windows: PageViewQueryWindow[];
+  /** Authoritative cells for includeRowIds; these do not change membership or counts. */
+  includedRows?: QueryDatasetRow[];
   groups?: PageViewQueryGroup[];
   groupsNextCursor?: string | null;
   /** Full authorized counts, independent of the capped preview rows. */

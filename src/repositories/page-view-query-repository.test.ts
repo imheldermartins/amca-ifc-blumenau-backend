@@ -5,6 +5,7 @@ import { PageViewQueryCursor, PageViewQueryError } from './page-view-query-curso
 import { compileQueryFilters, normalizeQueryText } from './page-view-query-filters.js';
 import { pageViewScopeKey, type PageViewQueryRequest } from '@/services/pages/views/page-view-query-contract';
 import {PageRelationRepository} from './page-relation-repository.js';
+import formulas, { PageFormulaRepository } from './page-formula-repository.js';
 import type {Schema} from '@/db/schemas/index';
 import {migration as relationLinks} from '@/db/migrations/20261020022641135_27e708b6_relation_links_and_cardinality';
 import {migration as relationSnapshots} from '@/db/migrations/20261020023101397_c32e8cfa_relation_snapshot_invariants';
@@ -57,6 +58,48 @@ function fixture(count = 100) {
 }
 
 describe('SQL view projections', () => {
+  it('calculates a newly created Lote outside filters/windows using the real canonical index, without storing a formula cell', async () => {
+    const f = fixture(100), formulaId = id(91000), newId = id(101);
+    const engine = new PageFormulaRepository(<T>(statement: string | SqlStatement) => f.execute<T>(typeof statement === 'string' ? { text: statement, values: [] } : statement));
+    const evaluate = vi.spyOn(formulas, 'evaluateColumns').mockImplementation(engine.evaluateColumns.bind(engine));
+    try {
+      f.database.prepare('INSERT INTO page_columns(id,name,type,parent_id,data) VALUES (?,?,?,?,?)').run(formulaId, 'Lote', 'formula', ROOT, JSON.stringify({ formula: { version: 1, revision: 1, source: '"#" + padStart(toText(index()), 4, "0")' } }));
+      expect((await f.query({ limit: 1 })).windows[0]?.rows[0]?.page_columns[formulaId]?.row_data).toBe(JSON.stringify({ value: '#0001' }));
+      f.database.prepare('INSERT INTO pages(id,title,owner_id,data) VALUES (?,?,?,?)').run(newId, 'Novo lote', OWNER, '{}');
+      f.database.prepare('INSERT INTO page_edges(id,parent_id,child_id) VALUES (?,?,?)').run(newId, ROOT, newId);
+      f.database.prepare('INSERT INTO page_view_row_order(edge_id,view_id,rank) VALUES (?,?,?)').run(newId, VIEW, newId);
+      const filtered = { version: 2 as const, clauses: [{ columnId: 'page_title', condition: 'contains' as const, values: ['Página'] }], groupBy: [] };
+      const result = await f.query({ filters: filtered, includeRowIds: [newId], limit: 1 });
+      expect(result.total).toBe(100);
+      expect(result.windows[0]?.rows).toHaveLength(1);
+      expect(result.includedRows).toHaveLength(1);
+      expect(result.includedRows?.[0]?.page_columns[formulaId]?.row_data).toBe(JSON.stringify({ value: '#0101' }));
+      f.database.prepare('UPDATE pages SET deleted_at=? WHERE id=?').run('2026-10-25', id(1));
+      const refreshed = await f.query({ filters: filtered, includeRowIds: [newId], metadataOnly: true });
+      expect(refreshed.windows).toEqual([]);
+      expect(refreshed.includedRows?.[0]?.page_columns[formulaId]?.row_data).toBe(JSON.stringify({ value: '#0100' }));
+      expect(f.database.prepare('SELECT COUNT(*) AS count FROM page_columns_values WHERE page_column_id=?').get(formulaId)).toEqual({ count: 0 });
+    } finally { evaluate.mockRestore(); f.close(); }
+  });
+
+  it('does not hydrate pages from another database or deleted pages', async () => {
+    const f = fixture(3);
+    try {
+      f.database.prepare('UPDATE page_edges SET parent_id=? WHERE child_id=?').run(id(95000), id(2));
+      f.database.prepare('UPDATE pages SET deleted_at=? WHERE id=?').run('2026-10-25', id(3));
+      const result = await f.query({ metadataOnly: true, includeRowIds: [id(1), id(2), id(3), id(99999)] });
+      expect(result.includedRows?.map((row) => row.page_id)).toEqual([id(1)]);
+    } finally { f.close(); }
+  });
+  it('applies child read permissions to included rows even outside the view filters', async () => {
+    const f = fixture(3);
+    try {
+      f.database.prepare('INSERT INTO page_roles(id,page_id,roles) VALUES (?,?,?),(?,?,?)').run('reader', ROOT, JSON.stringify({ read: ['view', 'subpages'], write: [] }), 'hidden', id(1), JSON.stringify({ read: [], write: [] }));
+      f.database.prepare('INSERT INTO page_collaborators(page_id,user_id,page_member_role_id) VALUES (?,?,?),(?,?,?)').run(ROOT, VIEWER, 'reader', id(1), VIEWER, 'hidden');
+      const result = await f.query({ metadataOnly: true, includeRowIds: [id(1), id(2)] }, VIEWER);
+      expect(result.includedRows?.map((row) => row.page_id)).toEqual([id(2)]);
+    } finally { f.close(); }
+  });
   it('confere o kind enviado pela sessão contra a view persistida', async () => {
     const f = fixture(1);
     try {

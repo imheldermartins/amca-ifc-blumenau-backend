@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { parsePageViewQueryRequest } from './page-view-query-controller.js';
 
 describe('query input boundaries', () => {
+  it('bounds and validates the additional row hydration batch', () => {
+    const id = '01M00000000000000000000001';
+    expect(parsePageViewQueryRequest({ includeRowIds: [id, id], metadataOnly: true })).toEqual({ includeRowIds: [id], metadataOnly: true });
+    for (const includeRowIds of [null, 'all', ['bad'], Array(51).fill(id)]) expect(() => parsePageViewQueryRequest({ includeRowIds })).toThrow();
+  });
   it('accepts temporary effective filters without persisting the view', () => {
     const filters = { version: 2, clauses: [{ columnId: 'page_title', condition: 'contains', values: ['ação'] }], groupBy: [], passthrough: [], updatedAt: null };
     expect(parsePageViewQueryRequest({ view: 'table', filters, limit: 50 })).toEqual({ view: 'table', filters: { version: 2, clauses: filters.clauses, groupBy: [] }, limit: 50 });
