@@ -33,6 +33,8 @@
     "test:sql-injection": "tsx --env-file=.env.development scripts/validation/sql-injection-test.ts",
     "deps:outdated": "npm outdated --long",
     "deps:audit": "npm audit",
+    "deploy:check": "node --test scripts/deploy/config.test.mjs",
+    "deploy:integration": "node scripts/validation/rqlite-auth-test.mjs",
     "rqlite:generate": "rqlite generate",
     "rqlite:check": "rqlite check",
     "rqlite:create": "rqlite create migration",
@@ -73,7 +75,7 @@
   },
   "dependencies": {
     "@casl/ability": "7.0.1",
-    "@cubs/rqlite-client": "1.0.0",
+    "@cubs/rqlite-client": "1.1.0",
     "@fontsource-variable/noto-sans": "5.2.10",
     "@iconify-json/cuida": "1.2.5",
     "@iconify-json/lucide": "1.2.135",

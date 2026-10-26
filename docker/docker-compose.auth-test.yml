@@ -1,0 +1,24 @@
+# Disposable validation stack; never shares production containers or volumes.
+services:
+  rqlite:
+    image: cubs-rqlite-auth-validation
+    build:
+      context: ./rqlite
+    environment:
+      NODE_ID: auth-validation
+      RQLITE_AUTH_FILE: /run/secrets/rqlite_auth
+    ports: ["127.0.0.1:18020:4001"]
+    volumes: ["auth_test_data:/rqlite/file"]
+    secrets: [rqlite_auth, rqlite_health]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--config", "/run/secrets/rqlite_health", "http://127.0.0.1:4001/readyz"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+volumes:
+  auth_test_data:
+secrets:
+  rqlite_auth:
+    file: ./.generated/rqlite-validation/.generated/rqlite-auth.json
+  rqlite_health:
+    file: ./.generated/rqlite-validation/.generated/rqlite-health.curl

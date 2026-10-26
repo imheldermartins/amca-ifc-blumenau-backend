@@ -1,14 +1,16 @@
-import {createClient} from '@cubs/rqlite-client';
+import {basicAuthFromEnv, createClient} from '@cubs/rqlite-client';
 import {createLegacyTransport} from '@cubs/rqlite-client/compat';
 import {fileURLToPath} from 'node:url';
 import {schema, schemaRegistry} from './rqlite.generated.js';
 
 const databaseUrl = process.env.DATABASE_URL?.trim();
 if (!databaseUrl) throw new Error('DATABASE_URL is required');
+const databaseAuth = basicAuthFromEnv('DATABASE_USERNAME', 'DATABASE_PASSWORD');
+if (process.env.NODE_ENV === 'production' && !databaseAuth) throw new Error('Production database credentials are required');
 
 export const db = createClient({
   schema,
-  connection: {url: databaseUrl},
+  connection: {url: databaseUrl, ...(databaseAuth ? {auth: databaseAuth} : {})},
   migrations: {directory: fileURLToPath(new URL('./migrations', import.meta.url))},
 });
 export const client = db;

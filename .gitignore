@@ -9,3 +9,4 @@ artifacts/
 
 # Envs reais de produção dos containers (os .example ficam no git)
 docker/*.prod.env
+docker/.generated/

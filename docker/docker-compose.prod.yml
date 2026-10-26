@@ -5,8 +5,9 @@
 #   2. Copiar os templates e preencher:
 #        docker/backend.prod.env.example -> docker/backend.prod.env
 #        docker/rqlite.prod.env.example  -> docker/rqlite.prod.env
-#   3. Subir (o entrypoint do backend aplica migrations antes do servidor):
-#        docker compose -f docker/docker-compose.prod.yml up -d --build
+#   3. Subir pelo script, que prepara credenciais e preserva o volume:
+#        bash scripts/deploy-prod.sh --bootstrap-auth all  # primeira ativação
+#        bash scripts/deploy-prod.sh backend              # atualizações
 #
 # Segurança: o rqlite NÃO publica porta nenhuma — só o backend o alcança,
 # pela rede interna do compose (http://rqlite:4001). Complementa o bind
@@ -16,11 +17,20 @@ services:
     build:
       context: ./rqlite
     container_name: cubs-rqlite
-    env_file: ./rqlite.prod.env
+    environment:
+      NODE_ID: ${NODE_ID:-1}
+      RQLITE_ADVERTISE_IP: ${RQLITE_ADVERTISE_IP:-}
+      RQLITE_HTTP_ADVERTISE_PORT: ${RQLITE_HTTP_ADVERTISE_PORT:-4001}
+      JOIN_NODE: ${JOIN_NODE:-}
+      RQLITE_HTTP_ALLOW_ORIGIN: ${RQLITE_HTTP_ALLOW_ORIGIN:-}
+      RQLITE_AUTH_FILE: /run/secrets/rqlite_auth
+    secrets:
+      - rqlite_auth
+      - rqlite_health
     volumes:
       - rqlite_data:/rqlite/file
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:4001/readyz"]
+      test: ["CMD", "curl", "--fail", "--silent", "--config", "/run/secrets/rqlite_health", "http://127.0.0.1:4001/readyz"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -32,6 +42,9 @@ services:
       context: ..
     container_name: cubs-backend
     env_file: ./backend.prod.env
+    environment:
+      DATABASE_USERNAME: ${RQLITE_USERNAME:?Run scripts/deploy-prod.sh to configure credentials}
+      DATABASE_PASSWORD: ${RQLITE_PASSWORD:?Run scripts/deploy-prod.sh to configure credentials}
     expose:
       - "3000"
     depends_on:
@@ -81,3 +94,9 @@ services:
 
 volumes:
   rqlite_data:
+
+secrets:
+  rqlite_auth:
+    file: ./.generated/rqlite-auth.json
+  rqlite_health:
+    file: ./.generated/rqlite-health.curl

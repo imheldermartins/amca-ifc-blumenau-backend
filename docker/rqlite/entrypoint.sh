@@ -1,58 +1,21 @@
 #!/bin/sh
-
+set -eu
 ADV_IP=${RQLITE_ADVERTISE_IP:-$(hostname -i | awk '{print $1}')}
-HTTP_ADV_PORT=${RQLITE_HTTP_ADVERTISE_PORT:-4001}
-
-echo "=== Iniciando Nó rqlite ==="
-echo "IP Anunciado (Advertise IP): $ADV_IP"
-
-NODE_ID=${NODE_ID:-1}
-HTTP_ADDR="0.0.0.0:4001"
-RAFT_ADDR="0.0.0.0:4002"
-
-HTTP_ADV_ADDR="${ADV_IP}:${HTTP_ADV_PORT}"
-RAFT_ADV_ADDR="${ADV_IP}:4002"
-,,
-,,,
-,
-
-
-
-
-
-,
-,
-,,
-,
-,
-,
-,
-,
-,
-,
-,,
-# Build arguments list
-ARGS="-node-id ${NODE_ID} -http-addr ${HTTP_ADDR} -raft-addr ${RAFT_ADDR} -http-adv-addr ${HTTP_ADV_ADDR} -raft-adv-addr ${RAFT_ADV_ADDR}"
-
-# CORS: valor do header Access-Control-Allow-Origin. O padrão CORS só aceita
-# UMA origem (ou *) nesse header, então a env é um valor único — não é lista.
-# Só protege contra chamadas de browser; client direto (curl) não passa por
-# CORS — a restrição real é o bind da porta no compose (RQLITE_ALLOWED_HOST).
-if [ -n "$RQLITE_HTTP_ALLOW_ORIGIN" ]; then
-    echo "CORS Allow-Origin: $RQLITE_HTTP_ALLOW_ORIGIN"
-    ARGS="$ARGS -http-allow-origin $RQLITE_HTTP_ALLOW_ORIGIN"
+set -- -node-id "${NODE_ID:-1}" \
+  -http-addr '0.0.0.0:4001' -raft-addr '0.0.0.0:4002' \
+  -http-adv-addr "${ADV_IP}:${RQLITE_HTTP_ADVERTISE_PORT:-4001}" \
+  -raft-adv-addr "${ADV_IP}:4002"
+if [ -n "${RQLITE_AUTH_FILE:-}" ]; then
+  [ -s "$RQLITE_AUTH_FILE" ] && [ -r "$RQLITE_AUTH_FILE" ] || {
+    echo 'Required rqlite authentication file is missing or unreadable' >&2
+    exit 1
+  }
+  set -- "$@" -auth "$RQLITE_AUTH_FILE"
 fi
-
-if [ -n "$JOIN_NODE" ]; then
-    echo "Modo: WORKER"
-    JOIN_ADDR=$JOIN_NODE
-    
-    echo "Juntando-se ao cluster pelo líder: $JOIN_ADDR"
-    ARGS="$ARGS -join $JOIN_ADDR"
-else
-    echo "Modo: LEADER"
+if [ -n "${RQLITE_HTTP_ALLOW_ORIGIN:-}" ]; then
+  set -- "$@" -http-allow-origin "$RQLITE_HTTP_ALLOW_ORIGIN"
 fi
-
-# The data directory MUST be the last argument
-echo "Executando: rqlited $ARGS /rqlite/file"
-exec rqlited $ARGS /rqlite/file
+if [ -n "${JOIN_NODE:-}" ]; then
+  set -- "$@" -join "$JOIN_NODE"
+fi
+exec rqlited "$@" /rqlite/file
