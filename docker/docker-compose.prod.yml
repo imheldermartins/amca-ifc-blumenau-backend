@@ -9,9 +9,10 @@
 #        bash scripts/deploy-prod.sh --bootstrap-auth all  # primeira ativação
 #        bash scripts/deploy-prod.sh backend              # atualizações
 #
-# Segurança: o rqlite NÃO publica porta nenhuma — só o backend o alcança,
-# pela rede interna do compose (http://rqlite:4001). Complementa o bind
-# restrito do dev (ver docker-compose.dev.yml).
+# Segurança: o rqlite NÃO publica porta nenhuma. Backend e conector
+# cloudflared o alcançam pela rede interna (http://rqlite:4001). O acesso
+# remoto usa HTTPS no Tunnel e Basic Auth no banco; ver docs/RQLITE_DEPLOY.md.
+# Complementa o bind restrito do dev (ver docker-compose.dev.yml).
 services:
   rqlite:
     build:

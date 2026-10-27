@@ -84,44 +84,110 @@ de dados é uma operação separada. Não execute `down -v` nem descarte backups
 O Windows e o Ubuntu WSL precisam continuar ligados. O script não cria tarefas
 de inicialização do Windows nem altera DNS ou políticas Cloudflare.
 
-## Dataflare de outra máquina: Cloudflare Access
+## Dataflare por HTTPS, nesta máquina ou em outra
 
-Configuração única, feita pelo proprietário no painel Cloudflare:
+O acesso escolhido usa o Tunnel existente, sem contratar ou ativar Zero Trust.
+O `cloudflared` no Docker/WSL conecta o servidor à Cloudflare. Não é necessário
+instalar ou manter `cloudflared` no Windows para esta forma de conexão.
 
-1. Em Zero Trust, crie uma aplicação Access Self-hosted para
-   `db.cubsonline.com.br`, sessão de oito horas.
-2. Selecione o login por código de e-mail ou seu provedor já configurado e crie
-   uma política Allow contendo somente os e-mails exatos autorizados. Não use
-   bypass ou autorização para todos. Crie essa proteção antes da rota.
-3. No túnel existente, acrescente uma rota TCP para esse hostname, com destino
-   `tcp://rqlite:4001`, preservando as rotas existentes do site/API. Crie o
-   registro DNS apontando para o mesmo túnel pelo fluxo do painel.
-4. Confirme o bloqueio de uma identidade fora da lista. Não abra 4001 ou 4002 no
-   roteador, firewall ou Compose. O segmento interno permanece na rede Docker.
-
-Instale `cloudflared` pelo distribuidor oficial na máquina que executa o Dataflare:
-
-```bash
-cloudflared access tcp --hostname db.cubsonline.com.br --url 127.0.0.1:14001
+```text
+Dataflare -- HTTPS :443 --> db.cubsonline.com.br / Cloudflare
+                                      |
+                              Tunnel existente
+                                      |
+                            HTTP rqlite:4001
+                            com Basic Auth
 ```
 
-Mantenha esse processo aberto. Ao conectar, conclua a autenticação Access no
-navegador. No Dataflare, configure:
+Configuração no painel do túnel `cubsonline-wsl-prod`:
+
+| Parâmetro | Valor |
+| --- | --- |
+| Tipo de rota | Published application |
+| Subdomain | db |
+| Domain | cubsonline.com.br |
+| Path | vazio (todos os caminhos) |
+| Service URL | http://rqlite:4001 |
+
+O fluxo de criação da rota configura o DNS automaticamente. Preserve as rotas
+existentes do site e da API. O serviço de origem usa HTTP na rede Docker; o
+cliente usa HTTPS com validação normal do certificado da Cloudflare.
+Não configure `https://rqlite:4001`, pois o nó interno não oferece TLS.
+
+Na zona, a regra `Require HTTPS for rqlite` usa apenas o padrão
+`http://db.cubsonline.com.br/*` e redireciona para
+`https://db.cubsonline.com.br/${1}` com status 308 e preservação da query string.
+Ela mantém o método HTTP, inclusive POST, e não altera os demais hostnames.
+Configure o cliente já com HTTPS: o redirecionamento não protege credenciais
+que um cliente tenha enviado por HTTP antes de receber a resposta.
+
+Essa publicação torna a API SQL do banco alcançável pela internet, exigindo
+as credenciais próprias do rqlite. É a opção escolhida pelo proprietário para
+conexão direta, sem uma segunda autenticação no navegador. Quem possui a conta
+de escrita pode ler e modificar o banco inteiro. Não compartilhe as duas senhas
+nem reutilize a senha de uma conta do aplicativo.
+
+No Dataflare, selecione o driver de rqlite e preencha:
 
 | Campo | Valor |
 | --- | --- |
-| Protocol | HTTP |
-| Host | 127.0.0.1 |
-| Port | 14001 |
-| User | cubs_reader para consultas, cubs_user para edição |
-| Password | Senha correspondente, obtida localmente pelo proprietário |
+| Name | Cubs produção (ou outro nome local) |
+| Protocol | HTTPS |
+| Host | db.cubsonline.com.br |
+| Port | 443 |
+| User | cubs_user para edição; cubs_reader para consultas |
+| Password | RQLITE_PASSWORD ou RQLITE_READER_PASSWORD, respectivamente |
 
-O endereço local usa HTTP, mas o tráfego remoto atravessa o túnel criptografado.
-Não use `cubsonline.com.br:4001`. Access e a senha do banco são duas verificações
-independentes. A conta de leitura deve usar `/db/query`; `/db/request` exige
-também `execute`, mesmo para SELECT. Se o driver de uma versão do Dataflare usar
-esse endpoint para consultas, documente a incompatibilidade e utilize um cliente
-com endpoint de leitura; não amplie as permissões para contornar a rejeição.
+As senhas estão somente no arquivo local protegido `docker/rqlite.prod.env`.
+O campo Host não inclui `https://`, caminho nem porta. Não use a porta externa
+4001, `127.0.0.1` ou um proxy TCP local neste modelo. As portas 4001/4002 do
+Docker permanecem sem publicação no host e o volume de dados é preservado.
+Se havia um `cloudflared access tcp` aberto no Windows, ele não participa dessa
+conexão e pode ser encerrado com Ctrl+C no terminal correspondente.
+
+A conta de leitura deve usar `/db/query`; `/db/request` exige também `execute`,
+mesmo para SELECT. Se o driver de uma versão do Dataflare usar esse endpoint
+para consultas, use um cliente com endpoint de leitura; não amplie as permissões
+do reader para contornar a rejeição. A conta `cubs_user` pode usar os dois.
+
+### Verificação e diagnóstico
+
+1. Confira que a rota e o registro DNS foram salvos no painel do túnel.
+2. No PowerShell, `Resolve-DnsName db.cubsonline.com.br` precisa resolver.
+3. Uma requisição sem credenciais a `https://db.cubsonline.com.br/readyz` deve
+   retornar HTTP 401. Senha inválida também deve ser recusada. Não envie senhas
+   por HTTP nem desative a validação de TLS no Dataflare.
+4. Com cada perfil, teste consulta, `/status` e `/readyz`. Valide a escrita de
+   `cubs_user` com um UPDATE sem linhas correspondentes e a recusa de escrita
+   de `cubs_reader`. Nenhuma verificação precisa modificar dados existentes.
+5. Confirme que site, API e Socket.IO continuam funcionando.
+
+Publicação verificada em 27/10/2026: rota e CNAME criados no túnel existente;
+TLS válido; acesso anônimo e senha inválida recusados; os dois perfis consultam
+e acessam status/ready; writer executa UPDATE sem linhas afetadas e reader tem
+escrita recusada. HTTP GET/POST redirecionam com 308, preservando caminho e
+query. Site, prontidão da API e handshake Socket.IO responderam HTTP 200.
+Nenhum container ou volume precisou ser recriado nessa publicação.
+
+- `lookup ... no such host` significa que o DNS ainda não resolve; mudar usuário
+  ou senha não corrige esse erro. Confira a existência do registro e eventual
+  cache negativo do resolvedor local.
+- HTTP 502 indica falha entre o túnel e a origem. Confira serviço `rqlite:4001`,
+  saúde do container e rede Docker; não exponha portas como tentativa de correção.
+- HTTP 401 indica credenciais ausentes ou inválidas, ou rejeição de um endpoint
+  sem a permissão necessária. Confira o perfil e a senha correspondente.
+- HTTP 403 pode ser recusa do perfil ou uma regra na borda; confira a origem da
+  resposta antes de alterar permissões.
+- Uma tela de login Access seria outra configuração. O fluxo escolhido não
+  exige ativação de Zero Trust, cartão, sessão Access nem listener no Windows.
+
+### Alternativa futura: Cloudflare Access
+
+Se o proprietário optar depois por uma segunda camada de acesso, planeje uma
+migração separada. O modo TCP com Access exige aplicação/política, rota TCP e
+`cloudflared access tcp` na máquina cliente. O modo HTTPS com Access exige que
+o cliente também autentique nessa camada. Não habilite login interativo sobre
+esta rota presumindo compatibilidade automática com o driver do Dataflare.
 
 Referências: [rqlite Security](https://rqlite.io/docs/guides/security/) e
-[Cloudflare TCP](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/non-http/cloudflared-authentication/arbitrary-tcp/).
+[Cloudflare: protocolos para aplicações publicadas](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/).

@@ -1,5 +1,16 @@
 # Hosting do Cub's no Ubuntu do WSL2
 
+Operação atual do banco: [deploy autenticado e Dataflare](RQLITE_DEPLOY.md).
+O rqlite usa credenciais próprias de leitura/escrita e somente leitura, mantidas
+em `docker/rqlite.prod.env`. Os comandos Compose atuais precisam desse arquivo
+de interpolação; prefira `scripts/deploy-prod.sh` para deploy. O acesso remoto
+usa HTTPS em `db.cubsonline.com.br`, encaminhado pelo Tunnel ao rqlite privado
+com Basic Auth. Não exige Zero Trust nem um listener no Windows. A porta
+externa é 443; 4001 continua interna ao Docker. Consulte o guia para configurar
+DNS/rota e verificar a publicação antes de conectar.
+O registro abaixo descreve a preparação histórica de 21/10, não o estado atual
+de publicação do site.
+
 Estado em 2026-10-21: Ubuntu WSL2 com Docker Engine nativo está rodando; as 11
 migrations pendentes foram aplicadas após autorização explícita, sem backup
 conforme solicitado, e `pending: []`. rqlite, backend, frontend e o conector
