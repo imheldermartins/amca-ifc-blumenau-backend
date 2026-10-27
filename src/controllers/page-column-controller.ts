@@ -1,5 +1,7 @@
 import formulas from "@/repositories/page-formula-repository";
 import relationWrites from "@/repositories/page-relation-write-repository";
+import {withPageRowOrderLock} from '@/repositories/page-view-row-order';
+import {bindScheduleDateColumn, scheduleDateColumnId} from '@/repositories/schedule-date-column';
 import {ulid} from 'ulid';
 import db from "@models/index";
 import type { Schema } from "@/db/schemas/index";
@@ -79,6 +81,37 @@ export class PageColumnController {
       }
       return null;
     }
+  }
+
+  public async ensureCalendarDate(parentId: NonEmptyString, actorId: string): Promise<ColumnWriteResult & {reused?: boolean}> {
+    return withPageRowOrderLock(parentId, async () => {
+      const columns = await this.listColumns({parent_id: parentId} as LookupsConfig<Schema.PageColumn>);
+      if (!columns) return {ok: false, reason: 'server_error', message: 'Não foi possível carregar as propriedades'};
+      const parent = await db.pages.find({id: parentId} as LookupValues<Schema.Page>);
+      const trackedId = scheduleDateColumnId(parent?.data);
+      if (trackedId !== undefined) {
+        const tracked = columns.find(column => column.id === trackedId);
+        return tracked?.type === 'date' ? {ok: true, data: tracked, reused: true}
+          : {ok: false, reason: 'conflict', message: 'A propriedade vinculada à Agenda foi removida ou deixou de ser uma data. O vínculo não foi substituído.'};
+      }
+      const existing = columns.find(column => column.data?.publicKey?.key === 'agendado_para'
+        || column.data?.publicKey?.aliases?.includes('agendado_para')
+        || (!column.data?.publicKey && normalizePublicKey(column.name, 'coluna') === 'agendado_para'));
+      if (existing?.type !== undefined && existing.type !== 'date') return {ok: false, reason: 'conflict', message: 'A chave Agendado para já pertence a uma propriedade de outro tipo.'};
+      if (existing) {
+        try {await bindScheduleDateColumn(parentId, existing.id, actorId)}
+        catch {return {ok: false, reason: 'conflict', message: 'Não foi possível vincular a propriedade da Agenda. Reabra a modal para atualizar.'}}
+        return {ok: true, data: existing, reused: true};
+      }
+      if (collectPageColumnReservations(parent?.data).has('agendado_para')) {
+        return {ok: false, reason: 'conflict', message: 'A chave Agendado para está reservada por uma propriedade removida ou pelo título da página.'};
+      }
+      const result = await this.createColumn({parent_id: parentId, name: 'Agendado para', type: 'date'}, actorId);
+      if (!result.ok) return result;
+      try {await bindScheduleDateColumn(parentId, result.data.id, actorId)}
+      catch {return {ok: false, reason: 'conflict', message: 'A propriedade foi criada, mas não foi possível vinculá-la à Agenda. Tente novamente.'}}
+      return result;
+    });
   }
 
   public async createColumn(

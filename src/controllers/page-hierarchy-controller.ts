@@ -3,6 +3,7 @@ import pageHierarchyStore, { PageHierarchyStore } from "@/repositories/page-hier
 import { isUlid } from "@/utils/ulid";
 import formulas from '@/repositories/page-formula-repository';
 import type { PageDatasetRow } from '@/repositories/types/page-hierarchy-repository.types';
+import {PageChildInputError} from '@/repositories/page-child-values';
 
 /** Regras de entrada e tratamento de falhas para a árvore de páginas. */
 export class PageHierarchyController {
@@ -23,6 +24,7 @@ export class PageHierarchyController {
     try {
       return await this.hierarchy.createChild(parentId, ownerId, input);
     } catch (error) {
+      if (error instanceof PageChildInputError) throw error;
       if (error instanceof Error) console.error(`[${error.cause}] ${error.message}`);
       return null;
     }

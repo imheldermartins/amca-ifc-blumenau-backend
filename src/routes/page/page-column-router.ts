@@ -30,6 +30,8 @@ export class PageColumnRouter extends ApplicationRouter {
   }
 
   protected registerRoutes(): void {
+    this.router.post('/parent/:id/calendar-date-column', middleware.handle,
+      requireScopedPermission('page', 'write', 'update'), this.ensureCalendarDate.bind(this));
     this.router.post(
       "/parent/:id/columns",
       middleware.handle,
@@ -69,6 +71,14 @@ export class PageColumnRouter extends ApplicationRouter {
       requireUnlockedColumn('id'),
       this.delete.bind(this),
     );
+  }
+
+  private async ensureCalendarDate(request: Request, response: Response): Promise<Response> {
+    const pageId = routeParam(request, 'id');
+    const result = await this.columns.ensureCalendarDate(pageId, authenticatedUserId(request));
+    if (!result.ok) return sendPageFailure(response, result);
+    if (!result.reused) await this.realtime.columnCreated({pageId, columnId: result.data.id, column: result.data, originUserId: authenticatedUserId(request)});
+    return response.status(result.reused ? StatusCode.OK : StatusCode.CREATED).json(result.data);
   }
 
   private async create(request: Request, response: Response): Promise<Response> {

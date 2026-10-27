@@ -9,6 +9,7 @@ import { requirePageAccess } from "@/services/auth/page-access-middleware";
 import { requireScopedPermission } from "@/services/auth/scoped-access-middleware";
 import pageRealtimePublisher, { PageRealtimePublisher } from "@/services/realtime/page-realtime-publisher";
 import { StatusCode } from "@/services/http/status-code";
+import {PageChildInputError} from '@/repositories/page-child-values';
 
 /** Criação e leitura da árvore de páginas. */
 export class PageHierarchyRouter extends ApplicationRouter {
@@ -34,17 +35,22 @@ export class PageHierarchyRouter extends ApplicationRouter {
   private async createChild(request: Request, response: Response): Promise<Response> {
     const parentId = routeParam(request, "id");
     const userId = authenticatedUserId(request);
-    const child = await this.hierarchy.createChild(
+    let child;
+    try { child = await this.hierarchy.createChild(
       parentId,
       userId,
       (request.body ?? {}) as Input.CreateChildPage,
-    );
+    ); } catch (error) {
+      if (error instanceof PageChildInputError) return response.status(error.status).json({message: error.message});
+      throw error;
+    }
     if (!child) return response.status(StatusCode.INTERNAL_SERVER_ERROR).json({ message: "Erro no servidor" });
 
     await this.realtime.rowCreated({
       pageId: parentId,
       rowId: child.id,
       originUserId: userId,
+      relationColumnIds: Object.keys((request.body as Input.CreateChildPage)?.values ?? {}),
     });
     return response.status(StatusCode.CREATED).json(child);
   }

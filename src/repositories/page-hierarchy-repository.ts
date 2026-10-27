@@ -5,8 +5,10 @@ import type { Schema } from "@/db/schemas/index";
 import { SystemRoleFactory } from "@/repositories/system-role-factory";
 import { pageActivityTouchStatement } from "@/repositories/page-activity";
 import { pageChildEdgeStatement } from "@/repositories/page-child-creation";
-import {appendCreatedRowOrderStatements, withPageRowOrderLock} from '@/repositories/page-view-row-order';
+import {appendCreatedRowOrderStatements, checkedOrderWrite, withPageRowOrderLock} from '@/repositories/page-view-row-order';
 import {initializePageViewSnapshot} from '@/repositories/page-view-initial-snapshot';
+import {rqlite} from '@/db/client-db';
+import {assertChildInput, childAssertion, prepareChildValues} from '@/repositories/page-child-values';
 import type {
   PageBreadcrumbRow,
   PageChildCreationData,
@@ -24,12 +26,28 @@ export class PageHierarchyStore {
     ownerId: NonEmptyString,
     input: PageChildCreationData,
   ) {
+    assertChildInput(input);
     const parent = await this.pages.find({ id: parentId } as LookupValues<Schema.Page>);
     if (!parent) return null;
 
     const childId = ulid();
     return withPageRowOrderLock(parentId, async () => {
       const positions = await appendCreatedRowOrderStatements(parentId, childId);
+      if (input.values !== undefined) {
+        const values = await prepareChildValues(parentId, childId, ownerId, input.values, input.title != null);
+        const statements: RqliteStatement[] = [
+          ['INSERT INTO pages(id,title,owner_id,data) VALUES(?,?,?,?)', childId, input.title ?? null, ownerId, JSON.stringify(initializePageViewSnapshot(input.data ?? {}))],
+          SystemRoleFactory.defaultStatement('page', childId),
+          pageChildEdgeStatement(parentId, childId),
+          childAssertion('EXISTS(SELECT 1 FROM page_edges WHERE parent_id=? AND child_id=?)', [parentId, childId]),
+          ...positions.flatMap(checkedOrderWrite), ...values, pageActivityTouchStatement(parentId),
+        ];
+        const result = await rqlite<Omit<Schema.Page, 'data'> & {data: string}>([...statements, ['SELECT * FROM pages WHERE id=?', childId]], 'request', {transaction: true});
+        const rows = result[statements.length];
+        const row = Array.isArray(rows) ? rows[0] : undefined;
+        if (!row) throw new Error('Falha ao criar página');
+        return {...row, data: JSON.parse(row.data)} as Schema.Page;
+      }
       return this.pages.createWithId(childId, {
         title: input.title ?? null,
         owner_id: ownerId,

@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import express from "express";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {PageChildInputError} from '@/repositories/page-child-values';
 
 const USER_ID = "01KXDN4AXN6QJBTZTCWP1JWVW4";
 const PAGE_ID = "01KXDN4B182DJGAKPX0940H54N";
@@ -26,6 +27,7 @@ const doubles = vi.hoisted(() => ({
     getParentId: vi.fn(),
   },
   column: {
+    ensureCalendarDate: vi.fn(),
     all: vi.fn(),
     get: vi.fn(),
     createColumn: vi.fn(),
@@ -233,6 +235,31 @@ describe("PageRouter: publicação realtime somente pós-commit", () => {
 
     expect(failure.status).toBe(404);
     expect(doubles.publisher.pageChanged).not.toHaveBeenCalled();
+  });
+
+  it('accepts calendar values and publishes only after a successful child transaction', async () => {
+    const input = {title: 'Evento', values: {[COLUMN_ID]: '2026-10-27T09:30:00.000Z'}};
+    doubles.hierarchy.createChild.mockResolvedValueOnce({id: ROW_ID, title: input.title, data: {}});
+    expect((await request(`/pages/${PAGE_ID}/page`, 'POST', input)).status).toBe(201);
+    expect(doubles.hierarchy.createChild).toHaveBeenCalledWith(PAGE_ID, USER_ID, input);
+    expect(doubles.publisher.rowCreated).toHaveBeenCalledOnce();
+    doubles.publisher.rowCreated.mockClear();
+    doubles.hierarchy.createChild.mockRejectedValueOnce(new PageChildInputError('Data inválida'));
+    expect((await request(`/pages/${PAGE_ID}/page`, 'POST', {values: {[COLUMN_ID]: 'invalid'}})).status).toBe(400);
+    expect(doubles.publisher.rowCreated).not.toHaveBeenCalled();
+  });
+
+  it('only announces a new scheduling property and preserves a conflict response', async () => {
+    const column = {id: COLUMN_ID, name: 'Agendado para', parent_id: PAGE_ID, type: 'date', data: {}};
+    doubles.column.ensureCalendarDate.mockResolvedValueOnce({ok: true, data: column});
+    expect((await request(`/pages/parent/${PAGE_ID}/calendar-date-column`, 'POST', {})).status).toBe(201);
+    expect(doubles.publisher.columnCreated).toHaveBeenCalledOnce();
+    doubles.publisher.columnCreated.mockClear();
+    doubles.column.ensureCalendarDate.mockResolvedValueOnce({ok: true, data: column, reused: true});
+    expect((await request(`/pages/parent/${PAGE_ID}/calendar-date-column`, 'POST', {})).status).toBe(200);
+    expect(doubles.publisher.columnCreated).not.toHaveBeenCalled();
+    doubles.column.ensureCalendarDate.mockResolvedValueOnce({ok: false, reason: 'conflict', message: 'Outro tipo'});
+    expect((await request(`/pages/parent/${PAGE_ID}/calendar-date-column`, 'POST', {})).status).toBe(409);
   });
 
   it("produz uma notificação estrutural por criação/exclusão confirmada", async () => {

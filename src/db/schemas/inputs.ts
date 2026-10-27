@@ -13,7 +13,7 @@ export namespace Input {
   // --- Pages ---
   export type CreatePage = Partial<Pick<Schema.Page, "title" | "data">>;
   export type UpdatePage = CreatePage;
-  export type CreateChildPage = CreatePage;
+  export type CreateChildPage = CreatePage & { values?: Record<string, unknown> };
   export type PageRootQuery = Partial<Pick<Schema.Page, "title">>;
 
   // --- Workspaces ---

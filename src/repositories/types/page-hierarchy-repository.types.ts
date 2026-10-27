@@ -1,6 +1,6 @@
 import type { Schema } from "@/db/schemas/index";
 
-export type PageChildCreationData = Partial<Pick<Schema.Page, "title" | "data">>;
+export type PageChildCreationData = Partial<Pick<Schema.Page, "title" | "data">> & {values?: Record<string, unknown>};
 
 export interface ParentPageRow {
   parent_id: NonEmptyString;
