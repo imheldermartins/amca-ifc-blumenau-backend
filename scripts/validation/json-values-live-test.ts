@@ -9,7 +9,7 @@ import blocks from '../../src/repositories/page-document-repository.js';
 import { PageViewQueryStore } from '../../src/repositories/page-view-query-repository.js';
 import type { Schema } from '../../src/db/schemas/index.js';
 
-assert.equal(process.env.DATABASE_URL, 'http://127.0.0.1:4001', 'Only the local development database is allowed');
+assert.equal(process.env.DATABASE_URL, 'http://127.0.0.1:8000', 'Only the local development database is allowed');
 await client.waitForDatabase();
 await client.assertReady();
 const owner = ulid(), root = ulid(), view = ulid();
@@ -60,7 +60,7 @@ try {
   check('block editor increments its save revision',(await blocks.save(source.id,content))?.revision,(saved?.revision ?? 0)+1);
   const [foreignKeys] = await rqlite<unknown>([['PRAGMA foreign_key_check']],'query');
   check('no foreign-key violations',foreignKeys,[]);
-  console.log(JSON.stringify({target:'http://127.0.0.1:4001',checks,temporaryFixtures:true}));
+  console.log(JSON.stringify({target:'http://127.0.0.1:8000',checks,temporaryFixtures:true}));
 } finally {
   const placeholders = pages.map(()=>'?').join(',');
   await rqlite([

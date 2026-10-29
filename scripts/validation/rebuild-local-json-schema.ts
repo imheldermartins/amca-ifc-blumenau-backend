@@ -2,8 +2,8 @@ import { readdir } from 'node:fs/promises';
 
 // This is deliberately limited to the local development URL, never a remote DB.
 const url = new URL(process.env.DATABASE_URL ?? '');
-if (url.origin !== 'http://127.0.0.1:4001' || url.pathname !== '/' || url.username || url.password || url.search) {
-  throw new Error('Reset refused: expected exactly http://127.0.0.1:4001');
+if (url.origin !== 'http://127.0.0.1:8000' || url.pathname !== '/' || url.username || url.password || url.search) {
+  throw new Error('Reset refused: expected exactly http://127.0.0.1:8000');
 }
 
 async function request(endpoint: 'query' | 'execute', statements: unknown[], transaction = false) {
