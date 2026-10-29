@@ -100,11 +100,19 @@ só uma conta com `email_verified_at` pode aceitá-lo. O padrão é 24 horas e
 aceites ilimitados; a API também aceita 7 dias, sem prazo, um aceite ou um limite
 customizado. Cada aceite fica em `access_invite_acceptances` com o `user_id` real.
 
-Convite de workspace cria, quando necessário, uma membership de organização com
-a role de sistema `workspace_guest`, que contém somente `organization.read.view`.
-Convite de página cria essa mesma base, a membership com a `Default` da workspace
-e, por fim, a role escolhida da página. Assim o convite não libera o catálogo de
-todas as workspaces. Convites individuais são sempre aceitos pelo destinatário;
+Convites de workspace e página copiam a role escolhida para uma role exclusiva
+do convite, identificada por `system_key = invite:<id do convite>` no escopo.
+A cópia preserva as permissões da emissão sem compartilhar alterações futuras
+com o template original. Cada convite possui sua própria role, inclusive links
+genéricos com vários aceites. Convites de organização mantêm o comportamento existente.
+
+No aceite, vínculos faltantes na organização e, para convites de página, no
+workspace recebem roles auxiliares exclusivas desse convite com apenas
+`read.view` e nenhuma escrita. Não recebem a `Default` nem `manage_pages`.
+Vínculos e permissões já existentes são preservados. Convites pendentes antigos
+também recebem a cópia exclusiva no primeiro aceite, sem alterar tokens.
+Assim o convite de página não libera as demais páginas do workspace nem o
+catálogo de todas as workspaces. Convites individuais são sempre aceitos pelo destinatário;
 não existe adição silenciosa de uma conta já validada.
 
 As tabelas `organization_pending_requests`, `workspace_pending_requests` e

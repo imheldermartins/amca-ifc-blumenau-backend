@@ -2,6 +2,7 @@ import { ulid } from 'ulid';
 import { rqlite } from '@/db/client-db';
 import { SCOPE_TABLES } from './scoped-access-repository.js';
 import { SystemRoleFactory } from './system-role-factory.js';
+import { InviteRoleFactory } from './invite-role-factory.js';
 import type { AccessScope } from '@/services/auth/permissions';
 import type { InviteRecord, InviteScopeContext } from '@/repositories/types/access-invite-repository.types';
 export type { InviteRecord } from '@/repositories/types/access-invite-repository.types';
@@ -51,15 +52,22 @@ class AccessInviteStore {
     roleId: string; recipientEmail: string | null; authorId: string; expiresAt: string | null;
     acceptanceLimit: number | null;
   }): Promise<boolean> {
-    const [saved] = await rqlite([[
+    const roleId = input.scope === 'organization' ? input.roleId : ulid();
+    const statements: RqliteStatement[] = input.scope === 'organization' ? [] : [
+      InviteRoleFactory.statement(input.scope, input.scopeId, input.id, roleId, input.roleId),
+    ];
+    statements.push([
       `INSERT INTO access_invites
        (id, token_hash, token_hint, scope_type, scope_id, role_id, recipient_email,
         author_id, status, expires_at, acceptance_limit)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      input.id, input.tokenHash, input.tokenHint, input.scope, input.scopeId, input.roleId,
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?
+       WHERE EXISTS (SELECT 1 FROM ${input.scope}_roles WHERE id = ? AND ${input.scope}_id = ? AND deleted_at IS NULL)`,
+      input.id, input.tokenHash, input.tokenHint, input.scope, input.scopeId, roleId,
       input.recipientEmail, input.authorId, input.expiresAt, input.acceptanceLimit,
-    ]], 'execute', { transaction: true });
-    return saved === true;
+      roleId, input.scopeId,
+    ]);
+    const saved = await rqlite(statements, 'execute', { transaction: true });
+    return saved.at(-1) === true;
   }
 
   async getById(id: string): Promise<InviteRecord | null> {
@@ -148,20 +156,25 @@ class AccessInviteStore {
     const invite = await this.getById(inviteId);
     if (!invite || invite.status !== 'pending') return false;
     const context = await this.scopeContext(invite.scopeType, invite.scopeId);
-    const roleId = invite.roleId || await SystemRoleFactory.ensureDefault(invite.scopeType, invite.scopeId);
+    const sourceRoleId = invite.roleId || await SystemRoleFactory.ensureDefault(invite.scopeType, invite.scopeId);
+    if (!sourceRoleId) return false;
+    // Convites pendentes anteriores também passam a usar uma cópia exclusiva.
+    const roleId = invite.scopeType === 'organization' ? sourceRoleId
+      : await InviteRoleFactory.ensure(invite.scopeType, invite.scopeId, invite.id, sourceRoleId);
     if (!roleId) return false;
     const [selectedRoles] = await rqlite<{ id: string }>([[
       `SELECT id FROM ${invite.scopeType}_roles WHERE id = ? AND ${invite.scopeType}_id = ?
        AND deleted_at IS NULL LIMIT 1`, roleId, invite.scopeId,
     ]], 'query');
     if (!selectedRoles?.length) return false;
-    const workspaceDefault = context.workspaceId
-      ? await SystemRoleFactory.ensureDefault('workspace', context.workspaceId)
+    const workspaceRole = context.workspaceId
+      ? invite.scopeType === 'workspace' ? roleId
+        : await InviteRoleFactory.ensure('workspace', context.workspaceId, invite.id)
       : null;
     const organizationGuest = context.organizationId
-      ? await SystemRoleFactory.ensureWorkspaceGuest(context.organizationId)
+      ? await InviteRoleFactory.ensure('organization', context.organizationId, invite.id)
       : null;
-    if (context.workspaceId && !workspaceDefault) return false;
+    if (context.workspaceId && !workspaceRole) return false;
     if (context.organizationId && !organizationGuest) return false;
 
     const acceptanceId = ulid();
@@ -177,6 +190,10 @@ class AccessInviteStore {
       values: [userId, inviteId],
     };
     const statements: RqliteStatement[] = [];
+    if (roleId !== invite.roleId) {
+      statements.push([`UPDATE access_invites SET role_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND ${valid.text}`, roleId, inviteId, ...valid.values]);
+    }
     if (context.organizationId && organizationGuest) {
       statements.push([
         `INSERT INTO organization_members (id, organization_id, user_id, organization_member_role_id)
@@ -187,7 +204,7 @@ class AccessInviteStore {
         context.organizationId, userId,
       ]);
     }
-    if (context.workspaceId && workspaceDefault) {
+    if (context.workspaceId && workspaceRole) {
       const rootId = ulid();
       statements.push(
         [`INSERT INTO pages (id, title, data, owner_id)
@@ -201,7 +218,7 @@ class AccessInviteStore {
             AND NOT EXISTS (SELECT 1 FROM workspace_members
               WHERE workspace_id = ? AND user_id = ? AND deleted_at IS NULL)`,
           ulid(), context.workspaceId, userId,
-          invite.scopeType === 'workspace' ? roleId : workspaceDefault, rootId,
+          workspaceRole, rootId,
           ...valid.values, context.workspaceId, userId],
       );
     }
