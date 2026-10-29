@@ -50,8 +50,9 @@ function retryAt(now: Date, attempt: number): string {
 }
 
 /**
- * Worker leve para o deploy single-instance atual. A criação in-app e a outbox
- * são duráveis; indisponibilidade SMTP só posterga o canal de e-mail.
+ * Cada API pode executar o worker: a deduplicação e o claim atômico da outbox
+ * vivem no banco compartilhado. SMTP mantém semântica de ao menos uma tentativa;
+ * uma queda após o envio e antes de markSent pode repetir a entrega.
  */
 export class NotificationWorker {
   private timer: NodeJS.Timeout | null = null;

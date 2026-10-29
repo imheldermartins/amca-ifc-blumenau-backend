@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { ApplicationRouter } from "@routes/application-router";
 import {db} from '@/db/client-db';
+import { clusterReady } from '@/services/cluster/cluster-redis';
 
 export class HealthRouter extends ApplicationRouter {
   public constructor(private readonly databaseHealth: Pick<typeof db, 'isReady'> = db) {
@@ -18,9 +19,12 @@ export class HealthRouter extends ApplicationRouter {
 
   private async ready(_request: Request, response: Response): Promise<Response> {
     const databaseReady = await this.databaseHealth.isReady();
-    return response.status(databaseReady ? 200 : 503).json({
-      status: databaseReady ? "ok" : "unavailable",
-      checks: { database: databaseReady ? "ready" : "unavailable" },
+    const coordinationReady = await clusterReady();
+    const ready = databaseReady && coordinationReady;
+    return response.status(ready ? 200 : 503).json({
+      status: ready ? "ok" : "unavailable",
+      checks: { database: databaseReady ? "ready" : "unavailable",
+        ...(process.env.CUBS_CLUSTER_ENABLED === 'true' ? { coordination: coordinationReady ? 'ready' : 'unavailable' } : {}) },
     });
   }
 }

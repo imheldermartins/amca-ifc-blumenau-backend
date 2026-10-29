@@ -8,16 +8,23 @@ export interface SocketData {
   userId: string;
 }
 
+export interface InterServerEvents {
+  'campus-page-event': (
+    event: import('@/services/realtime/types/page-edit.types').PageEditEventName,
+    payload: Parameters<ServerToClientEvents[import('@/services/realtime/types/page-edit.types').PageEditEventName]>[0],
+  ) => void;
+}
+
 export type CubsSocketServer = Server<
   ClientToServerEvents,
   ServerToClientEvents,
-  Record<string, never>,
+  InterServerEvents,
   SocketData
 >;
 
 export type CubsSocket = Socket<
   ClientToServerEvents,
   ServerToClientEvents,
-  Record<string, never>,
+  InterServerEvents,
   SocketData
 >;

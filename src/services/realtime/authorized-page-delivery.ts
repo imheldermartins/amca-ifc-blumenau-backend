@@ -7,7 +7,10 @@ import type { PageEditEventName } from "@/services/realtime/types/page-edit.type
 export class AuthorizedPageDelivery {
   private readonly queues = new Map<string, Promise<void>>();
 
-  public constructor(private readonly room: PageRoom = pageRoom) {}
+  public constructor(
+    private readonly room: PageRoom = pageRoom,
+    private readonly permissions: Pick<typeof access, 'can'> = access,
+  ) {}
 
   public deliver(
     io: CubsSocketServer,
@@ -34,7 +37,7 @@ export class AuthorizedPageDelivery {
     for (const socketId of [...(io.sockets.adapter.rooms.get(roomName) ?? [])]) {
       const socket = io.sockets.sockets.get(socketId);
       if (!socket || !this.room.contains(socket, payload.pageId)) continue;
-      if (!await access.can("page", payload.pageId, socket.data.userId, "read", "subpages")) {
+      if (!await this.permissions.can("page", payload.pageId, socket.data.userId, "read", "subpages")) {
         await socket.leave(roomName);
         socket.emit("page-database-denied", { pageId: payload.pageId });
         continue;
@@ -43,7 +46,7 @@ export class AuthorizedPageDelivery {
       const needsRowAuthorization = "rowId" in payload
         && event !== "row-created"
         && event !== "row-deleted";
-      if (needsRowAuthorization && !await access.can("page", payload.rowId, socket.data.userId, "read", "view")) {
+      if (needsRowAuthorization && !await this.permissions.can("page", payload.rowId, socket.data.userId, "read", "view")) {
         continue;
       }
 

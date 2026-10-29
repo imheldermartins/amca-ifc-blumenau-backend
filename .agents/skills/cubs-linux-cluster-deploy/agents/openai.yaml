@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cub's Linux Cluster Deploy"
+  short_description: "Cluster Linux IFC por Cloudflare Mesh e JOIN"
+  default_prompt: "Use $cubs-linux-cluster-deploy para fazer deploy no campus solicitado entre Blumenau, Videira e Rio do Sul, validando a máquina física, os dados compartilhados, a rede privada e o quorum."

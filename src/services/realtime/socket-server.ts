@@ -1,5 +1,7 @@
 import type { Server as NodeHttpServer } from "node:http";
 import { Server } from "socket.io";
+import { createAdapter } from '@socket.io/redis-streams-adapter';
+import { clusterRedis } from '@/services/cluster/cluster-redis';
 import jwtService from "@/services/auth/jwt-service";
 import { corsConfig } from "@/services/http/cors.config";
 import type {
@@ -7,7 +9,7 @@ import type {
   ServerToClientEvents,
 } from "@/services/realtime/contracts/realtime-contract-v1";
 import { realtimeChannelRegistry } from "@/services/realtime/realtime-composition";
-import type { CubsSocket, CubsSocketServer, SocketData } from "@/services/realtime/types/socket.types";
+import type { CubsSocket, CubsSocketServer, SocketData, InterServerEvents } from "@/services/realtime/types/socket.types";
 import type { AccessTokenVerifier, SocketChannelRegistry } from "@/services/realtime/types/socket-server.types";
 
 export type { CubsSocket, CubsSocketServer, SocketData } from "@/services/realtime/types/socket.types";
@@ -35,9 +37,19 @@ export class SocketServer {
     this.io = new Server<
       ClientToServerEvents,
       ServerToClientEvents,
-      Record<string, never>,
+      InterServerEvents,
       SocketData
     >(httpServer, { cors: corsConfig });
+
+    const redis = clusterRedis();
+    if (redis) {
+      // Stream/subscription clients must wait through a failover. The HTTP rate
+      // store uses the separate fail-fast client, so requests cannot hang here.
+      const transport = redis.duplicate({ enableOfflineQueue: true, maxRetriesPerRequest: null, commandTimeout: 60000 });
+      transport.on('error', () => console.error('[cubs:cluster] Realtime coordination reconnecting'));
+      this.io.adapter(createAdapter(transport, { streamName: 'cubs:socket.io', channelPrefix: 'cubs:socket.io' }));
+      httpServer.once('close', () => transport.disconnect());
+    }
 
     this.io.use((socket, next) => {
       const token: unknown = socket.handshake.auth?.token;

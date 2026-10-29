@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "nodes": [
+    {
+      "id": "1",
+      "site": "blumenau",
+      "publicHostname": "ifc-blumenau.cubsonline.com.br",
+      "meshIpv4": null,
+      "httpAdvertise": "172.19.0.2:4001",
+      "raftAdvertise": "172.19.0.2:4002",
+      "observedRaftAddress": "172.19.0.2:4002",
+      "role": "existing"
+    },
+    {
+      "id": "ifc-videira",
+      "site": "videira",
+      "publicHostname": "ifc-videira.cubsonline.com.br",
+      "meshIpv4": null,
+      "httpAdvertise": null,
+      "raftAdvertise": null,
+      "role": "candidate"
+    },
+    {
+      "id": "ifc-riodosul",
+      "site": "riodosul",
+      "publicHostname": "ifc-riodosul.cubsonline.com.br",
+      "meshIpv4": null,
+      "httpAdvertise": null,
+      "raftAdvertise": null,
+      "role": "candidate"
+    }
+  ]
+}

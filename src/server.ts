@@ -13,6 +13,7 @@ import formRouter from '@/routes/form-route';
 import notificationWorker from '@/services/notifications/notification-worker';
 import mentionRouter from '@/routes/mention-route';
 import favoriteRouter from '@/routes/favorite-route';
+import { waitForCluster } from '@/services/cluster/cluster-redis';
 
 const server = new HttpServer([
   { path: "/users", router: userRouter },
@@ -31,5 +32,6 @@ const server = new HttpServer([
 
 await db.waitForDatabase();
 await db.assertReady();
+await waitForCluster();
 server.start();
 notificationWorker.start();

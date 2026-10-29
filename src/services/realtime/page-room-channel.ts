@@ -1,4 +1,5 @@
 import accessStore from '@/repositories/scoped-access-repository';
+import { clusterRedis } from '@/services/cluster/cluster-redis';
 import { pageRoom, type PageRoom } from "@/services/realtime/rooms/page-room";
 import type { RealtimeChannel } from "@/services/realtime/types/realtime-channel.types";
 import type { CubsSocket, CubsSocketServer } from "@/services/realtime/types/socket.types";
@@ -73,11 +74,24 @@ export class PageRoomChannel implements RealtimeChannel {
   /** Quantos sockets autorizados estao olhando a pagina. */
   broadcastPresence(pageId: string): void {
     if (!this.io) return;
+    if (clusterRedis()) {
+      void this.broadcastClusterPresence(pageId);
+      return;
+    }
     const count = this.io.sockets.adapter.rooms.get(this.room.name(pageId))?.size ?? 0;
     const room = this.io.to(this.room.name(pageId)) as unknown as {
       emit(event: "page-presence", payload: { pageId: string; count: number }): void;
     };
     room.emit("page-presence", { pageId, count });
+  }
+
+  private async broadcastClusterPresence(pageId: string): Promise<void> {
+    try {
+      const sockets = await this.io!.in(this.room.name(pageId)).fetchSockets();
+      this.io!.to(this.room.name(pageId)).emit('page-presence', { pageId, count: sockets.length });
+    } catch {
+      console.error('[cubs:cluster] Could not count page presence across campuses');
+    }
   }
 
   private formatError(error: unknown): string {

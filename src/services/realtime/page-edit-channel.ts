@@ -15,6 +15,7 @@ import type {
 import type { RealtimeChannel } from "@/services/realtime/types/realtime-channel.types";
 import type { CubsSocket, CubsSocketServer } from "@/services/realtime/types/socket.types";
 import { authorizedPageDelivery } from "@/services/realtime/authorized-page-delivery";
+import { clusterRedis } from '@/services/cluster/cluster-redis';
 import type { PageEditEventName, PageEventDelivery } from "@/services/realtime/types/page-edit.types";
 export type { PageEditEventName, PageEventDelivery } from "@/services/realtime/types/page-edit.types";
 
@@ -45,6 +46,13 @@ export class PageEditChannel implements RealtimeChannel {
 
   attach(io: CubsSocketServer): void {
     this.io = io;
+    if (clusterRedis()) {
+      io.on('campus-page-event', (event, payload) => {
+        // Each receiving API checks its own sockets against current database
+        // permissions. A room broadcast would bypass these per-user checks.
+        if (this.serverEvents.includes(event)) this.deliver(io, event, payload);
+      });
+    }
   }
 
   register(_socket: CubsSocket): void {}
@@ -105,6 +113,7 @@ export class PageEditChannel implements RealtimeChannel {
       throw new Error("PageEditChannel não foi anexado ao SocketServer");
     }
     this.deliver(this.io, event, payload);
+    if (clusterRedis()) this.io.serverSideEmit('campus-page-event', event, payload);
   }
 }
 

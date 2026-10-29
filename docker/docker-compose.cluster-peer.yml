@@ -1,0 +1,45 @@
+# Native Linux peers only. Never combine this file with docker-compose.prod.yml.
+# Run with a site-specific project and a protected, explicitly supplied env file.
+services:
+  rqlite:
+    image: cubs-rqlite-cluster:10.3.3
+    build:
+      context: ./rqlite
+    entrypoint: ["/bin/sh", "/cluster-entrypoint.sh"]
+    environment:
+      NODE_ID: ${CLUSTER_NODE_ID:?Set a unique, persistent peer ID}
+      RQLITE_ADVERTISE_IP: ${CLUSTER_MESH_IP:?Set this host's assigned private Mesh IPv4}
+      JOIN_NODE: ${CLUSTER_JOIN_PEERS:?Set existing private Raft endpoints on port 4002}
+      RQLITE_JOIN_AS: cubs_cluster_join
+      RQLITE_AUTH_FILE: /run/secrets/rqlite_auth
+      RQLITE_NON_VOTER: ${CLUSTER_NON_VOTER:-true}
+    ports:
+      - "${CLUSTER_MESH_IP:?}:4001:4001"
+      - "${CLUSTER_MESH_IP:?}:4002:4002"
+    volumes:
+      - rqlite_data:/rqlite/file
+      - ./rqlite/cluster-entrypoint.sh:/cluster-entrypoint.sh:ro
+    secrets: [rqlite_auth, rqlite_health]
+    networks: [default]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--config", "/run/secrets/rqlite_health", "http://127.0.0.1:4001/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  rqlite_data:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${CLUSTER_DOCKER_SUBNET:?Choose a nonoverlapping local Docker subnet}
+
+secrets:
+  rqlite_auth:
+    file: ${CLUSTER_AUTH_FILE:?Set the protected local auth file path}
+  rqlite_health:
+    file: ${CLUSTER_HEALTH_FILE:?Set the protected local curl config path}

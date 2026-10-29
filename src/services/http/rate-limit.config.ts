@@ -1,5 +1,6 @@
 import { rateLimit } from "express-rate-limit";
 import { StatusCode } from "@/services/http/status-code";
+import { clusterRateStore } from '@/services/http/cluster-rate-store';
 
 /**
  * Limites de requisições por IP, para segurar rajadas/brute-force sem
@@ -21,9 +22,8 @@ import { StatusCode } from "@/services/http/status-code";
  * sem ele o IP visto aqui seria o do proxy, e o limite valeria para TODOS
  * os usuários juntos.
  *
- * Estado em memória por instância — com múltiplas instâncias do backend,
- * trocar por um store compartilhado (mesmo momento do adapter Redis do
- * socket.io; ver NEXT_STEPS.md).
+ * O perfil de campus compartilha as cotas via Redis/Sentinel. Sem esse perfil,
+ * o servidor único mantém o store padrão em memória.
  */
 const envInt = (name: string, fallback: number): number => {
   const value = Number(process.env[name]);
@@ -38,24 +38,28 @@ const tooManyRequests = (message: string) => ({
 });
 
 export const globalRateLimit = rateLimit({
+  ...clusterRateStore('global'),
   windowMs: envInt("RATE_LIMIT_WINDOW_MS", 60_000),
   limit: envInt("RATE_LIMIT_MAX", 300),
   ...tooManyRequests("Muitas requisições — tente novamente em instantes"),
 });
 
 export const authRateLimit = rateLimit({
+  ...clusterRateStore('auth'),
   windowMs: envInt("AUTH_RATE_LIMIT_WINDOW_MS", 15 * 60_000),
   limit: envInt("AUTH_RATE_LIMIT_MAX", 20),
   ...tooManyRequests("Muitas tentativas de autenticação — aguarde antes de tentar de novo"),
 });
 
 export const formSubmitRateLimit = rateLimit({
+  ...clusterRateStore('form-submit'),
   windowMs: envInt('FORM_SUBMIT_RATE_LIMIT_WINDOW_MS', 15 * 60_000),
   limit: envInt('FORM_SUBMIT_RATE_LIMIT_MAX', 30),
   ...tooManyRequests('Muitos envios de formulário — aguarde antes de tentar novamente'),
 });
 
 export const formReadRateLimit = rateLimit({
+  ...clusterRateStore('form-read'),
   windowMs: envInt('FORM_READ_RATE_LIMIT_WINDOW_MS', 60_000),
   limit: envInt('FORM_READ_RATE_LIMIT_MAX', 120),
   ...tooManyRequests('Muitas consultas ao formulário — tente novamente em instantes'),

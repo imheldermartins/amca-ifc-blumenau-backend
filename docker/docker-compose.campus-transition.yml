@@ -1,0 +1,16 @@
+# Temporary single-campus hostname cutover; no HA until the full cluster exists.
+services:
+  backend:
+    environment:
+      APP_PUBLIC_URL: https://${CLUSTER_PUBLIC_HOST:?}
+      CORS_ORIGINS: https://${CLUSTER_PUBLIC_HOST:?}
+      CUBS_CLUSTER_ENABLED: "false"
+  frontend:
+    build:
+      args:
+        VITE_CUBS_API_URL: https://${CLUSTER_PUBLIC_HOST:?}/api/v1
+    environment:
+      CAMPUS_PUBLIC_HOST: ${CLUSTER_PUBLIC_HOST:?}
+      NGINX_ENVSUBST_FILTER: ^CAMPUS_PUBLIC_HOST$
+    volumes:
+      - ./nginx/campus.conf.template:/etc/nginx/templates/default.conf.template:ro

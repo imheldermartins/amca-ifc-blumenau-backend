@@ -1,0 +1,22 @@
+# Optional overlay for the EXISTING production project, applied only after the
+# Mesh route, auth file, persisted node address and backup have been verified.
+# Keep the existing Docker network, volume, node ID and recorded Raft address.
+services:
+  rqlite:
+    environment:
+      RQLITE_ADVERTISE_IP: ${CLUSTER_ORIGIN_DOCKER_IP:?Use the existing recorded node IP}
+    ports:
+      - "${CLUSTER_MESH_IP:?Set the origin host's assigned Mesh IPv4}:4001:4001"
+      - "${CLUSTER_MESH_IP:?}:4002:4002"
+    networks:
+      default:
+        ipv4_address: ${CLUSTER_ORIGIN_DOCKER_IP:?}
+
+networks:
+  default:
+    external: true
+    name: ${CLUSTER_ORIGIN_DOCKER_NETWORK:?Use the existing network name}
+
+secrets:
+  rqlite_auth:
+    file: ${CLUSTER_AUTH_FILE:?Use a protected superset of the existing auth entries}
