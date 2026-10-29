@@ -6,6 +6,7 @@ import { SystemRoleFactory } from '@/repositories/system-role-factory';
 import { canDelegate, type AccessScope } from '@/services/auth/permissions';
 import { SendEmail } from '@/services/mail/send-email';
 import { accessInviteEmail } from '@/services/mail/access-invite-email';
+import { validateEmailActionUrl } from '@/services/mail/email-action-url';
 import accountVerification from '@/services/account-verification';
 import { createOpaqueToken, hashOpaqueToken, isOpaqueToken, opaqueTokenHint } from '@/services/opaque-token';
 import type { SendInviteInput, SendInviteResult } from '@/services/invitations/types/invite-flow.types';
@@ -34,7 +35,7 @@ export abstract class InviteFlow {
     let inviteUrl: string | null = null;
     try {
       inviteUrl = origin
-        ? new URL(`/pt-br/invite/${encodeURIComponent(token)}`, origin).toString()
+        ? validateEmailActionUrl(new URL(`/pt-br/invite/${encodeURIComponent(token)}`, origin).toString())
         : null;
     } catch {
       inviteUrl = null;

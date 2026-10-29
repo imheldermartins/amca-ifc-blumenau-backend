@@ -19,6 +19,11 @@ produção e container documentam essas variáveis. Não coloque segredos no fro
 A porta 587 usa STARTTLS; a porta 465 usa TLS desde a conexão. Produção exige TLS.
 Um capturador local em desenvolvimento pode usar `SMTP_REQUIRE_TLS=false`.
 
+Os links usam `APP_PUBLIC_URL` do ambiente do backend: em desenvolvimento,
+`http://localhost:5173`; em produção, `https://cubsonline.com.br`. A validação
+recusa endereços de loopback em produção, inclusive nos convites genéricos.
+O destino precisa apontar para o frontend que usa a mesma base do convite.
+
 ```ts
 import { SendEmail } from "@/services/mail/send-email";
 import { accountVerificationEmail } from "@/services/mail/account-verification-email";
@@ -88,6 +93,12 @@ exige clique em Aceitar. Para endereços ainda sem conta, o e-mail de validaçã
 também carrega internamente o convite, e a ativação cria a área pessoal antes de
 provisionar os acessos convidados. Links genéricos são copiados pela UI e não
 disparam SMTP.
+
+Um convite pendente não impede emitir outro para o mesmo endereço; uma pessoa
+que já é membro não recebe outro convite para esse escopo. A URL não é salva
+em `access_invites`, apenas o hash e o hint do token. Mudanças no domínio e no
+template valem para novos envios; não alteram uma mensagem já recebida. O token
+original não pode ser recuperado do banco para reconstituir o link antigo.
 
 ## Solicitações de acesso
 
